@@ -1,0 +1,14 @@
+MisioFlix 0.4.12.0 — naprawa testu CSS w GitHub Actions
+
+Błąd: ModuleNotFoundError: No module named tinycss2 w tests/test_home_0412.py.
+
+Poprawka: test CSS używa teraz PostCSS (Node.js), który jest już instalowany przez workflow build.yml i release.yml. Żadna dodatkowa biblioteka ani zmiana workflow nie jest potrzebna.
+
+W repozytorium kumblip/misioflix zastąp WYŁĄCZNIE plik:
+  tests/test_home_0412.py
+
+Nie wgrywaj HOTFIX_INSTRUKCJA.txt do repozytorium (opcjonalny). Zatwierdź zmianę w main i sprawdź GitHub Actions.
+
+Wersja MisioFlix pozostaje 0.4.12.0. Wtyczka i jej skrypty nie zostały zmienione.
+
+Weryfikacja lokalna: 8/8 testów test_home_0412.py + 12/12 testów test_v0412.py; Node syntax check OK. Nie weryfikowano kompilacji .NET na GitHub.

@@ -1,7 +1,6 @@
 """MisioFlix 0.4.12 home shelf contract tests (not a .NET build test)."""
 import json,re,subprocess,unittest
 from pathlib import Path
-import tinycss2
 ROOT=Path(__file__).resolve().parents[1]
 SERV=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixCatalogService.cs').read_text()
 CTRL=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Controllers/MisioFlixController.cs').read_text()
@@ -49,9 +48,13 @@ class TestHome0412(unittest.TestCase):
       proc=subprocess.run(['node','--check',str(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web'/name)],capture_output=True,text=True)
       self.assertEqual(proc.returncode,0,proc.stderr)
   def test_css_check(self):
-    rules=tinycss2.parse_stylesheet(CSS,skip_comments=True,skip_whitespace=True)
-    errors=[r for r in rules if r.type=='error']
-    self.assertFalse(errors,str(errors))
+    # Reuse PostCSS installed by both GitHub Actions workflows.
+    # Avoid an undocumented Python dependency on tinycss2.
+    js = ("const fs=require('fs'); const postcss=require('postcss'); "
+          "postcss.parse(fs.readFileSync(0,'utf8'), {from:'theme.css'});")
+    proc = subprocess.run(['node', '-e', js], input=CSS,
+                          capture_output=True, text=True)
+    self.assertEqual(proc.returncode, 0, proc.stderr)
     self.assertIn('.mf-home-card',CSS)
     self.assertIn('aspect-ratio:2/3',CSS)
     self.assertIn('mf-home-resume',CSS)
