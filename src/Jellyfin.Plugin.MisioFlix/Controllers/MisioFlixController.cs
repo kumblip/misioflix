@@ -25,7 +25,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.3", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.4", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
@@ -141,9 +141,10 @@ public sealed class MisioFlixController : ControllerBase
         try
         {
             var user=await _catalog.GetAuthenticatedUserIdAsync(Request,cancel).ConfigureAwait(false);
-            if(!_mal.Connected(user))return Ok(new {connected=false,entries=new Dictionary<int,MalEntry>()});
+            var connection=await _mal.GetConnectionAsync(user,cancel,refreshProfile:refresh).ConfigureAwait(false);
+            if(!connection.Connected)return Ok(new {connected=false,malUserId=(int?)null,username=(string?)null,entries=new Dictionary<int,MalEntry>()});
             var entries=await _mal.ReadAllAsync(user,refresh,cancel).ConfigureAwait(false);
-            return Ok(new{connected=true,entries});
+            return Ok(new{connected=true,malUserId=connection.MalUserId,username=connection.Username,entries});
         }
         catch(UnauthorizedAccessException){return Unauthorized();}
         catch(HttpRequestException){return StatusCode(502,new{error="Nie można pobrać listy MAL"});}
@@ -176,10 +177,10 @@ public sealed class MisioFlixController : ControllerBase
                 "<body style='background:#201320;color:#ffe5f1;font:18px system-ui;padding:3rem'>"+
                 "MyAnimeList połączone. Zamknij to okno, wróć do MisioFlix i wybierz Odśwież MAL.</body></html>","text/html");
         }
-        catch(Exception e) when(e is InvalidOperationException or HttpRequestException or ArgumentException)
+        catch(Exception e) when(e is InvalidOperationException or UnauthorizedAccessException or HttpRequestException or ArgumentException)
         {
             // Do not echo external OAuth details or user credentials in a public callback.
-            return Content("Nie udało się połączyć MyAnimeList. Wróć do MisioFlix i ponów połączenie.","text/plain",System.Text.Encoding.UTF8);
+            return BadRequest("Nie udało się połączyć MyAnimeList. Wróć do MisioFlix i ponów połączenie.");
         }
     }
 

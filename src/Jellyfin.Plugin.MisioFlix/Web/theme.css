@@ -114,3 +114,14 @@
 #mf-portal .mf-season-row h3{font-size:17px;margin:0 0 8px}
 #mf-portal .mf-season-row small{opacity:.75}
 @media(max-width:650px){#mf-portal .mf-carousel-title{font-size:18px}#mf-portal .mf-card-body{padding:6px 8px 10px}#mf-portal .mf-card-body p{margin-top:4px}}
+
+/* MisioFlix v0.4.4 — personal MAL account, independently connected per Jellyfin user. */
+#mf-portal .mf-account-page{max-width:860px;margin:34px auto;padding:20px 24px;border:1px solid #ffffff28;border-radius:16px;background:#201321da}
+#mf-portal .mf-account-page>p{color:var(--mf-muted);font-size:14px}
+#mf-portal .mf-mal-username{color:#f7d6e8;overflow-wrap:anywhere}
+#mf-portal .mf-account-details{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:20px 0}
+#mf-portal .mf-account-details>div{border:1px solid #ffffff29;border-radius:11px;padding:14px;background:#ffffff08;display:flex;flex-direction:column;gap:5px}
+#mf-portal .mf-account-details small{font-size:12px;color:var(--mf-muted)}
+#mf-portal .mf-account-details strong{font-size:16px;color:#fff6fa;overflow-wrap:anywhere}
+#mf-portal .mf-account-note{padding:11px 13px;border-left:3px solid #dd8db5;background:#ffffff0a;border-radius:5px}
+@media(max-width:650px){#mf-portal .mf-account-page{margin:16px 0;padding:14px}}

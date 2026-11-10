@@ -20,7 +20,8 @@ class V043Tests(unittest.TestCase):
   self.assertIn('UserItems/{id}/UserData',CODE)
  def test_mal_oauth_secure(self):
   self.assertIn('code_challenge_method',MAL)
-  self.assertIn('TokenGate',MAL)
+  self.assertIn('TokenLocks',MAL)
+  self.assertIn('AccountLinkGate',MAL)
   self.assertIn('RandomNumberGenerator.GetBytes',MAL)
   self.assertIn('File.SetUnixFileMode',MAL)
   self.assertIn('State',CTRL+' '+MAL) if False else None

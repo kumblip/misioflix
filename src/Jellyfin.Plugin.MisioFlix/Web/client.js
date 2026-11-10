@@ -2,26 +2,40 @@
 (() => {
   'use strict';
   if (window.__MISIOFLIX_NATIVE__) return;
-  window.__MISIOFLIX_NATIVE__ = '0.4.3';
+  window.__MISIOFLIX_NATIVE__ = '0.4.4';
   const h = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const state = {open:false, tab:'home', items:[], genres:{anime:[],media:[]}, genreFrequency:{anime:new Map(),media:new Map()}, resume:[], hiddenResume:[], showHiddenResume:false, resumeError:false, resumeLoading:false, resumePending:null, ready:false, homeRandom:{}, mal:{connected:false,entries:{},loading:false,error:null},
+  const state = {open:false, tab:'home', items:[], genres:{anime:[],media:[]}, genreFrequency:{anime:new Map(),media:new Map()}, resume:[], hiddenResume:[], showHiddenResume:false, resumeError:false, resumeLoading:false, resumePending:null, ready:false, homeRandom:{}, mal:{connected:false,malUserId:null,username:null,entries:{},loading:false,error:null},
                  search:{anime:{q:'',type:'',year:'',include:[],exclude:[]},media:{q:'',type:'',year:'',include:[],exclude:[]}},
                  detail:null, objectUrls:[], pageSizes:{recent:60,anime:60,movies:60,series:60,'search-anime':60,'search-media':60}, client:null, token:null, pending:null};
   const $ = (s, root=document) => root.querySelector(s);
   const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 
+  function forgetUserState(){
+    state.ready=false;state.items=[];state.resume=[];state.hiddenResume=[];
+    state.detail=null;state.homeRandom={};state.pending=null;
+    state.mal={connected:false,malUserId:null,username:null,entries:{},loading:false,error:null};
+    for(const url of state.objectUrls)URL.revokeObjectURL(url);
+    state.objectUrls=[];
+    const content=$('#mf-content');
+    if(content)content.innerHTML='<div class="mf-loading">Zmiana konta Jellyfin — odświeżanie danych…</div>';
+  }
   function apiClient() {
     const a = window.ApiClient || window.ConnectionManager?.getApiClient?.() || null;
-    if (!a) return null;
-    const t = typeof a.accessToken === 'function' ? a.accessToken() : a.accessToken;
-    if (typeof t !== 'string' || !t) return null;
+    const t = a?(typeof a.accessToken === 'function' ? a.accessToken() : a.accessToken):null;
+    if (typeof t !== 'string' || !t) {
+      if(state.token)forgetUserState();
+      state.client=null;state.token=null;
+      return null;
+    }
+    // Jellyfin can switch users without reloading the page. Clear all previous profile data.
+    if (state.token && state.token !== t)forgetUserState();
     state.client = a; state.token = t;
     return a;
   }
   function jellyfinHeaders() {
     if (!apiClient()) return null;
     const t = state.token.replace(/["\r\n]/g,'');
-    return {'Authorization': `MediaBrowser Client="misioflix", Device="Jellyfin Web", DeviceId="misioflix-web", Version="0.4.3", Token="${t}"`};
+    return {'Authorization': `MediaBrowser Client="misioflix", Device="Jellyfin Web", DeviceId="misioflix-web", Version="0.4.4", Token="${t}"`};
   }
   async function get(path) {
     const headers = jellyfinHeaders();
@@ -40,11 +54,16 @@
     return json;
   }
   async function refreshMal(force=false) {
+    if(!apiClient())return;
+    const accountToken=state.token;
     state.mal.loading=true;
     try {
       const data=await get('mal/status'+(force?'?refresh=true':''));
-      state.mal={connected:!!data.connected,entries:data.entries||{},loading:false,error:null};
+      if(accountToken!==state.token)return; // discard an earlier Jellyfin user's result
+      state.mal={connected:!!data.connected,malUserId:data.malUserId??null,
+        username:data.username||null,entries:data.entries||{},loading:false,error:null};
     } catch(e) {
+      if(accountToken!==state.token)return;
       state.mal={...state.mal,loading:false,error:e.message};
     }
     if(state.open&&state.ready)render();
@@ -101,7 +120,7 @@
     root.innerHTML = `
       <header class="mf-header"><div class="mf-head-inner">
         <button type="button" class="mf-brand" data-mf-tab="home" aria-label="misioflix — główna"><img src="/MisioFlix/assets/logo.png" alt="misioflix"></button>
-        <nav class="mf-nav"><button data-mf-tab="home">Główna</button><button data-mf-tab="anime">Anime</button><button data-mf-tab="movies">Filmy</button><button data-mf-tab="series">Seriale</button><button data-mf-tab="search-anime">Szukaj anime</button><button data-mf-tab="search-media">Szukaj filmów i seriali</button></nav>
+        <nav class="mf-nav"><button data-mf-tab="home">Główna</button><button data-mf-tab="anime">Anime</button><button data-mf-tab="movies">Filmy</button><button data-mf-tab="series">Seriale</button><button data-mf-tab="search-anime">Szukaj anime</button><button data-mf-tab="search-media">Szukaj filmów i seriali</button><button data-mf-tab="mal-account">Moje MAL</button></nav>
         <button type="button" class="mf-leave" data-mf-close>Powrót do Jellyfin <span aria-hidden="true">×</span></button>
       </div></header>
       <main class="mf-main" id="mf-content" tabindex="-1" aria-live="polite"></main>
@@ -112,6 +131,11 @@
     root.addEventListener('change', changed);
     document.body.appendChild(root);
     window.addEventListener('keydown', e=>{if(e.key==='Escape' && state.open && !state.detail)close();});
+    window.addEventListener('focus',()=>{
+      const active=apiClient();
+      if(!active && state.open){close();return;}
+      if(active && state.open && !state.ready && !state.pending)load();
+    });
     window.addEventListener('popstate',()=>{ if(new URL(location.href).searchParams.has('misioflix'))open(new URL(location.href).searchParams.get('misioflix')||'home',false); });
   }
   function urlFor(tab) {
@@ -138,9 +162,12 @@
   async function load(force=false) {
     if (state.pending) return state.pending;
     const page=$('#mf-content'); if (page) page.innerHTML='<div class="mf-loading">Ładowanie katalogu Jellyfin i NFO…</div>';
+    if(!apiClient())return;
+    const accountToken=state.token;
     state.pending = (async()=>{
       try {
         const d=await get('catalog');
+        if(accountToken!==state.token)return;
         state.items=d.items||[];state.genres=d.genres||{anime:[],media:[]};
         state.genreFrequency=buildGenreFrequency(state.items);state.homeRandom={};state.ready=true;
       } catch(e){state.ready=false; if(page)page.innerHTML='<section class="mf-error"><h2>Nie udało się pobrać katalogu</h2><p>'+h(e.message)+'</p><button data-mf-refresh>Spróbuj ponownie</button><p>Sprawdź czy pozycje zostały dodane do Jellyfin i czy ścieżki NFO są dostępne.</p></section>';return;}
@@ -340,10 +367,28 @@
       </select></label>`;
   }
   function malAccountControls(){
+    const label=state.mal.username?`<strong class="mf-mal-username">${h(state.mal.username)}</strong>`:'<span>Identyfikowanie konta…</span>';
     return `<div class="mf-mal-account"><b>MyAnimeList</b>
-      ${state.mal.connected?`<span>Połączono</span><button data-mf-mal-refresh>Odśwież MAL</button><button data-mf-mal-disconnect>Odłącz</button>`:
-      `<button type="button" data-mf-mal-connect>Połącz konto MAL</button>`}
-      ${state.mal.error?`<small class="mf-mal-error">${h(state.mal.error)}</small>`:''}</div>`;
+      ${state.mal.connected?`${label}<span>Połączono</span><button type="button" data-mf-mal-refresh>Odśwież MAL</button><button type="button" data-mf-mal-disconnect>Odłącz</button>`:
+      `<span>Brak połączenia</span><button type="button" data-mf-mal-connect>Połącz własne konto MAL</button>`}
+      ${state.mal.error?`<small class="mf-mal-error">${h(state.mal.error)}</small>`:''}
+      <button type="button" data-mf-tab="mal-account">Moje MAL →</button></div>`;
+  }
+  function malAccountPage(){
+    return `<section class="mf-account-page">
+      <h1>Moje MyAnimeList</h1>
+      <p>Połączenie dotyczy wyłącznie aktualnie zalogowanego użytkownika Jellyfin.
+         Każdy profil MisioFlix korzysta ze swojego konta MAL i może synchronizować je równocześnie z innymi profilami.</p>
+      ${malAccountControls()}
+      ${state.mal.connected?`<div class="mf-account-details">
+        <div><small>Konto MyAnimeList</small><strong>${h(state.mal.username||'Sprawdzanie…')}</strong></div>
+        <div><small>Identyfikator MAL</small><strong>${h(state.mal.malUserId??'—')}</strong></div>
+        <div><small>Powiązanie</small><strong>Tylko bieżący użytkownik Jellyfin</strong></div>
+      </div>`:`<p>Po połączeniu będą dostępne Twoje oceny, statusy, obejrzane odcinki i powtórki.
+        Administrator konfiguruje tylko wspólny Client ID. Twoje hasło MAL nie jest przekazywane do MisioFlix.</p>`}
+      <p class="mf-account-note">Synchronizację danych MAL wykonujemy na żądanie. MisioFlix nie nadpisuje
+        automatycznie historii oglądania w Jellyfin ani danych na MAL bez Twojej akcji.</p>
+    </section>`;
   }
   function detail(it,episodes,seasons=[]) {
     const firstSeason=(seasons||[]).find(x=>x.number===1);
@@ -370,6 +415,7 @@
     for (const url of state.objectUrls) URL.revokeObjectURL(url);state.objectUrls=[];
     if(state.detail){page.innerHTML=detail(state.detail.item,state.detail.episodes,state.detail.seasons);}
     else if(state.tab==='home')page.innerHTML=home();
+    else if(state.tab==='mal-account')page.innerHTML=malAccountPage();
     else if(['recent','anime','movies','series'].includes(state.tab))page.innerHTML=listings(state.tab);
     else page.innerHTML=search(state.tab);
     applyActiveTabs(); loadImages(page);page.scrollTop=0;
