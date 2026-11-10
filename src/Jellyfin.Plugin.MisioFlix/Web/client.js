@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   if (window.__MISIOFLIX_NATIVE__) return;
-  window.__MISIOFLIX_NATIVE__ = '0.4.4';
+  window.__MISIOFLIX_NATIVE__ = '0.4.5';
   const h = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const state = {open:false, tab:'home', items:[], genres:{anime:[],media:[]}, genreFrequency:{anime:new Map(),media:new Map()}, resume:[], hiddenResume:[], showHiddenResume:false, resumeError:false, resumeLoading:false, resumePending:null, ready:false, homeRandom:{}, mal:{connected:false,malUserId:null,username:null,entries:{},loading:false,error:null},
                  search:{anime:{q:'',type:'',year:'',include:[],exclude:[]},media:{q:'',type:'',year:'',include:[],exclude:[]}},
@@ -35,7 +35,7 @@
   function jellyfinHeaders() {
     if (!apiClient()) return null;
     const t = state.token.replace(/["\r\n]/g,'');
-    return {'Authorization': `MediaBrowser Client="misioflix", Device="Jellyfin Web", DeviceId="misioflix-web", Version="0.4.4", Token="${t}"`};
+    return {'Authorization': `MediaBrowser Client="misioflix", Device="Jellyfin Web", DeviceId="misioflix-web", Version="0.4.5", Token="${t}"`};
   }
   async function get(path) {
     const headers = jellyfinHeaders();
@@ -60,7 +60,7 @@
     try {
       const data=await get('mal/status'+(force?'?refresh=true':''));
       if(accountToken!==state.token)return; // discard an earlier Jellyfin user's result
-      state.mal={connected:!!data.connected,malUserId:data.malUserId??null,
+      state.mal={...state.mal,connected:!!data.connected,malUserId:data.malUserId??null,
         username:data.username||null,entries:data.entries||{},loading:false,error:null};
     } catch(e) {
       if(accountToken!==state.token)return;
@@ -72,8 +72,28 @@
     // Open synchronously from the click; otherwise popup blockers may reject OAuth.
     const popup=window.open('about:blank','_blank');
     try {const result=await get('mal/connect');
-      if(popup)popup.location.href=result.url;else alert('Zezwól na otwarcie okna MAL i spróbuj ponownie.');
+      if(result.manual){
+        state.mal.manualReady=true;
+        state.mal.manualMessage=result.message||'';
+        toTab('mal-account');
+      }
+      if(popup)popup.location.href=result.url;
+      else alert('Zezwól na otwarcie okna MAL i spróbuj ponownie.');
     }catch(e){if(popup)popup.close();throw e;}
+  }
+  async function finishManualMal(){
+    const field=$('[data-mf-mal-redirect-text]');
+    if(!field)throw Error('Wróć do zakładki Moje MAL.');
+    const redirectUrl=field.value.trim();
+    if(!redirectUrl)throw Error('Wklej pełny adres localhost z parametrami code i state.');
+    // Never retain the one-time authorization code in localStorage or query strings.
+    const accountToken=state.token;
+    field.value='';
+    await post('mal/complete',{redirectUrl});
+    if(accountToken!==state.token)return;
+    state.mal.manualReady=false;
+    state.mal.manualMessage='';
+    await refreshMal(true);
   }
   async function savePersonalRating(itemId,seasonId,score){
     const data=await post('item/'+encodeURIComponent(itemId)+'/rating',{rating:score,seasonId:seasonId||null});
@@ -380,14 +400,25 @@
       <p>Połączenie dotyczy wyłącznie aktualnie zalogowanego użytkownika Jellyfin.
          Każdy profil MisioFlix korzysta ze swojego konta MAL i może synchronizować je równocześnie z innymi profilami.</p>
       ${malAccountControls()}
+      ${!state.mal.connected && state.mal.manualReady?`<div class="mf-mal-manual">
+        <h2>Dokończ połączenie bez domeny HTTPS</h2>
+        <p>1. Zaloguj się na stronie MyAnimeList otwartej w nowej karcie i zatwierdź dostęp.</p>
+        <p>2. Po przekierowaniu na localhost strona może zgłosić błąd — to normalne. Skopiuj <strong>cały adres</strong> z paska, zawierający <code>code=</code> i <code>state=</code>.</p>
+        <p>3. Wklej ten adres poniżej. Kod jest jednorazowy i ważny przez 10 minut. Nie przekazuj go nikomu.</p>
+        <label for="mf-mal-pasted-url">Adres przekierowania MAL</label>
+        <textarea id="mf-mal-pasted-url" data-mf-mal-redirect-text rows="3" placeholder="http://localhost:8765/callback?code=...&state=..." autocomplete="off" spellcheck="false"></textarea>
+        <button type="button" class="mf-primary" data-mf-mal-complete>Połącz moje konto MAL</button>
+        <small>Jeżeli nie możesz skopiować pełnego adresu lub kod wygasł, wybierz „Połącz własne konto MAL” ponownie.</small>
+      </div>`:''}
       ${state.mal.connected?`<div class="mf-account-details">
         <div><small>Konto MyAnimeList</small><strong>${h(state.mal.username||'Sprawdzanie…')}</strong></div>
         <div><small>Identyfikator MAL</small><strong>${h(state.mal.malUserId??'—')}</strong></div>
         <div><small>Powiązanie</small><strong>Tylko bieżący użytkownik Jellyfin</strong></div>
       </div>`:`<p>Po połączeniu będą dostępne Twoje oceny, statusy, obejrzane odcinki i powtórki.
         Administrator konfiguruje tylko wspólny Client ID. Twoje hasło MAL nie jest przekazywane do MisioFlix.</p>`}
-      <p class="mf-account-note">Synchronizację danych MAL wykonujemy na żądanie. MisioFlix nie nadpisuje
-        automatycznie historii oglądania w Jellyfin ani danych na MAL bez Twojej akcji.</p>
+      <p class="mf-account-note">Tokeny MAL są odnawiane na serwerze automatycznie, również gdy nikt nie jest zalogowany
+        i gdy telefon jest rozłączony z Tailscale. Odczyt listy oraz zapisywanie ocen i postępu pozostają świadomymi
+        działaniami użytkownika — MisioFlix nie zmienia historii odtwarzania Jellyfin bez Twojej zgody.</p>
     </section>`;
   }
   function detail(it,episodes,seasons=[]) {
@@ -468,6 +499,10 @@
     const recent=e.target.closest('[data-mf-recent]');
     if(recent){delete state.homeRandom[recent.dataset.mfRecent];render();return;}
     if(e.target.closest('[data-mf-mal-connect]')){malConnect().catch(err=>alert(err.message));return;}
+    if(e.target.closest('[data-mf-mal-complete]')){
+      const button=e.target.closest('[data-mf-mal-complete]');button.disabled=true;
+      finishManualMal().catch(err=>{button.disabled=false;alert(err.message);});return;
+    }
     if(e.target.closest('[data-mf-mal-refresh]')){refreshMal(true);return;}
     if(e.target.closest('[data-mf-mal-disconnect]')){
       if(!confirm('Odłączyć MyAnimeList od tego konta MisioFlix? Oceny pozostaną w MAL.'))return;

@@ -25,7 +25,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.4", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.5", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
@@ -159,10 +159,29 @@ public sealed class MisioFlixController : ControllerBase
         {
             var user=await _catalog.GetAuthenticatedUserIdAsync(Request,cancel).ConfigureAwait(false);
             var link=_mal.Start(user);
-            return Ok(new{url=link.url,message=link.message});
+            return Ok(new{url=link.url,message=link.message,manual=link.manual});
         }
         catch(InvalidOperationException e){return BadRequest(new{error=e.Message});}
         catch(UnauthorizedAccessException){return Unauthorized();}
+    }
+
+    // Manual OAuth is accepted only from the authenticated user who initiated the PKCE
+    // session, never anonymously. The one-time code is submitted in the JSON POST body.
+    public sealed record MalCompleteRequest(string RedirectUrl);
+    [HttpPost("api/mal/complete")]
+    [Authorize]
+    public async Task<IActionResult> MalComplete([FromBody] MalCompleteRequest input, CancellationToken cancel)
+    {
+        try
+        {
+            var user = await _catalog.GetAuthenticatedUserIdAsync(Request, cancel).ConfigureAwait(false);
+            await _mal.FinishManualAsync(user, input.RedirectUrl ?? "", cancel).ConfigureAwait(false);
+            return Ok(new { connected = true });
+        }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (ArgumentException e) { return BadRequest(new { error = e.Message }); }
+        catch (InvalidOperationException e) { return BadRequest(new { error = e.Message }); }
+        catch (HttpRequestException) { return StatusCode(502, new { error = "MAL nie zaakceptował kodu. Rozpocznij nowe logowanie." }); }
     }
 
     // OAuth callback receives a state-bound one-time code; NEVER an access token in the URL.

@@ -11,6 +11,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.WebUtilities;
 using MediaBrowser.Common.Configuration;
 
 namespace Jellyfin.Plugin.MisioFlix.Services;
@@ -35,7 +36,7 @@ public sealed class MisioFlixMalService
     private static readonly SemaphoreSlim AccountLinkGate = new(1, 1);
     private static readonly ConcurrentDictionary<string, CachedList> ListCache = new();
 
-    private sealed record AuthPending(string UserId, string Verifier, DateTimeOffset Expires);
+    private sealed record AuthPending(string UserId, string Verifier, DateTimeOffset Expires, string Redirect);
     // Optional trailing properties migrate v0.4.3 token files without losing access or refresh tokens.
     private sealed record TokenRecord(string AccessToken, string RefreshToken, DateTimeOffset Expires,
         int MalUserId = 0, string MalUsername = "");
@@ -62,17 +63,24 @@ public sealed class MisioFlixMalService
         var c = Plugin.Instance?.Configuration ?? throw new InvalidOperationException("Brak konfiguracji MisioFlix");
         var clientId = (c.MalClientId ?? "").Trim();
         var redirect = (c.MalRedirectUri ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(clientId) || !Uri.TryCreate(redirect, UriKind.Absolute, out var u)
-            || !u.AbsolutePath.EndsWith("/MisioFlix/api/mal/callback", StringComparison.OrdinalIgnoreCase)
-            || (u.Scheme != "https" && !(u.Scheme == "http" && (u.IsLoopback || u.Host.IndexOf('.') < 0))))
-            throw new InvalidOperationException("Administrator musi ustawić wspólny MAL Client ID i poprawny callback. Poza LAN wymagane jest HTTPS.");
+        var valid = Uri.TryCreate(redirect, UriKind.Absolute, out var url)
+            && url is not null
+            && string.IsNullOrWhiteSpace(url.UserInfo)
+            && string.IsNullOrEmpty(url.Query) && string.IsNullOrEmpty(url.Fragment)
+            && ((url.IsLoopback && (url.Scheme == "http" || url.Scheme == "https"))
+                || (url.AbsolutePath.EndsWith("/MisioFlix/api/mal/callback", StringComparison.OrdinalIgnoreCase)
+                    && (url.Scheme == "https" || (url.Scheme == "http" && url.Host.IndexOf('.') < 0))));
+        if (string.IsNullOrWhiteSpace(clientId) || !valid)
+            throw new InvalidOperationException("Ustaw Client ID i callback MAL: http://localhost:8765/callback (tryb ręczny) albo adres działającego serwera MisioFlix.");
         return (clientId, c.MalClientSecret ?? "", redirect);
     }
+
+    private static bool ManualRedirect(string redirect) => new Uri(redirect).IsLoopback;
 
     private static string Query(IDictionary<string, string> values) => string.Join("&", values.Select(kv =>
         Uri.EscapeDataString(kv.Key) + "=" + Uri.EscapeDataString(kv.Value)));
 
-    public (string url, string message) Start(string userId)
+    public (string url, string message, bool manual) Start(string userId)
     {
         var (id, _, redirect) = Settings();
         foreach (var kv in Pending.Where(kv => kv.Value.Expires < DateTimeOffset.UtcNow).ToArray())
@@ -81,20 +89,61 @@ public sealed class MisioFlixMalService
         var state = RandomUrlSafe(32);
         // MAL officially supports PKCE plain; S256 is not supported by this provider.
         var verifier = RandomUrlSafe(48);
-        Pending[state] = new AuthPending(UserId(userId), verifier, DateTimeOffset.UtcNow.AddMinutes(10));
+        Pending[state] = new AuthPending(UserId(userId), verifier, DateTimeOffset.UtcNow.AddMinutes(10), redirect);
         var parameters = new Dictionary<string, string> {
             ["response_type"] = "code", ["client_id"] = id, ["redirect_uri"] = redirect,
             ["code_challenge"] = verifier, ["code_challenge_method"] = "plain", ["state"] = state
         };
+        var manual = ManualRedirect(redirect);
         return (AuthorizeUrl + "?" + Query(parameters),
-            "Po udzieleniu dostępu wróć do MisioFlix i wybierz Odśwież MAL.");
+            manual ? "Po autoryzacji skopiuj cały adres z paska przeglądarki (nawet jeśli localhost nie odpowiada) i wklej go w MisioFlix. Ważność próby: 10 minut."
+                   : "Po udzieleniu dostępu wróć do MisioFlix i wybierz Odśwież MAL.",
+            manual);
     }
 
-    public async Task FinishAsync(string code, string state, CancellationToken cancel)
+    // Existing HTTPS callback remains supported for users who already configured a domain.
+    public Task FinishAsync(string code, string state, CancellationToken cancel)
+        => FinishCoreAsync(code, state, expectedUser: null, manual: false, cancel);
+
+    /// <summary>
+    /// Accept the full localhost redirect URL after OAuth consent. This is an authenticated
+    /// POST body, never a URL query to the MisioFlix server or a browser-stored access token.
+    /// </summary>
+    public async Task FinishManualAsync(string userId, string pastedUrl, CancellationToken cancel)
+    {
+        var user = UserId(userId);
+        if (string.IsNullOrWhiteSpace(pastedUrl) || pastedUrl.Length > 8192
+            || !Uri.TryCreate(pastedUrl.Trim(), UriKind.Absolute, out var pasted))
+            throw new ArgumentException("Wklej pełny adres localhost z parametrami code i state.");
+        var (_, _, redirect) = Settings();
+        if (!ManualRedirect(redirect)
+            || !string.Equals(pasted.GetLeftPart(UriPartial.Path),
+                new Uri(redirect).GetLeftPart(UriPartial.Path), StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrEmpty(pasted.Fragment)
+            || !string.IsNullOrWhiteSpace(pasted.UserInfo))
+            throw new ArgumentException("Adres nie odpowiada callbackowi localhost skonfigurowanemu dla MAL.");
+        var query = QueryHelpers.ParseQuery(pasted.Query);
+        if (!query.TryGetValue("code", out var codes) || codes.Count != 1
+            || !query.TryGetValue("state", out var states) || states.Count != 1)
+            throw new ArgumentException("W adresie brak jednorazowego kodu MAL lub parametru state.");
+        await FinishCoreAsync(codes.ToString(), states.ToString(), user, manual: true, cancel)
+            .ConfigureAwait(false);
+    }
+
+    private async Task FinishCoreAsync(string code, string state, string? expectedUser, bool manual,
+        CancellationToken cancel)
     {
         if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state)
-            || !Pending.TryRemove(state, out var pending) || pending.Expires < DateTimeOffset.UtcNow)
-            throw new InvalidOperationException("Sesja łączenia MAL wygasła albo jest nieprawidłowa.");
+            || !Pending.TryGetValue(state, out var pending) || pending.Expires < DateTimeOffset.UtcNow
+            || (expectedUser is not null && pending.UserId != expectedUser)
+            || ManualRedirect(pending.Redirect) != manual)
+            throw new InvalidOperationException("Sesja logowania MAL jest nieprawidłowa lub wygasła. Rozpocznij nowe połączenie.");
+        var (_, _, currentRedirect) = Settings();
+        if (!string.Equals(currentRedirect, pending.Redirect, StringComparison.Ordinal))
+            throw new InvalidOperationException("Callback MAL zmienił się w trakcie logowania. Rozpocznij ponownie.");
+        // One-time state consumption. The verifier never leaves the NAS.
+        if (!Pending.TryRemove(state, out pending))
+            throw new InvalidOperationException("Ten kod MAL został już wykorzystany.");
         var (id, secret, redirect) = Settings();
         var fields = new Dictionary<string, string> {
             ["client_id"] = id, ["grant_type"] = "authorization_code", ["code"] = code,
@@ -263,6 +312,61 @@ public sealed class MisioFlixMalService
             return renewed.AccessToken;
         }
         finally { gate.Release(); }
+    }
+
+    public sealed record BackgroundRefreshResult(int Linked, int Renewed, int Failed);
+
+    /// <summary>
+    /// Runs even when no Jellyfin user is online. Refreshes expiring credentials (including
+    /// the rotating refresh token) a week early; one failed account cannot block another.
+    /// Each account has its own lock, shared with interactive reads, writes, and relinks.
+    /// </summary>
+    public async Task<BackgroundRefreshResult> RefreshInactiveAccountsAsync(CancellationToken cancel)
+    {
+        if (!Directory.Exists(_folder)) return new BackgroundRefreshResult(0, 0, 0);
+        if (string.IsNullOrWhiteSpace(Plugin.Instance?.Configuration.MalClientId))
+            return new BackgroundRefreshResult(0, 0, 0);
+        var linked = 0;
+        var renewed = 0;
+        var failed = 0;
+        foreach (var path in Directory.EnumerateFiles(_folder, "*.json").ToArray())
+        {
+            cancel.ThrowIfCancellationRequested();
+            var user = Path.GetFileNameWithoutExtension(path);
+            if (!Guid.TryParseExact(user, "N", out _)) continue;
+            linked++;
+            try
+            {
+                var gate = TokenLock(user);
+                await gate.WaitAsync(cancel).ConfigureAwait(false);
+                try
+                {
+                    var token = await ReadTokenAsync(user, cancel).ConfigureAwait(false);
+                    if (token is null || token.Expires > DateTimeOffset.UtcNow.AddDays(7)) continue;
+                    var (id, secret, _) = Settings();
+                    var fields = new Dictionary<string, string> {
+                        ["client_id"] = id,
+                        ["grant_type"] = "refresh_token",
+                        ["refresh_token"] = token.RefreshToken
+                    };
+                    if (!string.IsNullOrWhiteSpace(secret)) fields["client_secret"] = secret;
+                    var next = await ExchangeAsync(fields, cancel).ConfigureAwait(false);
+                    // Token files are atomically replaced before proceeding to the next user.
+                    await WriteTokenAsync(user, next with {
+                        MalUserId = token.MalUserId, MalUsername = token.MalUsername
+                    }, cancel).ConfigureAwait(false);
+                    renewed++;
+                }
+                finally { gate.Release(); }
+            }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested) { throw; }
+            catch (Exception e) when (e is HttpRequestException or IOException
+                 or JsonException or InvalidOperationException or UnauthorizedAccessException)
+            {
+                failed++; // Do not log access tokens, refresh tokens, redirect URLs or secrets.
+            }
+        }
+        return new BackgroundRefreshResult(linked, renewed, failed);
     }
 
     private async Task<MalIdentity> IdentifyAsync(string accessToken, CancellationToken cancel)

@@ -2,7 +2,7 @@
 <html lang="pl"><head><meta charset="utf-8"><title>MisioFlix</title></head><body>
 <div data-role="page" class="page type-interior pluginConfigurationPage" id="misioflixConfigPage">
  <div data-role="content">
-  <h1>MisioFlix 0.4.4 — konfiguracja MyAnimeList</h1>
+  <h1>MisioFlix 0.4.5 — konfiguracja MyAnimeList</h1>
   <p>Wpisz dane własnej aplikacji z <a href="https://myanimelist.net/apiconfig">MAL API Config</a>.
    Wspólne Client ID dotyczy całej instalacji Jellyfin, ale każdy użytkownik łączy własne konto MAL w swoim profilu MisioFlix. Użytkownicy mogą korzystać z MAL jednocześnie. Nie wpisuj tokenów ręcznie.</p>
   <form id="mf-config-form">
@@ -10,9 +10,16 @@
     <input class="emby-input" id="mf-mal-client" type="text" autocomplete="off" /></div>
    <div class="inputContainer"><label class="inputLabel" for="mf-mal-secret">MAL Client Secret (jeśli aplikacja posiada)</label>
     <input class="emby-input" id="mf-mal-secret" type="password" autocomplete="new-password" /></div>
-   <div class="inputContainer"><label class="inputLabel" for="mf-mal-redirect">Callback URL (dokładnie taki sam jak w MAL)</label>
-    <input class="emby-input" id="mf-mal-redirect" type="url" placeholder="https://twoj-adres/MisioFlix/api/mal/callback" autocomplete="off" /></div>
-   <p>W obrębie sieci lokalnej możesz użyć adresu http://kumadlaneko:8096/MisioFlix/api/mal/callback, o ile MAL zaakceptuje go przy rejestracji aplikacji. Dla dostępu z Internetu użyj HTTPS.</p>
+   <div class="inputContainer"><label class="inputLabel" for="mf-mal-redirect">Redirect URL — dokładnie taki jak w rejestracji aplikacji MAL</label>
+    <input class="emby-input" id="mf-mal-redirect" type="url" placeholder="http://localhost:8765/callback" autocomplete="off" /></div>
+   <p><strong>Zalecany tryb bez domeny:</strong> wpisz <code>http://localhost:8765/callback</code> zarówno tutaj,
+      jak i w formularzu MAL. Każdy użytkownik loguje się na stronie MAL, kopiuje pełny adres localhost
+      z paska przeglądarki (nawet jeśli strona nie odpowiada) i wkleja go w zakładce „Moje MAL”.
+      Nie trzeba uruchamiać serwera na localhost ani skonfigurować Tailscale Serve.</p>
+   <p><strong>Alternatywa:</strong> jeśli masz działającą domenę HTTPS, dotychczasowy automatyczny callback
+      <code>https://twoj-adres/MisioFlix/api/mal/callback</code> nadal działa.</p>
+   <p><strong>Odnawianie:</strong> wtyczka sama kontroluje tokeny co 12 godzin, również bez aktywnych użytkowników.
+      Wymaga działającego Jellyfin oraz internetu na NAS-ie. Odłączenie Tailscale na telefonie nie rozłącza konta MAL.</p>
    <button type="submit" class="raised button-submit emby-button">Zapisz ustawienia MAL</button>
    <p id="mf-config-status" aria-live="polite"></p>
   </form>
