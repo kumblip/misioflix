@@ -27,9 +27,11 @@ jobs:
       - name: Kompilacja DLL (bez kompilowania na NAS)
         run: dotnet publish src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj --configuration Release --output build/publish
       - name: Pakowanie
+        id: pack
         run: python3 tools/package.py
-      - uses: actions/upload-artifact@v4
+      - name: Zachowaj paczkę ZIP z kompilacji
+        uses: actions/upload-artifact@v4
         with:
-          name: MisioFlix_0.4.13.0_JF12.4
-          path: dist/MisioFlix_0.4.13.0_JF12.4.zip
+          name: MisioFlix_${{ steps.pack.outputs.version }}_JF12.4
+          path: ${{ steps.pack.outputs.archive }}
           if-no-files-found: error
