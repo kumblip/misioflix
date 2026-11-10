@@ -34,7 +34,9 @@ jobs:
       - name: Testy źródeł
         run: |
           node --check src/Jellyfin.Plugin.MisioFlix/Web/client.js
-          python3 -m unittest discover -s tests -v
+          python3 -m unittest discover -s tests -p test_skin_v047.py -v
+          python3 -m unittest discover -s tests -p test_release_tools.py -v
+          node tests/ui_skin_v047.cjs
 
       - name: Kompilacja wtyczki
         run: dotnet publish src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj --configuration Release --output build/publish
@@ -77,7 +79,7 @@ jobs:
             "$ZIP_FILE" "$ZIP_FILE.md5" "$ZIP_FILE.sha256" \
             --target "${GITHUB_SHA}" \
             --title "MisioFlix $VERSION — Jellyfin 12.4" \
-            --notes "Pierwsze wydanie wtyczki MisioFlix $VERSION dla Jellyfin 12.4. Po instalacji wymagany restart Jellyfin."
+            --notes "MisioFlix: wyglad oryginalnego Jellyfin Web bez dodatkowej strony ani dodatkowego pobierania katalogu. Po instalacji wymagany restart Jellyfin."
 
       - name: Opublikuj manifest w gałęzi main
         run: |
