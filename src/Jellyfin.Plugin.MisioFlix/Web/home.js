@@ -1,4 +1,4 @@
-/* MisioFlix 0.4.12: ONLY custom shelves INSIDE Jellyfin's native home view.
+/* MisioFlix 0.4.13: ONLY custom shelves INSIDE Jellyfin's native home view.
  * No second site, no page/router replacement, no bulk catalog loading.
  * Requires the user to set native home slots to "Brak" in Jellyfin preferences.
  */
@@ -33,7 +33,7 @@
   };
   const homeRoute = () => /^#\/(?:home)?(?:\?|$)/i.test(window.location.hash || '#/');
   const isCurrent = serial => homeRoot?.isConnected && epoch === serial && homeRoute() && currentToken() === owner;
-  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.12", Token="${owner.replace(/["\r\n]/g, '')}"`});
+  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.13", Token="${owner.replace(/["\r\n]/g, '')}"`});
   async function request(path, method='GET', payload) {
     const control = new AbortController();
     const timeout = window.setTimeout(() => control.abort(), 18000);
@@ -146,6 +146,74 @@
     append(card,content);
     return card;
   }
+  // Pointer-driven mouse / stylus drag, with native touch swiping preserved.
+  // A real click still follows the ORIGINAL Jellyfin detail link.
+  function enableShelfDrag(scroll, row) {
+    const threshold = 7;
+    let gesture = null;
+    let suppressClickUntil = 0;
+    scroll.addEventListener('dragstart', event => {
+      // Prevent browser-native link/image ghost dragging, not navigation.
+      if (event.target.closest?.('a, img')) event.preventDefault();
+    });
+    scroll.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || (event.pointerType !== 'mouse' && event.pointerType !== 'pen')) return;
+      if (event.target.closest?.('button, input, textarea, select, [contenteditable="true"]')) return;
+      gesture = {id:event.pointerId, startX:event.clientX, startY:event.clientY,
+        scrollStart:scroll.scrollLeft, moved:false};
+    });
+    scroll.addEventListener('pointermove', event => {
+      const g=gesture;
+      if (!g || event.pointerId !== g.id) return;
+      const dx=event.clientX-g.startX;
+      const dy=event.clientY-g.startY;
+      if (!g.moved) {
+        if (Math.abs(dx) < threshold) return;
+        if (Math.abs(dx) <= Math.abs(dy)) {gesture=null;return;}
+        g.moved=true;
+        scroll.classList.add('mf-home-dragging');
+        try {scroll.setPointerCapture(event.pointerId);} catch (_) {}
+      }
+      if (event.cancelable) event.preventDefault();
+      scroll.scrollLeft = g.scrollStart - dx;
+    }, {passive:false});
+    function endDrag(event) {
+      const g=gesture;
+      if (!g || event.pointerId !== g.id) return;
+      gesture=null;
+      scroll.classList.remove('mf-home-dragging');
+      if (scroll.hasPointerCapture?.(event.pointerId)) {
+        try {scroll.releasePointerCapture(event.pointerId);} catch (_) {}
+      }
+      if (g.moved) suppressClickUntil=performance.now()+300;
+    }
+    scroll.addEventListener('pointerup',endDrag);
+    scroll.addEventListener('pointercancel',endDrag);
+    scroll.addEventListener('lostpointercapture',event => {
+      if (gesture?.id===event.pointerId) endDrag(event);
+    });
+    scroll.addEventListener('click',event=>{
+      // Drag must never open an anime/movie, or trigger its action buttons.
+      if (performance.now() < suppressClickUntil) {
+        suppressClickUntil=0;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    },true);
+    // A swipe or a mouse drag reaching the end should load the next page.
+    let scheduled=false;
+    scroll.addEventListener('scroll',()=>{
+      if (scheduled) return;
+      scheduled=true;
+      requestAnimationFrame(()=>{
+        scheduled=false;
+        if (!row.busy && row.hasMore && row.mode==='latest' &&
+            scroll.scrollLeft + scroll.clientWidth >= scroll.scrollWidth-360) {
+          void loadShelf(row,'latest',false);
+        }
+      });
+    },{passive:true});
+  }
   function shelfShell(lib){
     const section=own('section','mf-home-shelf');
     section.setAttribute('data-mf-library', lib.id);
@@ -166,6 +234,7 @@
     scroll.appendChild(message);
     append(section,top,scroll);
     const row={lib,section,scroll,shuffle,reset,prev,next,mode:'latest',offset:0,hasMore:false,busy:false};
+    enableShelfDrag(scroll,row);
     shuffle.addEventListener('click',()=>loadShelf(row,'random',true));
     reset.addEventListener('click',()=>loadShelf(row,'latest',true));
     prev.addEventListener('click',()=>scroll.scrollBy({left:-Math.max(400,scroll.clientWidth*0.75),behavior:'smooth'}));

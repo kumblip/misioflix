@@ -533,6 +533,17 @@ html.misioflix-skin .mf-home-shelf-scroll{
   scroll-snap-type:x proximity;overscroll-behavior-inline:contain;scrollbar-width:thin;
   scrollbar-color:#6c4563 transparent;padding:3px 2px 9px;
 }
+/* Mouse/stylus dragging, with inertial touch swipe and native keyboard scrolling. */
+html.misioflix-skin .mf-home-shelf-scroll{
+  cursor:grab;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch;
+  user-select:none;-webkit-user-select:none;
+}
+html.misioflix-skin .mf-home-shelf-scroll a,
+html.misioflix-skin .mf-home-shelf-scroll img{-webkit-user-drag:none;}
+html.misioflix-skin .mf-home-shelf-scroll.mf-home-dragging{
+  cursor:grabbing;scroll-snap-type:none!important;scroll-behavior:auto!important;
+}
+html.misioflix-skin .mf-home-shelf-scroll.mf-home-dragging *{cursor:grabbing!important;}
 html.misioflix-skin .mf-home-card{
   flex:0 0 clamp(162px,11.4vw,218px);width:clamp(162px,11.4vw,218px);
   border-radius:15px;overflow:hidden;display:flex;flex-direction:column;
