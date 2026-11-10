@@ -1,0 +1,96 @@
+name: MisioFlix - opublikuj wydanie dla Jellyfin
+
+on:
+  workflow_dispatch:
+    inputs:
+      zatwierdzenie:
+        description: 'Publikuj dopiero po przetestowaniu wtyczki. Wpisz PUBLIKUJ'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: misioflix-publish
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: inputs.zatwierdzenie == 'PUBLIKUJ'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobierz repozytorium
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Przygotuj .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Testy źródeł
+        run: |
+          node --check src/Jellyfin.Plugin.MisioFlix/Web/client.js
+          python3 -m unittest discover -s tests -v
+
+      - name: Kompilacja wtyczki
+        run: dotnet publish src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj --configuration Release --output build/publish
+
+      - name: Paczka ZIP i sumy kontrolne
+        id: pack
+        run: python3 tools/package.py
+
+      - name: Sprawdź, czy wydanie nie istnieje
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pack.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Wydanie $TAG już istnieje. Zmień wersję zamiast nadpisywać ZIP." >&2
+            exit 1
+          fi
+
+      - name: Przygotuj manifest repozytorium Jellyfin
+        env:
+          ZIP_FILE: ${{ steps.pack.outputs.archive }}
+          VERSION: ${{ steps.pack.outputs.version }}
+        run: |
+          python3 tools/update_manifest.py \
+            --archive "$ZIP_FILE" \
+            --meta meta.json \
+            --manifest manifest.json \
+            --repo "${GITHUB_REPOSITORY}" \
+            --changelog "MisioFlix $VERSION dla Jellyfin 12.4."
+          python3 -m json.tool manifest.json >/dev/null
+
+      - name: Utwórz GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pack.outputs.tag }}
+          VERSION: ${{ steps.pack.outputs.version }}
+          ZIP_FILE: ${{ steps.pack.outputs.archive }}
+        run: |
+          gh release create "$TAG" \
+            "$ZIP_FILE" "$ZIP_FILE.md5" "$ZIP_FILE.sha256" \
+            --target "${GITHUB_SHA}" \
+            --title "MisioFlix $VERSION — Jellyfin 12.4" \
+            --notes "Pierwsze wydanie wtyczki MisioFlix $VERSION dla Jellyfin 12.4. Po instalacji wymagany restart Jellyfin."
+
+      - name: Opublikuj manifest w gałęzi main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          if git diff --cached --quiet; then
+            echo "Manifest bez zmian."
+          else
+            git commit -m "chore: manifest Jellyfin dla ${VERSION} [skip ci]"
+            # Wypchnięcie wyłącznie fast-forward; przy zmianach równoległych
+            # nie wykonujemy force-push (można uruchomić workflow ponownie po korekcie).
+            git push origin HEAD:main
+          fi
+        env:
+          VERSION: ${{ steps.pack.outputs.version }}
