@@ -1,0 +1,24 @@
+<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>MisioFlix SPA image regression</title>
+<style>body{background:#100b13;color:#fff;font-family:Arial} .itemsContainer{display:flex;gap:20px}.card{width:205px}.cardScalable{position:relative;height:320px}.cardImageContainer{position:absolute;inset:0;display:block;background-size:contain}.cardText{padding:10px}.verticalSection{margin:20px}</style>
+<script>
+window.ApiClient = {accessToken:()=>'test-personal-token'};
+const posterId='38c5142e8251e2e1a5a0f306faac83be';
+let calls=0;
+window.fetch=async function(url){
+  if(!String(url).includes('/MisioFlix/api/overlays')) throw Error('unexpected URL '+url);
+  calls++;
+  return {ok:true,json:async()=>[{id:posterId,anime:true,year:'2026',format:'Seria TV',genres:['Fantasy','Dramat'],description:'Opis z NFO',hasPrimary:true,seasons:1,episodes:12,userRating:8.5,watchStatus:'unwatched'}]};
+};
+function makeCard(id=posterId){return `<div class="card overflowThumbCard" data-id="${id}" data-type="Series"><div class="cardBox"><div class="cardScalable"><div class="cardPadder"></div><a class="cardImageContainer" href="#/details?id=${id}" role="img"></a><div class="cardOverlayContainer"><button is="emby-playstatebutton" data-played="false"></button></div></div><div class="cardText cardText-first"><bdi><a href="#/details?id=${id}">Anime testowe</a></bdi></div><div class="cardText cardText-secondary">2026</div></div></div>`;}
+function nativeLazyLoad(delay){setTimeout(()=>{const image=document.querySelector('#animeShelf .cardImageContainer');if(image)image.style.backgroundImage=`url("/Items/${posterId}/Images/Thumb?quality=88")`;}, delay);}
+window.addEventListener('DOMContentLoaded',()=>{
+  const shelf=document.getElementById('animeShelf');
+  shelf.innerHTML=makeCard();nativeLazyLoad(220);
+  document.getElementById('homeLogo').addEventListener('click',()=>{
+    shelf.innerHTML=makeCard();nativeLazyLoad(580);
+  });
+});
+</script>
+<link rel="stylesheet" href="../src/Jellyfin.Plugin.MisioFlix/Web/theme.css" />
+<script defer src="../src/Jellyfin.Plugin.MisioFlix/Web/client.js"></script>
+</head><body><header class="skinHeader"><a id="homeLogo" href="#/">misioflix</a><a href="#/mixed?topParentId=abc">AnimePL</a><a href="#/movies?topParentId=def">Filmy PL</a></header><section class="verticalSection"><h2>AnimePL — ostatnio dodane</h2><div class="itemsContainer" id="animeShelf"></div></section></body></html>

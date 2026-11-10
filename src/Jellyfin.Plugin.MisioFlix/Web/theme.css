@@ -1,4 +1,4 @@
-/* MisioFlix 0.4.10 • native Jellyfin makeover • independently authored.
+/* MisioFlix 0.4.11 • native Jellyfin makeover • independently authored.
    Netflin (ahza-code/Netflin, GPL-2.0) studied as a UI/selector reference.
    This is NOT a Netflin CSS copy/import; no external CSS, addons or fonts.
    The same real Jellyfin cards, detail routes, buttons and player remain intact.
@@ -452,4 +452,10 @@ html.misioflix-skin .mf-section[data-mf-section="latest"] .itemsContainer {align
   }
   html.misioflix-skin .card[data-mf-card="1"] .mf-native-description {font-size:11px;margin:4px 7px 10px}
   html.misioflix-skin .card[data-mf-card="1"] .cardText-first {font-size:12px!important}
+}
+
+/* v0.4.11: once Jellyfin provides a real Primary poster for an Anime series,
+   fill the existing portrait surface. Native episode Thumb images stay intact. */
+html.misioflix-skin .mf-section[data-mf-anime-shelf="1"] .card[data-mf-anime-poster="1"][data-mf-primary-image="1"] .cardImageContainer {
+  background-size:cover!important;
 }

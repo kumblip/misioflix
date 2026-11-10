@@ -1,12 +1,12 @@
-/* MisioFlix 0.4.10 - progressive enhancements to ORIGINAL Jellyfin Web.
+/* MisioFlix 0.4.11 - progressive enhancements to ORIGINAL Jellyfin Web.
  * No separate page, no catalog request, no router changes, no player replacement.
  * Native Jellyfin cards are ONLY decorated with small noninteractive ornaments.
  * Netflin is a design/selector reference; this is original MisioFlix code.
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_NATIVE_SKIN_0410__) return;
-  window.__MISIOFLIX_NATIVE_SKIN_0410__ = true;
+  if (window.__MISIOFLIX_NATIVE_SKIN_0411__) return;
+  window.__MISIOFLIX_NATIVE_SKIN_0411__ = true;
 
   const CARD = '.card, .MuiCard-root, [data-testid="item-card"], [data-testid="media-card"]';
   const IMAGE = '.cardImageContainer, .MuiCardMedia-root, [data-testid="media-image"]';
@@ -212,6 +212,7 @@
     let n=0;
     for(const card of document.body.querySelectorAll(CARD)){
       if(card.closest('.dialog,#dashboardPage,[role="dialog"]'))continue;
+      resetCardIfReused(card);
       if(!card.querySelector(IMAGE))continue;
       card.dataset.mfCard='1';
       const kind=cardKind(card);
@@ -248,6 +249,47 @@
     const t=c?(typeof c.accessToken==='function'?c.accessToken():c.accessToken):'';
     return typeof t==='string'?t:'';
   }
+  // Jellyfin's SPA can build a card before the lazy image URL is available.
+  // On a full reload Jellyfin may already have selected Primary; on client-side
+  // navigation (#/home or #/) it can later replace that image with Thumb.
+  // Correct ONLY a real landscape Thumb/Backdrop and only if Jellyfin confirms
+  // that the item has a Primary poster. We do not create another card or URL
+  // router, and never alter Episode images or film images.
+  function syncPrimaryPoster(card,data){
+    if(!data?.hasPrimary || !cardIsAnimePoster(card))return;
+    const image=card.querySelector('.cardImageContainer');
+    if(!image)return;
+    const raw=String(image.style?.backgroundImage || '');
+    if(/\/Images\/Primary(?:[?\"'\s)]|$)/i.test(raw)){
+      card.setAttribute('data-mf-primary-image','1');
+      return;
+    }
+    if(!/\/Images\/(?:Thumb|Backdrop)(?:[?\"'\s)]|$)/i.test(raw))return;
+    const id=String(card.getAttribute('data-id')||'').toLowerCase().replace(/-/g,'');
+    if(!/^[0-9a-f]{32}$/.test(id))return;
+    const url=`/Items/${id}/Images/Primary?maxHeight=460&quality=86`;
+    image.style.backgroundImage=`url(\"${url}\")`;
+    card.setAttribute('data-mf-primary-image','1');
+  }
+  function resetCardIfReused(card){
+    const id=String(card.getAttribute('data-id')||'').toLowerCase().replace(/-/g,'');
+    if(!id)return;
+    const prev=card.getAttribute('data-mf-item-id');
+    if(prev && prev!==id){
+      io?.unobserve(card);
+      seenCards.delete(card);
+      for(const cards of overlayQueue.values())cards.delete(card);
+      for(const attr of ['data-mf-year','data-mf-format','data-mf-genres',
+        'data-mf-seasons','data-mf-episodes','data-mf-user-rating','data-mf-anime',
+        'data-mf-overlay-ready','data-mf-watch','data-mf-primary-image',
+        'data-mf-has-summary','data-mf-anime-poster','data-mf-redundant-year']){
+        card.removeAttribute(attr);
+      }
+      card.querySelector('.mf-native-overlay')?.remove();
+      card.querySelector('.mf-native-description')?.remove();
+    }
+    card.setAttribute('data-mf-item-id',id);
+  }
   function useMetadata(card,data){
     if(!data||typeof data!=='object')return;
     const set=(name,v)=>{
@@ -263,21 +305,8 @@
     set('data-mf-user-rating',data.userRating);
     set('data-mf-genres',Array.isArray(data.genres)?data.genres.slice(0,3).join('|'):'');
     attachDescription(card,data.description);
-    if(cardIsAnimePoster(card)) {
-      card.setAttribute('data-mf-anime-poster','1');
-      // When the mixed-library shelf uses Jellyfin's landscape Thumb, replace
-      // only the visible card image with its existing PRIMARY poster, if known.
-      // There is no second catalog request and no generated card.
-      const image=card.querySelector('.cardImageContainer');
-      const raw=String(image?.style?.backgroundImage || '');
-      const id=String(card.getAttribute('data-id')||'').replace(/-/g,'');
-      if(data.hasPrimary && /^[0-9a-f]{32}$/i.test(id) && image &&
-          /\/Images\/(?:Thumb|Backdrop)/i.test(raw) &&
-          card.getAttribute('data-mf-primary-image')!=='1') {
-        image.style.backgroundImage=`url("/Items/${id}/Images/Primary?maxHeight=460&quality=86")`;
-        card.setAttribute('data-mf-primary-image','1');
-      }
-    }
+    if(cardIsAnimePoster(card))card.setAttribute('data-mf-anime-poster','1');
+    syncPrimaryPoster(card,data);
     const status=data.watchStatus;
     if(['unwatched','started','watched'].includes(status))card.setAttribute('data-mf-watch',status);
     attachOverlay(card);
@@ -292,7 +321,7 @@
     const requested=token;
     hydrationBusy=true;
     try{
-      const headers={Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-theme", Version="0.4.10", Token="'+token.replace(/["\r\n]/g,'')+'"'};
+      const headers={Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-theme", Version="0.4.11", Token="'+token.replace(/["\r\n]/g,'')+'"'};
       const q=picked.map(([id])=>id).join(',');
       const controller=new AbortController();
       const timeout=window.setTimeout(()=>controller.abort(),9000);
@@ -315,7 +344,8 @@
       for(const [id,cards] of picked){
         const data=metadataCache.get(id);
         if(data)for(const card of cards){
-          if(card.isConnected)useMetadata(card,data);
+          if(card.isConnected && String(card.getAttribute('data-id')||'').toLowerCase().replace(/-/g,'')===id)
+            useMetadata(card,data);
         }
       }
     }catch(e){
@@ -397,8 +427,28 @@
     document.querySelector('#mf-portal')?.remove();
     document.querySelector('#mf-launch')?.remove();
     decorate();
-    observer=new MutationObserver(schedule);
-    observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['data-played','aria-valuenow']});
+    // Jellyfin re-renders and lazy-loads images after SPA navigation without
+    // firing DOMContentLoaded. Observe those inline image changes, but do not
+    // re-scan the entire catalogue for each thumbnail or our own inline fix.
+    observer=new MutationObserver(changes=>{
+      let needsScan=false;
+      for(const change of changes){
+        if(change.type==='attributes' && change.attributeName==='style'){
+          const image=change.target;
+          if(!image.classList?.contains('cardImageContainer'))continue;
+          const card=image.closest('.card[data-mf-anime-poster="1"]');
+          if(!card)continue;
+          const id=String(card.getAttribute('data-id')||'').toLowerCase().replace(/-/g,'');
+          const data=metadataCache.get(id);
+          if(data)syncPrimaryPoster(card,data);
+        }else{
+          needsScan=true;
+        }
+      }
+      if(needsScan)schedule();
+    });
+    observer.observe(document.body,{childList:true,subtree:true,attributes:true,
+      attributeFilter:['data-played','aria-valuenow','data-id','style']});
     document.addEventListener('click',event=>{
       const button=event.target?.closest?.(WATCH_BTN);
       if(button){
