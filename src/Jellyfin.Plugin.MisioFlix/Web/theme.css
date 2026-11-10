@@ -1,4 +1,4 @@
-/* MisioFlix 0.4.9 • native Jellyfin makeover • independently authored.
+/* MisioFlix 0.4.10 • native Jellyfin makeover • independently authored.
    Netflin (ahza-code/Netflin, GPL-2.0) studied as a UI/selector reference.
    This is NOT a Netflin CSS copy/import; no external CSS, addons or fonts.
    The same real Jellyfin cards, detail routes, buttons and player remain intact.
@@ -345,4 +345,111 @@ html.misioflix-skin :is(.videoOsdBottom,.videoOsdTop) .mdl-slider-background-low
   html.misioflix-skin :is(.card,.cardBox,.cardImageContainer,.emby-button){transition:none!important}
   html.misioflix-skin .card[data-mf-card="1"]:hover{transform:none!important}
   html.misioflix-skin .card[data-mf-card="1"] :is(.lazy-hidden,.lazy-hidden-children){animation:none!important}
+}
+
+/* ====== v0.4.10: original Jellyfin elements with the earlier MisioFlix composition ======
+   No second app, no second menu, no slideshow plugin, no new player.
+*/
+/* Desktop already has working library links in the native top bar. Remove the
+   second large "Moje multimedia" block on desktop, but keep it on mobile. */
+@media (min-width:1100px) {
+  html.misioflix-skin .mf-section[data-mf-section="libraries"] {display:none!important}
+}
+/* Header / resume hero uses the EXISTING Continue Watching section. It never
+   creates a second resume list or fetches any video or collection. */
+@media (min-width:1120px) {
+  html.misioflix-skin .mf-section[data-mf-section="resume"] {
+    min-height:220px!important; height:auto!important; max-height:none!important;
+    padding:22px 21px 20px 46%!important;
+    margin:14px var(--mf-gutter) 22px!important;
+    background: url('/MisioFlix/assets/mark.png') 27px 22px / 78px auto no-repeat,
+      linear-gradient(109deg,rgba(43,17,43,.94),rgba(91,38,65,.84))!important;
+  }
+  html.misioflix-skin .mf-section[data-mf-section="resume"]::before {
+    content:"Twój świat filmów i anime";
+    position:absolute;left:27px;top:104px;right:auto;bottom:auto;
+    width:42%;height:auto;opacity:1;background:none;
+    color:#fff1f9;font-weight:700;letter-spacing:-.032em;
+    font-size:clamp(24px,2.2vw,38px);line-height:1.13;
+  }
+  html.misioflix-skin .mf-section[data-mf-section="resume"]::after {
+    content:"Własna biblioteka. Oryginalny odtwarzacz Jellyfin.";
+    position:absolute;left:29px;top:158px;
+    max-width:39%;font-size:13px;color:#e6c7da;
+  }
+  html.misioflix-skin .mf-section[data-mf-section="resume"] .emby-scroller,
+  html.misioflix-skin .mf-section[data-mf-section="resume"] .itemsContainer {
+    min-height:0!important;height:auto!important;
+  }
+  html.misioflix-skin .mf-section[data-mf-section="resume"] .card {
+    width:228px!important;max-width:228px!important;
+  }
+}
+/* Native mixed AnimePL home shelf currently uses wide artwork. Restore a
+   portrait poster ratio for series/seasons in that shelf WITHOUT changing
+   the DOM, replacing a card image URL, or touching episode thumbnail cards. */
+html.misioflix-skin .mf-section[data-mf-anime-shelf="1"] .card[data-mf-anime-poster="1"] {
+  --mf-poster-width:clamp(184px,12vw,232px);
+  width:var(--mf-poster-width)!important;
+  min-width:var(--mf-poster-width)!important;
+  max-width:var(--mf-poster-width)!important;
+  flex:0 0 var(--mf-poster-width)!important;
+}
+html.misioflix-skin .mf-section[data-mf-anime-shelf="1"] .card[data-mf-anime-poster="1"] .cardPadder {
+  height:0!important;min-height:0!important;aspect-ratio:auto!important;
+  padding:0 0 148% 0!important;
+}
+html.misioflix-skin .mf-section[data-mf-anime-shelf="1"] .card[data-mf-anime-poster="1"] .cardImageContainer {
+  background-position:center center!important;
+  background-size:contain!important;
+  background-color:#160d1b!important;
+}
+/* Film posters stay portrait and retain the original Jellyfin primary image. */
+html.misioflix-skin .mf-section[data-mf-section="latest"] .card[data-mf-kind="film"] {
+  width:clamp(165px,11vw,210px)!important;
+  min-width:clamp(165px,11vw,210px)!important;
+}
+/* One visual footer: title (2 lines), then four-line metadata description.
+   Both live INSIDE the existing cardBox and use existing Jellyfin navigation. */
+html.misioflix-skin .card[data-mf-card="1"] .cardText-first {
+  font-size:14px!important;min-height:2.56em!important;
+  line-height:1.28!important;font-weight:650!important;
+  margin-top:8px!important;margin-bottom:3px!important;
+}
+html.misioflix-skin .card[data-mf-card="1"] .mf-native-description {
+  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;
+  overflow:hidden;white-space:normal;
+  font-size:12.5px;line-height:1.55;color:#dec4d6;
+  margin:4px 11px 13px;min-height:6.2em;
+  overflow-wrap:anywhere;
+}
+html.misioflix-skin .card[data-mf-has-summary="1"] .cardText-secondary,
+html.misioflix-skin .card[data-mf-redundant-year="1"] .cardText-secondary {
+  display:none!important;
+}
+html.misioflix-skin .card[data-mf-card="1"] .cardBox {background:#241526!important}
+/* A small floating info stack doesn't compete with Jellyfin's unrelated
+   pink "unplayed count" bubble, so suppress that badge only with our stats. */
+html.misioflix-skin .card:has(.mf-native-stats) .countIndicator {display:none!important}
+/* Keep the top corner readable without covering the cats on compact cards. */
+html.misioflix-skin .mf-native-top {padding:8px 8px 0!important}
+html.misioflix-skin .mf-native-stats {background:rgba(22,10,24,.80);gap:2px;padding:5px 7px}
+html.misioflix-skin .mf-native-stat-number{font-size:15px}
+html.misioflix-skin .mf-native-stat .mf-paw{width:13px;height:13px}
+html.misioflix-skin .mf-native-genres{gap:4px}
+/* Scroll only the native Jellyfin slider; the page itself must not overflow. */
+html.misioflix-skin .mf-section[data-mf-section="latest"] .itemsContainer {align-items:flex-start}
+@media (max-width:1119px) {
+  html.misioflix-skin .mf-section[data-mf-section="resume"]::after{display:none}
+  html.misioflix-skin .mf-section[data-mf-section="resume"]::before {pointer-events:none}
+}
+@media (max-width:680px) {
+  html.misioflix-skin .mf-section[data-mf-anime-shelf="1"] .card[data-mf-anime-poster="1"] {
+    --mf-poster-width:152px;
+  }
+  html.misioflix-skin .mf-section[data-mf-section="latest"] .card[data-mf-kind="film"] {
+    width:150px!important;min-width:150px!important;
+  }
+  html.misioflix-skin .card[data-mf-card="1"] .mf-native-description {font-size:11px;margin:4px 7px 10px}
+  html.misioflix-skin .card[data-mf-card="1"] .cardText-first {font-size:12px!important}
 }

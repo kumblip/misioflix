@@ -164,7 +164,7 @@ public sealed class MisioFlixCatalogService
         var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
         var query = $"Items?UserId={Uri.EscapeDataString(userId)}" +
             $"&Ids={Uri.EscapeDataString(string.Join(",", requested.Select(g => g.ToString("N"))))}" +
-            "&Fields=Genres,ChildCount,RecursiveItemCount" +
+            "&Fields=Genres,Overview,ChildCount,RecursiveItemCount" +
             "&EnableUserData=true&Limit=18";
         using var doc = await GetJsonAsync(origin, query, auth, cancel).ConfigureAwait(false);
         var items = Get(doc.RootElement, "Items");
@@ -189,6 +189,8 @@ public sealed class MisioFlixCatalogService
                 year = anime ? (nfo?.Year ?? string.Empty) : Text(Get(item,"ProductionYear")),
                 format = anime ? (nfo?.Kind ?? string.Empty) : string.Empty,
                 genres = genres.Take(3).ToList(),
+                description = (anime ? (nfo?.Plot ?? string.Empty) : Text(Get(item,"Overview"))).Trim(),
+                hasPrimary = HasPrimaryImage(item),
                 seasons = type == "Series" ? PositiveInt(Get(item,"ChildCount")) : null,
                 episodes = type == "Series" ? PositiveInt(Get(item,"RecursiveItemCount")) : null,
                 userRating = PersonalRating(item),
@@ -741,6 +743,8 @@ public sealed class OverlayInfo
     public string year { get; set; } = string.Empty;
     public string format { get; set; } = string.Empty;
     public List<string> genres { get; set; } = new();
+    public string description { get; set; } = string.Empty;
+    public bool hasPrimary { get; set; }
     public int? seasons { get; set; }
     public int? episodes { get; set; }
     public double? userRating { get; set; }
