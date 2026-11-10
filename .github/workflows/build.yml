@@ -13,20 +13,20 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Instalacja parsera CSS PostCSS dla testow
+      - name: Instalacja parsera CSS do testow
         run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund postcss@8
 
       - name: Test plików frontendu
         run: |
           node --check src/Jellyfin.Plugin.MisioFlix/Web/client.js
-          python3 -m unittest discover -s tests -p test_v049.py -v
-          node tests/ui_v049.cjs
+          python3 -m unittest discover -s tests -p test_v0410.py -v
+          node tests/ui_v0410.cjs
       - name: Kompilacja DLL (bez kompilowania na NAS)
         run: dotnet publish src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj --configuration Release --output build/publish
       - name: Pakowanie
         run: python3 tools/package.py
       - uses: actions/upload-artifact@v4
         with:
-          name: MisioFlix_0.4.9.0_JF12.4
-          path: dist/MisioFlix_0.4.9.0_JF12.4.zip
+          name: MisioFlix_0.4.10.0_JF12.4
+          path: dist/MisioFlix_0.4.10.0_JF12.4.zip
           if-no-files-found: error
