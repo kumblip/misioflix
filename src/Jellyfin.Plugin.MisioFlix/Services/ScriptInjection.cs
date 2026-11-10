@@ -14,7 +14,7 @@ using Jellyfin.Plugin.MisioFlix.Services;
 namespace Jellyfin.Plugin.MisioFlix.Services;
 
 /// <summary>
-/// First-party, request-time insertion. DOES NOT write to /jellyfin/jellyfin-web.
+/// First-party, request-time injection of native Jellyfin styling. DOES NOT write to /jellyfin/jellyfin-web.
 /// Works only when registered ahead of the static web middleware. Test on 12.4.
 /// </summary>
 public sealed class MisioFlixStartupFilter : IStartupFilter
@@ -67,11 +67,11 @@ public sealed class MisioFlixStartupFilter : IStartupFilter
                 }
 
                 // Idempotent across restarts and multiple middleware instances.
-                const string marker = "data-misioflix=\"native-v0.4.6\"";
+                const string marker = "data-misioflix=\"skin-v0.4.7\"";
                 if (!input.Contains(marker, StringComparison.Ordinal))
                 {
-                    const string inject = "<link data-misioflix=\"native-v0.4.6\" rel=\"stylesheet\" href=\"../MisioFlix/assets/theme.css?v=0.4.6.0\">" +
-                        "<script data-misioflix=\"native-v0.4.6\" defer src=\"../MisioFlix/assets/client.js?v=0.4.6.0\"></script>";
+                    const string inject = "<link data-misioflix=\"skin-v0.4.7\" rel=\"stylesheet\" href=\"../MisioFlix/assets/theme.css?v=0.4.7.0\">" +
+                        "<script data-misioflix=\"skin-v0.4.7\" defer src=\"../MisioFlix/assets/client.js?v=0.4.7.0\"></script>";
                     var at = input.LastIndexOf("</head>", StringComparison.OrdinalIgnoreCase);
                     input = input.Insert(at, inject);
                 }
