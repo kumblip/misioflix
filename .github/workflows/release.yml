@@ -34,9 +34,10 @@ jobs:
       - name: Testy źródeł
         run: |
           node --check src/Jellyfin.Plugin.MisioFlix/Web/client.js
-          python3 -m unittest discover -s tests -p test_skin_v047.py -v
+          python3 -m unittest discover -s tests -p test_skin_v048.py -v
           python3 -m unittest discover -s tests -p test_release_tools.py -v
-          node tests/ui_skin_v047.cjs
+          node tests/ui_skin_v048.cjs
+          node tests/ui_sections_v048.cjs
 
       - name: Kompilacja wtyczki
         run: dotnet publish src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj --configuration Release --output build/publish
