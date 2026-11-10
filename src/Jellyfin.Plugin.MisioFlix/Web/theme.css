@@ -1,4 +1,4 @@
-/* MisioFlix v0.3.0: safely scoped first-party portal. Does not modify playback CSS. */
+/* MisioFlix v0.4.1: compact header/hero, NFO/Jellyfin genre priority, original playback untouched. */
 #mf-launch{position:fixed;bottom:20px;right:20px;z-index:990;background:#210e1f;border:1px solid #f19d6f;color:#fff9f4;border-radius:100px;box-shadow:0 12px 40px #0008;padding:5px 16px 5px 8px;display:flex;align-items:center;gap:9px;font:700 14px system-ui;cursor:pointer}
 #mf-launch img{width:33px;height:33px;object-fit:contain}#mf-launch:hover{background:#3b1836}body.mf-is-open #mf-launch{display:none}
 #mf-portal{--mf-text:#fff0e8;--mf-muted:#dcc0c9;--mf-bg:#130b16;--mf-soft:#2a1927;--mf-hot:#f47351;--mf-gold:#ffc45b;position:fixed;inset:0;z-index:9999;overflow-y:auto;background:#130b16;color:var(--mf-text);font:15px/1.48 system-ui,-apple-system,'Segoe UI',sans-serif;isolation:isolate}
@@ -13,3 +13,36 @@
 @media(max-width:950px){#mf-portal .mf-head-inner{flex-wrap:wrap;gap:6px}#mf-portal .mf-nav{order:3;width:100%;flex-basis:100%;gap:9px}#mf-portal .mf-main{padding:0 16px 60px}#mf-portal .mf-leave{margin-left:auto}#mf-portal .mf-detail-grid{grid-template-columns:1fr}#mf-portal .mf-detail-poster{max-width:230px}}
 @media(max-width:560px){#mf-portal .mf-hero{min-height:230px}#mf-portal .mf-hero-content{padding:20px}#mf-portal .mf-hero img{width:160px}#mf-portal .mf-scroll>.mf-card{flex-basis:165px}#mf-portal .mf-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}#mf-portal .mf-card-body{padding:8px}#mf-portal .mf-card h3{font-size:13px}#mf-portal .mf-filter-row{flex-direction:column}#mf-portal input{min-width:0}#mf-launch{bottom:12px;right:12px}}
 #mf-portal .mf-more{display:block;margin:26px auto 0;background:#ffffff1b;border:1px solid #ffffff4a;border-radius:14px;padding:12px 20px;color:#fff;font-weight:600}
+
+
+/* MisioFlix 0.4.1 — compact catalog presentation. Full descriptions retain their original four-line limit. */
+#mf-portal .mf-scroll>.mf-card{flex:0 0 196px}
+#mf-portal .mf-grid{grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:16px}
+#mf-portal .mf-card h3{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;max-height:2.5em;min-height:2.5em;overflow:hidden;overflow-wrap:anywhere}
+/* All posters keep the same 2:3 aspect ratio, with no distortion or cropping changes. */
+#mf-portal .mf-poster{aspect-ratio:2/3}
+#mf-portal .mf-hero{min-height:0;margin:14px 0 20px;display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,.93fr);align-items:stretch;gap:18px;border-radius:18px}
+#mf-portal .mf-hero-content{padding:20px 24px;max-width:none;min-width:0;display:flex;flex-direction:column;justify-content:center}
+#mf-portal .mf-hero img{width:135px;max-height:62px}
+#mf-portal .mf-hero h1{font-size:clamp(22px,2.4vw,31px);margin:4px 0}
+#mf-portal .mf-hero p{margin:5px 0 9px;line-height:1.35;font-size:13px}
+#mf-portal .mf-hero-actions{display:flex;gap:7px;flex-wrap:wrap}
+#mf-portal .mf-hero-actions button{margin:0;padding:9px 12px;font-size:12px}
+#mf-portal .mf-hero-resume{min-width:0;padding:14px 18px 14px 0;align-self:center}
+#mf-portal .mf-hero-resume-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+#mf-portal .mf-hero-resume-top h2{font-size:17px;margin:0}
+#mf-portal .mf-hero-resume-top>span{font-size:11px;color:var(--mf-muted)}
+#mf-portal .mf-resume-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+#mf-portal .mf-resume-item{border:1px solid #ffffff2b;background:#ffffff12;text-align:left;border-radius:10px;padding:7px;display:flex;align-items:center;gap:8px;min-width:0;min-height:98px;transition:background .2s}
+#mf-portal .mf-resume-item:hover,#mf-portal .mf-resume-item:focus-visible{background:#ffffff26;outline-color:var(--mf-hot)}
+#mf-portal .mf-resume-poster{flex:0 0 48px;width:48px;aspect-ratio:2/3;background:#412537 center/cover no-repeat;border-radius:6px}
+#mf-portal .mf-resume-info{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+#mf-portal .mf-resume-info strong{font-size:11px;line-height:1.25;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+#mf-portal .mf-resume-info small{font-size:10px;color:var(--mf-muted)}
+#mf-portal .mf-resume-info .mf-progress{margin:0;height:3px}
+#mf-portal .mf-resume-play{color:var(--mf-gold);font-size:12px;flex:0 0 auto}
+#mf-portal .mf-resume-empty{border:1px dashed #ffffff2a;border-radius:10px;padding:10px 12px;font-size:12px;color:var(--mf-muted);margin:0;min-height:68px;display:flex;align-items:center}
+#mf-portal .mf-section{margin:24px 0}
+@media(max-width:1350px){#mf-portal .mf-resume-list{grid-template-columns:1fr 1fr}#mf-portal .mf-resume-item:nth-child(n+3){display:none}}
+@media(max-width:1030px){#mf-portal .mf-hero{grid-template-columns:1fr;gap:0}#mf-portal .mf-hero-resume{padding:0 24px 17px}#mf-portal .mf-resume-list{grid-template-columns:repeat(3,minmax(0,1fr))}#mf-portal .mf-resume-item:nth-child(n+3){display:flex}}
+@media(max-width:650px){#mf-portal .mf-hero-content{padding:14px 16px}#mf-portal .mf-hero img{width:106px;max-height:46px}#mf-portal .mf-hero h1{font-size:22px}#mf-portal .mf-hero-resume{padding:3px 16px 14px}#mf-portal .mf-resume-list{display:flex;overflow-x:auto;scroll-snap-type:x mandatory}#mf-portal .mf-resume-item{flex:0 0 min(230px,83vw);scroll-snap-align:start}#mf-portal .mf-scroll>.mf-card{flex-basis:154px}#mf-portal .mf-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}

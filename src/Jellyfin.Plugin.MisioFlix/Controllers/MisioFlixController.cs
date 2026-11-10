@@ -22,7 +22,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.0", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.1", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
@@ -64,6 +64,25 @@ public sealed class MisioFlixController : ControllerBase
         catch (HttpRequestException)
         {
             return StatusCode(502, new { error = "Nie można połączyć się z lokalnym API Jellyfin." });
+        }
+    }
+
+    [HttpGet("api/resume")]
+    [Authorize]
+    public async Task<IActionResult> Resume(CancellationToken cancellationToken)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        try
+        {
+            return Ok(await _catalog.ReadResumeForAuthenticatedUserAsync(Request, cancellationToken).ConfigureAwait(false));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized();
+        }
+        catch (HttpRequestException)
+        {
+            return StatusCode(502, new { error = "Nie można pobrać postępu oglądania z Jellyfin." });
         }
     }
 

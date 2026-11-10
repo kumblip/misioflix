@@ -2,9 +2,9 @@
 (() => {
   'use strict';
   if (window.__MISIOFLIX_NATIVE__) return;
-  window.__MISIOFLIX_NATIVE__ = '0.4.0';
+  window.__MISIOFLIX_NATIVE__ = '0.4.1';
   const h = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const state = {open:false, tab:'home', items:[], genres:{anime:[],media:[]}, ready:false,
+  const state = {open:false, tab:'home', items:[], genres:{anime:[],media:[]}, genreFrequency:{anime:new Map(),media:new Map()}, resume:[], resumeError:false, resumeLoading:false, resumePending:null, ready:false,
                  search:{anime:{q:'',type:'',year:'',include:[],exclude:[]},media:{q:'',type:'',year:'',include:[],exclude:[]}},
                  detail:null, objectUrls:[], pageSizes:{anime:60,movies:60,series:60,'search-anime':60,'search-media':60}, client:null, token:null, pending:null};
   const $ = (s, root=document) => root.querySelector(s);
@@ -21,7 +21,7 @@
   function jellyfinHeaders() {
     if (!apiClient()) return null;
     const t = state.token.replace(/["\r\n]/g,'');
-    return {'Authorization': `MediaBrowser Client="misioflix", Device="Jellyfin Web", DeviceId="misioflix-web", Version="0.4.0", Token="${t}"`};
+    return {'Authorization': `MediaBrowser Client="misioflix", Device="Jellyfin Web", DeviceId="misioflix-web", Version="0.4.1", Token="${t}"`};
   }
   async function get(path) {
     const headers = jellyfinHeaders();
@@ -60,12 +60,13 @@
   function open(tab='home', addHistory=true) {
     inject();
     if (!apiClient()) { alert('Zaloguj się do Jellyfin, a potem otwórz misioflix.'); return; }
+    const wasClosed = !state.open;
     state.open = true; state.tab = tab;
     $('#mf-portal').classList.remove('mf-hidden');
     document.body.classList.add('mf-is-open');
     if (addHistory) history.pushState({misioflix:tab},'',urlFor(tab));
     sessionStorage.setItem('mf-last-tab',tab);
-    if (!state.ready && !state.pending) load(); else render();
+    if (!state.ready && !state.pending) load(); else {render(); if (wasClosed && state.ready) refreshResume();}
   }
   function close() {
     state.open=false; $('#mf-portal')?.classList.add('mf-hidden');
@@ -80,17 +81,62 @@
     state.pending = (async()=>{
       try {
         const d=await get('catalog');
-        state.items=d.items||[];state.genres=d.genres||{anime:[],media:[]};state.ready=true;
+        state.items=d.items||[];state.genres=d.genres||{anime:[],media:[]};
+        state.genreFrequency=buildGenreFrequency(state.items);state.ready=true;
       } catch(e){state.ready=false; if(page)page.innerHTML='<section class="mf-error"><h2>Nie udało się pobrać katalogu</h2><p>'+h(e.message)+'</p><button data-mf-refresh>Spróbuj ponownie</button><p>Sprawdź czy pozycje zostały dodane do Jellyfin i czy ścieżki NFO są dostępne.</p></section>';return;}
       render();
+      refreshResume();
     })();
     try {await state.pending;} finally {state.pending=null;}
   }
-  function genrePills(gs) {return (gs||[]).slice(0,4).map(g=>'<span class="mf-pill">'+h(g)+'</span>').join('');}
+  // Popularity = count of titles carrying each genre in the user's accessible catalogue.
+  // Anime frequencies are counted ONLY from anime NFO; all other titles use Jellyfin genres.
+  function buildGenreFrequency(items) {
+    const counts={anime:new Map(),media:new Map()};
+    for(const item of items){
+      const index=counts[item.anime?'anime':'media'];
+      const unique=new Set((item.genres||[]).map(g=>String(g).trim().toLocaleLowerCase('pl')).filter(Boolean));
+      for(const genre of unique)index.set(genre,(index.get(genre)||0)+1);
+    }
+    return counts;
+  }
+  function popularGenres(item,max=3) {
+    const frequencies=state.genreFrequency[item.anime?'anime':'media']||new Map();
+    return [...new Map((item.genres||[]).filter(Boolean).map((genre,i)=>[genre.toLocaleLowerCase('pl'),{genre,i}])).values()]
+      .sort((a,b)=>(frequencies.get(b.genre.toLocaleLowerCase('pl'))||0)-(frequencies.get(a.genre.toLocaleLowerCase('pl'))||0)||a.i-b.i)
+      .slice(0,max).map(x=>x.genre);
+  }
+  function genrePills(gs) {return (gs||[]).map(g=>'<span class="mf-pill">'+h(g)+'</span>').join('');}
+  async function refreshResume(){
+    if(state.resumePending) return state.resumePending;
+    state.resumeLoading=true;state.resumeError=false;
+    state.resumePending=(async()=>{
+      try {
+        const result=await get('resume');
+        state.resume=Array.isArray(result.items)?result.items:[];
+      }catch(_){state.resumeError=true;state.resume=[];}
+      finally{state.resumeLoading=false;state.resumePending=null;}
+      if(state.open && state.tab==='home' && !state.detail)render();
+    })();
+    return state.resumePending;
+  }
+  function continueWatchingHero(){
+    const entries=state.resume.map(x=>({resume:x,item:state.items.find(it=>it.id.toLowerCase()===String(x.catalog_id).toLowerCase())}))
+      .filter(x=>x.item).slice(0,3);
+    return `<aside class="mf-hero-resume" aria-label="Oglądaj dalej"><div class="mf-hero-resume-top"><h2>Oglądaj dalej</h2>${entries.length?`<span>${entries.length} z ${state.resume.length}</span>`:''}</div>
+      ${entries.length?`<div class="mf-resume-list">${entries.map(({item,resume})=>{
+         const progress=Math.min(100,Math.max(0,Number(resume.progress_percent)||0));
+         return `<button type="button" class="mf-resume-item" data-mf-jellyfin="${h(resume.id)}" title="Otwórz w Jellyfin: ${h(item.title)}">
+           <span class="mf-resume-poster" data-image="${h(item.has_image?item.id:'')}"></span>
+           <span class="mf-resume-info"><strong>${h(item.title)}</strong><small>${item.anime?'Anime':item.type==='Movie'?'Film':'Serial'} · ${Math.round(progress)}% obejrzano</small><span class="mf-progress"><span style="width:${progress}%"></span></span></span>
+           <span class="mf-resume-play" aria-hidden="true">▶</span></button>`;}).join('')}</div>`:
+        `<p class="mf-resume-empty">${state.resumeLoading?'Wczytywanie postępu oglądania…':state.resumeError?'Nie udało się pobrać postępu. Możesz nadal przeglądać bibliotekę.':'Rozpocznij oglądanie w Jellyfin — przerwane filmy i odcinki pojawią się tutaj.'}</p>`}
+    </aside>`;
+  }
   function mediaCard(it) {
     return `<article class="mf-card" data-mf-id="${h(it.id)}" role="button" tabindex="0" aria-label="${h(it.title)} — szczegóły">
       <div class="mf-poster" data-image="${h(it.has_image?it.id:'')}"><span class="mf-icon">▶</span><b>${it.anime?'ANIME':it.type==='Movie'?'FILM':'SERIAL'}</b></div>
-      <div class="mf-card-body"><h3>${h(it.title||'Bez tytułu w NFO')}</h3><div class="mf-mini">${h(it.year||'—')} · ${h(it.kind||'Produkcja')}</div><div class="mf-pills">${genrePills(it.genres)}</div>
+      <div class="mf-card-body"><h3 title="${h(it.title||'Bez tytułu w NFO')}">${h(it.title||'Bez tytułu w NFO')}</h3><div class="mf-mini">${h(it.year||'—')} · ${h(it.kind||'Produkcja')}</div><div class="mf-pills">${genrePills(popularGenres(it,3))}</div>
       <p>${h(it.plot||'Brak opisu w źródle metadanych.')}</p>
       ${it.progress_percent>0?`<div class="mf-progress"><span style="width:${Math.min(100,Math.max(0,it.progress_percent))}%"></span></div>`:''}</div></article>`;
   }
@@ -101,11 +147,11 @@
   function home() {
     const all=state.items;
     const recent=[...all].sort((a,b)=>(b.date_added||'').localeCompare(a.date_added||''));
-    const continueWatching=all.filter(x=>x.progress_percent>0 && x.progress_percent<100).sort((a,b)=>b.progress_percent-a.progress_percent);
     const anime=all.filter(x=>x.anime);const movies=all.filter(x=>!x.anime && x.type==='Movie');const series=all.filter(x=>!x.anime&&x.type==='Series');
-    return `<section class="mf-hero"><div class="mf-hero-content"><img src="/MisioFlix/assets/logo.png" alt="MisioFlix"><h1>Twój świat filmów i anime</h1><p>Własny katalog i wyszukiwanie. Oryginalny odtwarzacz Jellyfin.</p><div><button data-mf-tab="search-anime" class="mf-primary">Wyszukaj anime</button><button data-mf-tab="search-media">Wyszukaj filmy i seriale</button></div></div></section>
+    return `<section class="mf-hero"><div class="mf-hero-content"><img src="/MisioFlix/assets/logo.png" alt="MisioFlix"><h1>Twój świat filmów i anime</h1><p>Własny katalog i wyszukiwanie. Oryginalny odtwarzacz Jellyfin.</p><div class="mf-hero-actions"><button data-mf-tab="search-anime" class="mf-primary">Wyszukaj anime</button><button data-mf-tab="search-media">Wyszukaj filmy i seriale</button></div></div>
+      ${continueWatchingHero()}</section>
     ${all.length?'':`<div class="mf-empty"><h2>Biblioteka jest jeszcze pusta</h2><p>Dodaj produkcje w Jellyfin — wtedy pojawią się tu karuzele, karty i obie wyszukiwarki.</p></div>`}
-    ${carousel('Kontynuuj oglądanie',continueWatching)}${carousel('Ostatnio dodane',recent)}${carousel('Anime',anime)}${carousel('Filmy',movies)}${carousel('Seriale',series)}`;
+    ${carousel('Ostatnio dodane',recent)}${carousel('Anime',anime)}${carousel('Filmy',movies)}${carousel('Seriale',series)}`;
   }
   function listings(kind) {
     const its=state.items.filter(x=>kind==='anime'?x.anime:kind==='movies'?(!x.anime&&x.type==='Movie'):(!x.anime&&x.type==='Series'));

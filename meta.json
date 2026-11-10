@@ -5,9 +5,11 @@
   "overview": "MisioFlix native extension for Jellyfin 12.4",
   "owner": "MisioFlix",
   "category": "General",
-  "version": "0.4.0.0",
+  "version": "0.4.1.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,
-  "assemblies": ["Jellyfin.Plugin.MisioFlix.dll"]
+  "assemblies": [
+    "Jellyfin.Plugin.MisioFlix.dll"
+  ]
 }

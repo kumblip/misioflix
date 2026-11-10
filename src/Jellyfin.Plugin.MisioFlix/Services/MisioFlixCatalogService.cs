@@ -133,6 +133,62 @@ public sealed class MisioFlixCatalogService
         return new CatalogResponse(result, new GenreSets(animeGenres, mediaGenres));
     }
 
+    /// <summary>
+    /// Resume items are purely playback state. Titles, descriptions and genres are deliberately
+    /// NOT returned here; the client matches authorised series/movie IDs to the NFO/Jellyfin
+    /// catalog before displaying anything (anime text still comes exclusively from NFO).
+    /// </summary>
+    public async Task<ResumeResponse> ReadResumeForAuthenticatedUserAsync(HttpRequest caller, CancellationToken cancel)
+    {
+        var auth = caller.Headers.Authorization.ToString();
+        if (string.IsNullOrWhiteSpace(auth))
+            throw new UnauthorizedAccessException("Missing Jellyfin Authorization header");
+
+        var config = Plugin.Instance?.Configuration
+            ?? throw new InvalidOperationException("MisioFlix is not initialized");
+        var origin = new Uri(config.JellyfinLoopbackUrl.TrimEnd('/') + "/", UriKind.Absolute);
+        if (origin.Scheme != Uri.UriSchemeHttp ||
+            (origin.Host != "localhost" && origin.Host != "127.0.0.1" && origin.Host != "::1"))
+            throw new InvalidOperationException("JellyfinLoopbackUrl must be HTTP loopback");
+
+        using var me = await GetJsonAsync(origin, "Users/Me", auth, cancel).ConfigureAwait(false);
+        var userId = Text(Get(me.RootElement, "Id"));
+        if (!Guid.TryParse(userId, out _))
+            throw new UnauthorizedAccessException("Jellyfin did not recognize the caller");
+
+        // MediaTypes=Video limits Jellyfin's resume query to actual playback items.
+        var path = $"Users/{Uri.EscapeDataString(userId)}/Items/Resume" +
+                   "?MediaTypes=Video&IncludeItemTypes=Movie,Episode&Limit=12&EnableUserData=true";
+        using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
+        var items = Get(doc.RootElement, "Items");
+        var result = new List<ResumeItem>();
+        if (items.ValueKind != JsonValueKind.Array) return new ResumeResponse(result);
+        foreach (var item in items.EnumerateArray())
+        {
+            var id = Text(Get(item, "Id"));
+            if (!Guid.TryParse(id, out _)) continue;
+            var type = Text(Get(item, "Type"));
+            var catalogId = type == "Movie" ? id : type == "Episode" ? Text(Get(item, "SeriesId")) : string.Empty;
+            if (!Guid.TryParse(catalogId, out _)) continue;
+            var userData = Get(item, "UserData");
+            var percentage = Number(Get(userData, "PlayedPercentage"));
+            if (percentage <= 0)
+            {
+                var duration = Number(Get(item, "RunTimeTicks"));
+                var position = Number(Get(userData, "PlaybackPositionTicks"));
+                if (duration > 0) percentage = 100.0 * position / duration;
+            }
+            if (percentage <= 0 || percentage >= 100) continue;
+            result.Add(new ResumeItem
+            {
+                id = id,
+                catalog_id = catalogId,
+                progress_percent = Math.Round(Math.Clamp(percentage, 0, 100), 1)
+            });
+        }
+        return new ResumeResponse(result);
+    }
+
     private async Task<JsonDocument> GetJsonAsync(Uri origin, string path, string authorization, CancellationToken cancel)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(origin, path));
@@ -268,5 +324,13 @@ public sealed class CatalogItem
     public List<string> genres { get; set; } = new();
     public bool has_image { get; set; }
     public string date_added { get; set; } = string.Empty;
+    public double progress_percent { get; set; }
+}
+
+public sealed record ResumeResponse(List<ResumeItem> items);
+public sealed class ResumeItem
+{
+    public string id { get; set; } = string.Empty;
+    public string catalog_id { get; set; } = string.Empty;
     public double progress_percent { get; set; }
 }
