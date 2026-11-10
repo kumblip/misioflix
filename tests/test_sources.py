@@ -29,7 +29,7 @@ class SourceTests(unittest.TestCase):
         self.assertIn('/MisioFlix/assets/background.png', CSS.read_text(encoding='utf-8'))
     def test_jellyfin_plugin_manifest(self):
         m = json.loads((ROOT / 'meta.json').read_text(encoding='utf-8'))
-        self.assertEqual(m['version'], '0.4.1.0')
+        self.assertEqual(m['version'], '0.4.2.0')
         self.assertEqual(m['targetAbi'], '12.4.0.0')
         self.assertEqual(m['assemblies'], ['Jellyfin.Plugin.MisioFlix.dll'])
 

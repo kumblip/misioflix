@@ -2,9 +2,9 @@
 (() => {
   'use strict';
   if (window.__MISIOFLIX_NATIVE__) return;
-  window.__MISIOFLIX_NATIVE__ = '0.4.1';
+  window.__MISIOFLIX_NATIVE__ = '0.4.2';
   const h = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const state = {open:false, tab:'home', items:[], genres:{anime:[],media:[]}, genreFrequency:{anime:new Map(),media:new Map()}, resume:[], resumeError:false, resumeLoading:false, resumePending:null, ready:false,
+  const state = {open:false, tab:'home', items:[], genres:{anime:[],media:[]}, genreFrequency:{anime:new Map(),media:new Map()}, resume:[], hiddenResume:[], showHiddenResume:false, resumeError:false, resumeLoading:false, resumePending:null, ready:false,
                  search:{anime:{q:'',type:'',year:'',include:[],exclude:[]},media:{q:'',type:'',year:'',include:[],exclude:[]}},
                  detail:null, objectUrls:[], pageSizes:{anime:60,movies:60,series:60,'search-anime':60,'search-media':60}, client:null, token:null, pending:null};
   const $ = (s, root=document) => root.querySelector(s);
@@ -21,7 +21,7 @@
   function jellyfinHeaders() {
     if (!apiClient()) return null;
     const t = state.token.replace(/["\r\n]/g,'');
-    return {'Authorization': `MediaBrowser Client="misioflix", Device="Jellyfin Web", DeviceId="misioflix-web", Version="0.4.1", Token="${t}"`};
+    return {'Authorization': `MediaBrowser Client="misioflix", Device="Jellyfin Web", DeviceId="misioflix-web", Version="0.4.2", Token="${t}"`};
   }
   async function get(path) {
     const headers = jellyfinHeaders();
@@ -30,6 +30,16 @@
     const d = await res.json().catch(()=>({error:'Nieprawidłowa odpowiedź serwera'}));
     if (!res.ok) throw Error(d.error || 'Błąd '+res.status);
     return d;
+  }
+  async function saveResumeVisibility(catalogId, hidden) {
+    const headers=jellyfinHeaders();
+    if (!headers || !/^[a-f0-9-]{32,36}$/i.test(catalogId)) return;
+    const response=await fetch('/MisioFlix/api/resume/'+(hidden?'hide':'restore'), {
+      method:'POST',headers:{...headers,'Content-Type':'application/json'},
+      body:JSON.stringify({catalogId})
+    });
+    if(!response.ok) throw Error('Nie udało się zapisać zmiany. Spróbuj ponownie.');
+    await refreshResume(true);
   }
   function inject() {
     if ($('#mf-launch')) return;
@@ -107,38 +117,81 @@
       .slice(0,max).map(x=>x.genre);
   }
   function genrePills(gs) {return (gs||[]).map(g=>'<span class="mf-pill">'+h(g)+'</span>').join('');}
-  async function refreshResume(){
-    if(state.resumePending) return state.resumePending;
+  async function refreshResume(force=false){
+    if(state.resumePending){
+      if(!force) return state.resumePending;
+      await state.resumePending;
+    }
     state.resumeLoading=true;state.resumeError=false;
     state.resumePending=(async()=>{
       try {
         const result=await get('resume');
         state.resume=Array.isArray(result.items)?result.items:[];
-      }catch(_){state.resumeError=true;state.resume=[];}
+        state.hiddenResume=Array.isArray(result.hidden)?result.hidden:[];
+      }catch(_){state.resumeError=true;state.resume=[];state.hiddenResume=[];}
       finally{state.resumeLoading=false;state.resumePending=null;}
       if(state.open && state.tab==='home' && !state.detail)render();
     })();
     return state.resumePending;
   }
+  // Custom paw artwork; displayed AFTER each value, never a generic star icon.
+  const pawIcon='<svg class="mf-paw" viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="5.5" cy="11" rx="3.1" ry="4.1" transform="rotate(-20 5.5 11)"/><ellipse cx="12" cy="6.8" rx="3.2" ry="4.3"/><ellipse cx="20" cy="6.8" rx="3.2" ry="4.3"/><ellipse cx="26.5" cy="11" rx="3.1" ry="4.1" transform="rotate(20 26.5 11)"/><path d="M16 14.2c-5.5 0-10 6.5-9.5 10.3.4 3.5 4.2 4.4 7.1 3.2 1.4-.6 3.5-.6 4.9 0 2.9 1.2 6.7.3 7.1-3.2.5-3.8-4-10.3-9.6-10.3Z"/></svg>';
+  function pawStat(value, label, color){
+    if(value===null || value===undefined || value==='') return '';
+    const n=Number(value);
+    if(!Number.isFinite(n)) return '';
+    const shown=label==='Ocena'?n.toFixed(1):(n>99?'99+':String(Math.max(0,Math.floor(n))));
+    return `<span class="mf-stat mf-stat-${color}" aria-label="${label}: ${h(shown)}"><strong>${h(shown)}</strong>${pawIcon}</span>`;
+  }
+  function resumeEntry(x,hidden=false){
+    const item=state.items.find(it=>it.id.toLowerCase()===String(x.catalog_id).toLowerCase());
+    if(!item) return '';
+    // NextUp may include suggestions for untouched series; show only series with recorded progress.
+    if(x.next_up && item.watch_status==='unwatched') return '';
+    const progress=Math.min(100,Math.max(0,Number(x.progress_percent)||0));
+    const type=item.anime?'Anime':item.type==='Movie'?'Film':'Serial';
+    const episode=(x.season!=null&&x.episode!=null)?`S${String(x.season).padStart(2,'0')}E${String(x.episode).padStart(2,'0')}`:'';
+    const sub=episode?type+' · '+episode:type;
+    const playback=x.next_up?'Następny odcinek':`${Math.round(progress)}% obejrzano`;
+    return `<div class="mf-resume-card">
+      <button type="button" class="mf-resume-item" data-mf-jellyfin="${h(x.id)}" title="Otwórz w Jellyfin: ${h(item.title)}">
+        <span class="mf-resume-poster" data-image="${h(item.has_image?item.id:'')}"></span>
+        <span class="mf-resume-info"><strong>${h(item.title)}</strong><small>${h(sub)} · ${h(playback)}</small>
+        ${progress>0?`<span class="mf-progress"><span style="width:${progress}%"></span></span>`:''}</span>
+        <span class="mf-resume-play" aria-hidden="true">▶</span></button>
+      <button type="button" class="mf-resume-dismiss" ${hidden?'data-mf-resume-restore':'data-mf-resume-hide'}="${h(item.id)}" title="${hidden?'Przywróć do Oglądaj dalej':'Ukryj w Oglądaj dalej bez kasowania postępu'}" aria-label="${hidden?'Przywróć':'Ukryj'}: ${h(item.title)}">${hidden?'↶':'×'}</button>
+    </div>`;
+  }
   function continueWatchingHero(){
-    const entries=state.resume.map(x=>({resume:x,item:state.items.find(it=>it.id.toLowerCase()===String(x.catalog_id).toLowerCase())}))
-      .filter(x=>x.item).slice(0,3);
-    return `<aside class="mf-hero-resume" aria-label="Oglądaj dalej"><div class="mf-hero-resume-top"><h2>Oglądaj dalej</h2>${entries.length?`<span>${entries.length} z ${state.resume.length}</span>`:''}</div>
-      ${entries.length?`<div class="mf-resume-list">${entries.map(({item,resume})=>{
-         const progress=Math.min(100,Math.max(0,Number(resume.progress_percent)||0));
-         return `<button type="button" class="mf-resume-item" data-mf-jellyfin="${h(resume.id)}" title="Otwórz w Jellyfin: ${h(item.title)}">
-           <span class="mf-resume-poster" data-image="${h(item.has_image?item.id:'')}"></span>
-           <span class="mf-resume-info"><strong>${h(item.title)}</strong><small>${item.anime?'Anime':item.type==='Movie'?'Film':'Serial'} · ${Math.round(progress)}% obejrzano</small><span class="mf-progress"><span style="width:${progress}%"></span></span></span>
-           <span class="mf-resume-play" aria-hidden="true">▶</span></button>`;}).join('')}</div>`:
-        `<p class="mf-resume-empty">${state.resumeLoading?'Wczytywanie postępu oglądania…':state.resumeError?'Nie udało się pobrać postępu. Możesz nadal przeglądać bibliotekę.':'Rozpocznij oglądanie w Jellyfin — przerwane filmy i odcinki pojawią się tutaj.'}</p>`}
+    const entries=state.resume.map(x=>resumeEntry(x)).filter(Boolean);
+    const hidden=state.hiddenResume.map(x=>resumeEntry(x,true)).filter(Boolean);
+    return `<aside class="mf-hero-resume" aria-label="Oglądaj dalej">
+      <div class="mf-hero-resume-top"><h2>Oglądaj dalej</h2><span>${entries.length} ${entries.length===1?'pozycja':entries.length%10>=2&&entries.length%10<=4&&!(entries.length%100>=12&&entries.length%100<=14)?'pozycje':'pozycji'}</span></div>
+      ${entries.length?`<div class="mf-resume-list" aria-label="Rozpoczęte produkcje">${entries.join('')}</div>`:
+        `<p class="mf-resume-empty">${state.resumeLoading?'Wczytywanie postępu oglądania…':state.resumeError?'Nie udało się pobrać postępu. Możesz nadal przeglądać bibliotekę.':'Nie masz obecnie niedokończonych pozycji.'}</p>`}
+      ${hidden.length?`<button class="mf-hidden-resume-toggle" type="button" data-mf-hidden-toggle aria-expanded="${state.showHiddenResume}">Ukryte (${hidden.length}) · ${state.showHiddenResume?'Zwiń':'Pokaż'}</button>
+        ${state.showHiddenResume?`<div class="mf-resume-hidden" aria-label="Ukryte pozycje">${hidden.join('')}</div>`:''}`:''}
     </aside>`;
   }
   function mediaCard(it) {
-    return `<article class="mf-card" data-mf-id="${h(it.id)}" role="button" tabindex="0" aria-label="${h(it.title)} — szczegóły">
-      <div class="mf-poster" data-image="${h(it.has_image?it.id:'')}"><span class="mf-icon">▶</span><b>${it.anime?'ANIME':it.type==='Movie'?'FILM':'SERIAL'}</b></div>
-      <div class="mf-card-body"><h3 title="${h(it.title||'Bez tytułu w NFO')}">${h(it.title||'Bez tytułu w NFO')}</h3><div class="mf-mini">${h(it.year||'—')} · ${h(it.kind||'Produkcja')}</div><div class="mf-pills">${genrePills(popularGenres(it,3))}</div>
-      <p>${h(it.plot||'Brak opisu w źródle metadanych.')}</p>
-      ${it.progress_percent>0?`<div class="mf-progress"><span style="width:${Math.min(100,Math.max(0,it.progress_percent))}%"></span></div>`:''}</div></article>`;
+    const status=['watched','started','unwatched'].includes(it.watch_status)?it.watch_status:'unwatched';
+    const typ=it.anime?'ANIME':it.type==='Movie'?'FILM':'SERIAL';
+    const stats=it.type==='Series'?pawStat(it.season_count,'Sezony','season')+pawStat(it.episode_count,'Odcinki','episode'):'';
+    const rating=pawStat(it.rating,'Ocena','rating');
+    const format=it.kind;
+    const meta=[it.year,format].filter(Boolean).join(' · ');
+    const progress=Math.min(100,Math.max(0,Number(it.progress_percent)||0));
+    return `<article class="mf-card mf-status-${status}" data-mf-id="${h(it.id)}" role="button" tabindex="0" aria-label="${h(it.title)} — szczegóły">
+      <div class="mf-poster" data-image="${h(it.has_image?it.id:'')}">
+        <span class="mf-icon" aria-hidden="true">▶</span>
+        <div class="mf-poster-top"><div class="mf-poster-meta"><b class="mf-kind">${typ}</b>${meta?`<span class="mf-year-format">${h(meta)}</span>`:''}</div>
+        ${stats||rating?`<div class="mf-stats-panel" aria-label="Statystyki produkcji">${stats}${rating}</div>`:''}</div>
+        <div class="mf-poster-bottom"><div class="mf-poster-genres mf-pills">${genrePills(popularGenres(it,3))}</div></div>
+        ${status==='started'&&progress>0?`<div class="mf-poster-progress"><span style="width:${progress}%"></span></div>`:''}
+      </div>
+      <div class="mf-card-body"><h3 title="${h(it.title||'Bez tytułu w NFO')}">${h(it.title||'Bez tytułu w NFO')}</h3>
+        <p>${h(it.plot||'Brak opisu w źródle metadanych.')}</p></div>
+    </article>`;
   }
   function carousel(title,items) {
     if (!items.length) return '';
@@ -248,6 +301,16 @@
     if(e.target.closest('[data-mf-close]')){close();return;}
     if(e.target.closest('[data-mf-back]')){state.detail=null;render();return;}
     if(e.target.closest('[data-mf-refresh]')){load(true);return;}
+    const hide=e.target.closest('[data-mf-resume-hide]');
+    const restore=e.target.closest('[data-mf-resume-restore]');
+    if(hide||restore){
+      const element=hide||restore;
+      element.disabled=true;
+      saveResumeVisibility(element.dataset.mfResumeHide||element.dataset.mfResumeRestore,!!hide)
+        .catch(err=>{element.disabled=false;alert(err.message);});
+      return;
+    }
+    if(e.target.closest('[data-mf-hidden-toggle]')){state.showHiddenResume=!state.showHiddenResume;render();return;}
     const nf=e.target.closest('[data-mf-jellyfin]');if(nf){openNative(nf.dataset.mfJellyfin);return;}
     const more=e.target.closest('[data-mf-more]');if(more){state.pageSizes[more.dataset.mfMore]+=60;render();return;}
     const clear=e.target.closest('[data-mf-clear]');if(clear){state.search[clear.dataset.mfClear]={q:'',type:'',year:'',include:[],exclude:[]};render();return;}

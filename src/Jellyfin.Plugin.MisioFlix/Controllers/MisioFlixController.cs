@@ -22,7 +22,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.1", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.2", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
@@ -84,6 +84,32 @@ public sealed class MisioFlixController : ControllerBase
         {
             return StatusCode(502, new { error = "Nie można pobrać postępu oglądania z Jellyfin." });
         }
+    }
+
+    // No modification of Jellyfin UserData: dismiss/restore controls only MisioFlix presentation.
+    public sealed record ResumeVisibilityRequest(Guid CatalogId);
+
+    [HttpPost("api/resume/hide")]
+    [Authorize]
+    public async Task<IActionResult> HideResume([FromBody] ResumeVisibilityRequest request, CancellationToken cancellationToken)
+        => await SetResumeVisibility(request.CatalogId, true, cancellationToken).ConfigureAwait(false);
+
+    [HttpPost("api/resume/restore")]
+    [Authorize]
+    public async Task<IActionResult> RestoreResume([FromBody] ResumeVisibilityRequest request, CancellationToken cancellationToken)
+        => await SetResumeVisibility(request.CatalogId, false, cancellationToken).ConfigureAwait(false);
+
+    private async Task<IActionResult> SetResumeVisibility(Guid catalogId, bool hide, CancellationToken cancellationToken)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        if (catalogId == Guid.Empty) return BadRequest();
+        try
+        {
+            await _catalog.HideResumeForAuthenticatedUserAsync(Request, catalogId, hide, cancellationToken).ConfigureAwait(false);
+            return Ok(new { success = true });
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (HttpRequestException) { return StatusCode(502); }
     }
 
     [HttpGet("api/item/{id:guid}")]

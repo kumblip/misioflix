@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MediaBrowser.Common.Configuration;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -25,11 +26,15 @@ public sealed class MisioFlixCatalogService
 {
     private readonly HttpClient _client;
     private readonly ILibraryManager _library;
+    private readonly string _hiddenResumePath;
+    private static readonly SemaphoreSlim HiddenGate = new(1, 1);
 
-    public MisioFlixCatalogService(HttpClient client, ILibraryManager library)
+    public MisioFlixCatalogService(HttpClient client, ILibraryManager library, IApplicationPaths applicationPaths)
     {
         _client = client;
         _library = library;
+        // Separate JSON state, never the Jellyfin database, media or NFO files.
+        _hiddenResumePath = Path.Combine(applicationPaths.DataPath, "misioflix", "hidden-resume.json");
     }
 
     public async Task<CatalogResponse> ReadForAuthenticatedUserAsync(HttpRequest caller, CancellationToken cancel)
@@ -65,7 +70,8 @@ public sealed class MisioFlixCatalogService
         {
             var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
                        "&Recursive=true&IncludeItemTypes=Movie,Series" +
-                       "&Fields=Genres,Overview,Tags,DateCreated" +
+                       "&Fields=Genres,Overview,Tags,DateCreated,ChildCount,RecursiveItemCount" +
+                       "&EnableUserData=true" +
                        $"&StartIndex={start}&Limit={pageSize}";
             using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
             var items = Get(doc.RootElement, "Items");
@@ -99,7 +105,11 @@ public sealed class MisioFlixCatalogService
                         genres = local?.Genres ?? new List<string>(),
                         has_image = HasPrimaryImage(json),
                         date_added = Text(Get(json, "DateCreated")),
-                        progress_percent = Progress(json)
+                        progress_percent = Progress(json),
+                        season_count = PositiveInt(Get(json, "ChildCount")),
+                        episode_count = PositiveInt(Get(json, "RecursiveItemCount")),
+                        rating = local?.Rating,
+                        watch_status = WatchStatus(json)
                     });
                 }
                 else
@@ -117,7 +127,11 @@ public sealed class MisioFlixCatalogService
                         genres = Strings(Get(json, "Genres")),
                         has_image = HasPrimaryImage(json),
                         date_added = Text(Get(json, "DateCreated")),
-                        progress_percent = Progress(json)
+                        progress_percent = Progress(json),
+                        season_count = type == "Series" ? PositiveInt(Get(json, "ChildCount")) : null,
+                        episode_count = type == "Series" ? PositiveInt(Get(json, "RecursiveItemCount")) : null,
+                        rating = PositiveRating(Get(json, "CommunityRating")),
+                        watch_status = WatchStatus(json)
                     });
                 }
             }
@@ -134,59 +148,177 @@ public sealed class MisioFlixCatalogService
     }
 
     /// <summary>
-    /// Resume items are purely playback state. Titles, descriptions and genres are deliberately
-    /// NOT returned here; the client matches authorised series/movie IDs to the NFO/Jellyfin
-    /// catalog before displaying anything (anime text still comes exclusively from NFO).
+    /// Playback items are resolved via the current Jellyfin Resume and NextUp endpoints.
+    /// Text/genre metadata still comes only from the authorised catalogue / anime NFO.
+    /// Hidden entries are per user and never alter Jellyfin's playback history.
     /// </summary>
     public async Task<ResumeResponse> ReadResumeForAuthenticatedUserAsync(HttpRequest caller, CancellationToken cancel)
     {
-        var auth = caller.Headers.Authorization.ToString();
-        if (string.IsNullOrWhiteSpace(auth))
-            throw new UnauthorizedAccessException("Missing Jellyfin Authorization header");
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        var result = new List<ResumeItem>();
+        var byCatalog = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var config = Plugin.Instance?.Configuration
-            ?? throw new InvalidOperationException("MisioFlix is not initialized");
-        var origin = new Uri(config.JellyfinLoopbackUrl.TrimEnd('/') + "/", UriKind.Absolute);
+        // Jellyfin 12 uses UserItems/Resume. The older endpoint is a fallback for installations
+        // still exposing it. Paginate so that the banner is NOT limited to 12 or 3 entries.
+        try
+        {
+            await ReadResumePages("UserItems/Resume", origin, auth, userId, result, byCatalog, cancel).ConfigureAwait(false);
+        }
+        catch (HttpRequestException e) when (e.StatusCode == HttpStatusCode.NotFound)
+        {
+            result.Clear(); byCatalog.Clear();
+            await ReadResumePages($"Users/{Uri.EscapeDataString(userId)}/Items/Resume", origin,
+                auth, userId, result, byCatalog, cancel).ConfigureAwait(false);
+        }
+
+        // Shows/NextUp also contains serials between episodes where no specific episode
+        // has a resumable position. Resume entries take precedence for each series.
+        try
+        {
+            const int batchSize = 200;
+            for (var offset = 0; offset < 3000; offset += batchSize)
+            {
+                using var doc = await GetJsonAsync(origin,
+                    $"Shows/NextUp?UserId={Uri.EscapeDataString(userId)}&StartIndex={offset}&Limit={batchSize}&EnableUserData=true",
+                    auth, cancel).ConfigureAwait(false);
+                var items = Get(doc.RootElement, "Items");
+                if (items.ValueKind != JsonValueKind.Array) break;
+                var received = 0;
+                foreach (var item in items.EnumerateArray())
+                {
+                    received++;
+                    var entry = ToResumeItem(item, isNextUp: true);
+                    if (entry is not null && byCatalog.Add(entry.catalog_id)) result.Add(entry);
+                }
+                if (received < batchSize) break;
+            }
+        }
+        catch (HttpRequestException e) when (e.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+        {
+            // Do not break the resumable movie list if the NextUp route is unavailable.
+        }
+
+        var hidden = await ReadHiddenForUserAsync(userId, cancel).ConfigureAwait(false);
+        return new ResumeResponse(result.Where(x => !hidden.Contains(x.catalog_id)).ToList(),
+            result.Where(x => hidden.Contains(x.catalog_id)).ToList());
+    }
+
+    public async Task HideResumeForAuthenticatedUserAsync(HttpRequest caller, Guid catalogId,
+        bool hide, CancellationToken cancel)
+    {
+        var (_, _, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        // Only currently visible Jellyfin media can be hidden: never accept arbitrary item IDs.
+        var catalog = await ReadForAuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        if (!catalog.items.Any(x => x.id.Equals(catalogId.ToString(), StringComparison.OrdinalIgnoreCase)))
+            throw new UnauthorizedAccessException("Item is not accessible to this user");
+        await HiddenGate.WaitAsync(cancel).ConfigureAwait(false);
+        try
+        {
+            var all = await ReadHiddenDocumentAsync(cancel).ConfigureAwait(false);
+            if (!all.TryGetValue(userId, out var ids))
+                all[userId] = ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (hide) ids.Add(catalogId.ToString());
+            else ids.Remove(catalogId.ToString());
+            var folder = Path.GetDirectoryName(_hiddenResumePath)!;
+            Directory.CreateDirectory(folder);
+            var temp = _hiddenResumePath + ".tmp";
+            try
+            {
+                await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(all), cancel).ConfigureAwait(false);
+                File.Move(temp, _hiddenResumePath, overwrite: true);
+            }
+            finally { if (File.Exists(temp)) File.Delete(temp); }
+        }
+        finally { HiddenGate.Release(); }
+    }
+
+    private async Task<HashSet<string>> ReadHiddenForUserAsync(string userId, CancellationToken cancel)
+    {
+        await HiddenGate.WaitAsync(cancel).ConfigureAwait(false);
+        try
+        {
+            var doc = await ReadHiddenDocumentAsync(cancel).ConfigureAwait(false);
+            return doc.TryGetValue(userId, out var ids) ? ids : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+        finally { HiddenGate.Release(); }
+    }
+
+    private async Task<Dictionary<string, HashSet<string>>> ReadHiddenDocumentAsync(CancellationToken cancel)
+    {
+        if (!File.Exists(_hiddenResumePath)) return new(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var json = await File.ReadAllTextAsync(_hiddenResumePath, cancel).ConfigureAwait(false);
+            return JsonSerializer.Deserialize<Dictionary<string, HashSet<string>>>(json)
+                ?? new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (JsonException) { return new(StringComparer.OrdinalIgnoreCase); }
+        catch (IOException) { return new(StringComparer.OrdinalIgnoreCase); }
+    }
+
+    private async Task ReadResumePages(string route, Uri origin, string auth, string userId,
+        List<ResumeItem> result, HashSet<string> byCatalog, CancellationToken cancel)
+    {
+        const int batchSize = 200;
+        for (var offset = 0; offset < 3000; offset += batchSize)
+        {
+            var path = $"{route}?UserId={Uri.EscapeDataString(userId)}&MediaTypes=Video" +
+                       $"&IncludeItemTypes=Movie,Episode&StartIndex={offset}&Limit={batchSize}&EnableUserData=true";
+            using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
+            var items = Get(doc.RootElement, "Items");
+            if (items.ValueKind != JsonValueKind.Array) break;
+            var received = 0;
+            foreach (var item in items.EnumerateArray())
+            {
+                received++;
+                var entry = ToResumeItem(item, isNextUp: false);
+                if (entry is not null && byCatalog.Add(entry.catalog_id)) result.Add(entry);
+            }
+            if (received < batchSize) break;
+        }
+    }
+
+    private static ResumeItem? ToResumeItem(JsonElement item, bool isNextUp)
+    {
+        var id = Text(Get(item, "Id"));
+        if (!Guid.TryParse(id, out _)) return null;
+        var type = Text(Get(item, "Type"));
+        var catalogId = type == "Movie" ? id : type == "Episode" ? Text(Get(item, "SeriesId")) : "";
+        if (!Guid.TryParse(catalogId, out _)) return null;
+        var data = Get(item, "UserData");
+        var percentage = Number(Get(data, "PlayedPercentage"));
+        if (percentage <= 0)
+        {
+            var duration = Number(Get(item, "RunTimeTicks"));
+            var pos = Number(Get(data, "PlaybackPositionTicks"));
+            if (duration > 0) percentage = 100.0 * pos / duration;
+        }
+        if (!isNextUp && (percentage <= 0 || percentage >= 100)) return null;
+        return new ResumeItem
+        {
+            id = id,
+            catalog_id = catalogId,
+            progress_percent = Math.Round(Math.Clamp(percentage, 0, 100), 1),
+            season = PositiveInt(Get(item, "ParentIndexNumber")),
+            episode = PositiveInt(Get(item, "IndexNumber")),
+            next_up = isNextUp
+        };
+    }
+
+    private async Task<(Uri origin, string auth, string userId)> AuthenticatedUserAsync(HttpRequest caller, CancellationToken cancel)
+    {
+        var auth = caller.Headers.Authorization.ToString();
+        if (string.IsNullOrWhiteSpace(auth)) throw new UnauthorizedAccessException("Missing Jellyfin Authorization header");
+        var url = Plugin.Instance?.Configuration.JellyfinLoopbackUrl
+            ?? throw new InvalidOperationException("Missing Jellyfin loopback URL");
+        var origin = new Uri(url.TrimEnd('/') + "/", UriKind.Absolute);
         if (origin.Scheme != Uri.UriSchemeHttp ||
             (origin.Host != "localhost" && origin.Host != "127.0.0.1" && origin.Host != "::1"))
             throw new InvalidOperationException("JellyfinLoopbackUrl must be HTTP loopback");
-
         using var me = await GetJsonAsync(origin, "Users/Me", auth, cancel).ConfigureAwait(false);
         var userId = Text(Get(me.RootElement, "Id"));
-        if (!Guid.TryParse(userId, out _))
-            throw new UnauthorizedAccessException("Jellyfin did not recognize the caller");
-
-        // MediaTypes=Video limits Jellyfin's resume query to actual playback items.
-        var path = $"Users/{Uri.EscapeDataString(userId)}/Items/Resume" +
-                   "?MediaTypes=Video&IncludeItemTypes=Movie,Episode&Limit=12&EnableUserData=true";
-        using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
-        var items = Get(doc.RootElement, "Items");
-        var result = new List<ResumeItem>();
-        if (items.ValueKind != JsonValueKind.Array) return new ResumeResponse(result);
-        foreach (var item in items.EnumerateArray())
-        {
-            var id = Text(Get(item, "Id"));
-            if (!Guid.TryParse(id, out _)) continue;
-            var type = Text(Get(item, "Type"));
-            var catalogId = type == "Movie" ? id : type == "Episode" ? Text(Get(item, "SeriesId")) : string.Empty;
-            if (!Guid.TryParse(catalogId, out _)) continue;
-            var userData = Get(item, "UserData");
-            var percentage = Number(Get(userData, "PlayedPercentage"));
-            if (percentage <= 0)
-            {
-                var duration = Number(Get(item, "RunTimeTicks"));
-                var position = Number(Get(userData, "PlaybackPositionTicks"));
-                if (duration > 0) percentage = 100.0 * position / duration;
-            }
-            if (percentage <= 0 || percentage >= 100) continue;
-            result.Add(new ResumeItem
-            {
-                id = id,
-                catalog_id = catalogId,
-                progress_percent = Math.Round(Math.Clamp(percentage, 0, 100), 1)
-            });
-        }
-        return new ResumeResponse(result);
+        if (!Guid.TryParse(userId, out _)) throw new UnauthorizedAccessException("Invalid Jellyfin user");
+        return (origin, auth, userId);
     }
 
     private async Task<JsonDocument> GetJsonAsync(Uri origin, string path, string authorization, CancellationToken cancel)
@@ -257,13 +389,57 @@ public sealed class MisioFlixCatalogService
                     kind is null ? string.Empty : kind[4..].Trim(),
                     nfo.Elements("genre").Select(e => e.Value.Trim())
                         .Where(s => !string.IsNullOrWhiteSpace(s))
-                        .Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+                        .Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                    ParseNfoRating(nfo));
             }
             catch (XmlException) { /* Invalid NFO: no guessing */ }
             catch (IOException) { /* File in use: retry next request */ }
             catch (UnauthorizedAccessException) { /* No access to NFO */ }
         }
         return null;
+    }
+
+    private static double? ParseNfoRating(XElement nfo)
+    {
+        // Anime descriptive ratings are NFO-only; never fall back to Jellyfin.
+        var raw = nfo.Element("rating")?.Value
+            ?? nfo.Element("ratings")?.Elements("rating").Select(x => x.Element("value")?.Value)
+                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var rating)
+            && rating >= 0 && rating <= 10) return Math.Round(rating, 1);
+        return null;
+    }
+
+    private static int? PositiveInt(JsonElement item)
+    {
+        if (item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var value) && value > 0)
+            return value;
+        return null;
+    }
+
+    private static double? PositiveRating(JsonElement item)
+    {
+        var rating = Number(item);
+        return rating > 0 && rating <= 10 ? Math.Round(rating, 1) : null;
+    }
+
+    private static string WatchStatus(JsonElement item)
+    {
+        var data = Get(item, "UserData");
+        var total = PositiveInt(Get(item, "RecursiveItemCount"));
+        // Jellyfin's per-series Played flag may be inconsistent; when episode counts
+        // are available, prefer the actual watched/unwatched episode aggregation.
+        if (total.HasValue && Get(data, "UnplayedItemCount").ValueKind == JsonValueKind.Number)
+        {
+            var count = Number(Get(data, "UnplayedItemCount"));
+            if (count <= 0) return "watched";
+            if (count < total.Value) return "started";
+            return "unwatched";
+        }
+        if (Get(data, "Played").ValueKind == JsonValueKind.True) return "watched";
+        if (Progress(item) > 0 || Number(Get(data, "PlayedPercentage")) > 0
+            || !string.IsNullOrWhiteSpace(Text(Get(data, "LastPlayedDate")))) return "started";
+        return "unwatched";
     }
 
     private static bool HasPrimaryImage(JsonElement item)
@@ -306,7 +482,7 @@ public sealed class MisioFlixCatalogService
             .Select(x => x.GetString() ?? string.Empty).Where(x => x.Length > 0).ToList();
     }
 
-    private sealed record LocalNfo(string OriginalTitle, string Year, string Plot, string Kind, List<string> Genres);
+    private sealed record LocalNfo(string OriginalTitle, string Year, string Plot, string Kind, List<string> Genres, double? Rating);
 }
 
 public sealed record GenreSets(string[] anime, string[] media);
@@ -325,12 +501,19 @@ public sealed class CatalogItem
     public bool has_image { get; set; }
     public string date_added { get; set; } = string.Empty;
     public double progress_percent { get; set; }
+    public int? season_count { get; set; }
+    public int? episode_count { get; set; }
+    public double? rating { get; set; }
+    public string watch_status { get; set; } = "unwatched";
 }
 
-public sealed record ResumeResponse(List<ResumeItem> items);
+public sealed record ResumeResponse(List<ResumeItem> items, List<ResumeItem> hidden);
 public sealed class ResumeItem
 {
     public string id { get; set; } = string.Empty;
     public string catalog_id { get; set; } = string.Empty;
     public double progress_percent { get; set; }
+    public int? season { get; set; }
+    public int? episode { get; set; }
+    public bool next_up { get; set; }
 }

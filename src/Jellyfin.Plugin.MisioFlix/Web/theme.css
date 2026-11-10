@@ -46,3 +46,42 @@
 @media(max-width:1350px){#mf-portal .mf-resume-list{grid-template-columns:1fr 1fr}#mf-portal .mf-resume-item:nth-child(n+3){display:none}}
 @media(max-width:1030px){#mf-portal .mf-hero{grid-template-columns:1fr;gap:0}#mf-portal .mf-hero-resume{padding:0 24px 17px}#mf-portal .mf-resume-list{grid-template-columns:repeat(3,minmax(0,1fr))}#mf-portal .mf-resume-item:nth-child(n+3){display:flex}}
 @media(max-width:650px){#mf-portal .mf-hero-content{padding:14px 16px}#mf-portal .mf-hero img{width:106px;max-height:46px}#mf-portal .mf-hero h1{font-size:22px}#mf-portal .mf-hero-resume{padding:3px 16px 14px}#mf-portal .mf-resume-list{display:flex;overflow-x:auto;scroll-snap-type:x mandatory}#mf-portal .mf-resume-item{flex:0 0 min(230px,83vw);scroll-snap-align:start}#mf-portal .mf-scroll>.mf-card{flex-basis:154px}#mf-portal .mf-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}
+
+/* MisioFlix v0.4.2 — overlay cards, slim paw stats and per-user playback status. */
+#mf-portal .mf-poster{border:2px solid transparent;box-sizing:border-box;overflow:hidden;isolation:isolate}
+#mf-portal .mf-card.mf-status-unwatched .mf-poster{border-color:#f3a8cf}
+#mf-portal .mf-card.mf-status-started .mf-poster{border-color:#e5a340}
+#mf-portal .mf-card.mf-status-watched .mf-poster{border-color:#42b875}
+#mf-portal .mf-poster-top{position:absolute;inset:7px 7px auto 7px;z-index:2;display:flex;align-items:flex-start;justify-content:space-between;gap:4px;min-width:0}
+#mf-portal .mf-poster-meta{min-width:0;flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+#mf-portal .mf-poster .mf-kind{position:static;font-size:10px;letter-spacing:.12em;line-height:1.3;background:#20111edb;color:#ffe2c4;padding:4px 7px;border-radius:5px}
+#mf-portal .mf-year-format{max-width:100%;color:#ffe3b5;background:#180c1ac9;padding:3px 5px;border-radius:5px;font-size:12px;line-height:1.2;font-weight:600;text-wrap:balance}
+#mf-portal .mf-stats-panel{flex:0 0 auto;display:flex;flex-direction:column;align-items:stretch;gap:1px;min-width:51px;padding:4px 5px;border-radius:9px;border:1px solid rgba(255,255,255,.45);background:rgba(21,16,24,.80);box-shadow:0 2px 9px #08040b50;backdrop-filter:blur(5px)}
+#mf-portal .mf-stat{display:flex;align-items:center;justify-content:flex-end;gap:3px;min-height:22px;color:#fff;white-space:nowrap}
+#mf-portal .mf-stat strong{font-size:14px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+#mf-portal .mf-paw{width:14px;height:14px;display:block;fill:currentColor;flex:0 0 14px}
+#mf-portal .mf-stat-season{color:#f8ae43}
+#mf-portal .mf-stat-episode{color:#56c0eb}
+#mf-portal .mf-stat-rating{color:#ec93c5}
+#mf-portal .mf-stat strong{color:#fff}
+#mf-portal .mf-poster-bottom{position:absolute;left:0;right:0;bottom:0;z-index:1;padding:28px 7px 9px;background:linear-gradient(0deg,rgba(8,5,12,.94),transparent)}
+#mf-portal .mf-poster-genres.mf-pills{margin:0;display:flex;flex-wrap:wrap;gap:4px}
+#mf-portal .mf-poster-genres .mf-pill{font-size:10px;line-height:1.2;background:#1c1025c9;color:#fce8f3;border:1px solid #ffffff55;padding:3px 6px}
+#mf-portal .mf-poster-progress{height:3px;position:absolute;bottom:0;left:0;right:0;z-index:3;background:#20151dcc}
+#mf-portal .mf-poster-progress span{height:100%;display:block;background:#e5a340}
+#mf-portal .mf-card-body{padding-top:10px}
+#mf-portal .mf-card-body h3{line-height:1.25}
+#mf-portal .mf-card-body p{margin-top:8px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;overflow:hidden}
+/* All unfinished movies and series — horizontal list, never cut off after three. */
+#mf-portal .mf-hero-resume{display:block;overflow:hidden;min-width:0}
+#mf-portal .mf-resume-list,#mf-portal .mf-resume-hidden{display:flex;gap:9px;min-width:0;overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:thin;padding:0 0 9px}
+#mf-portal .mf-resume-card{position:relative;flex:0 0 220px;min-width:0;scroll-snap-align:start}
+#mf-portal .mf-resume-item{width:100%;height:100%;padding-right:23px;min-height:86px}
+#mf-portal .mf-resume-item:nth-child(n+3){display:flex}
+#mf-portal .mf-resume-dismiss{position:absolute;top:5px;right:5px;z-index:2;width:24px;height:24px;padding:0;border:1px solid #ffffff56;border-radius:50%;background:#22141ce8;color:#fff;display:grid;place-items:center;font-weight:800;line-height:1;cursor:pointer}
+#mf-portal .mf-resume-dismiss:hover{background:#cc507d}
+#mf-portal .mf-resume-dismiss:disabled{opacity:.4;cursor:progress}
+#mf-portal .mf-hidden-resume-toggle{border:1px solid #ffffff40;border-radius:8px;background:#ffffff0a;padding:5px 9px;margin-top:4px;color:#edd3e1;font-size:11px}
+#mf-portal .mf-resume-hidden{margin-top:8px;padding:6px 0 9px;border-top:1px solid #ffffff25}
+@media(max-width:1350px){#mf-portal .mf-resume-list{display:flex}#mf-portal .mf-resume-item:nth-child(n+3){display:flex}}
+@media(max-width:650px){#mf-portal .mf-year-format{font-size:11px}#mf-portal .mf-stats-panel{min-width:43px;padding:3px 4px}#mf-portal .mf-stat strong{font-size:13px}#mf-portal .mf-paw{width:12px;height:12px;flex-basis:12px}#mf-portal .mf-resume-card{flex-basis:218px}#mf-portal .mf-resume-list{display:flex}}

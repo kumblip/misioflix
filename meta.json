@@ -5,7 +5,7 @@
   "overview": "MisioFlix native extension for Jellyfin 12.4",
   "owner": "MisioFlix",
   "category": "General",
-  "version": "0.4.1.0",
+  "version": "0.4.2.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,
