@@ -1,112 +1,227 @@
-/* MisioFlix v0.4.7 — native Jellyfin Web skin, Modern + Legacy.
-   Keep Jellyfin's original DOM, media cards, routes, scroll, login, details,
-   seasons, search, library queries, playback and admin tools intact.
-   No separate portal, no duplicate navigation and no hiding native home content. */
+/* MisioFlix native visual refresh v0.4.8.0 — Jellyfin 12 Modern + Legacy.
+   Restyles ORIGINAL Jellyfin elements. It never creates a second home, carousel,
+   router, player, navigation bar or media library. Client.js only annotates DOM.
+   Modern's MUI generated DOM can change: unrecognized components remain native.
+*/
 html.misioflix-skin {
-  --mf-bg: #160b19;
-  --mf-surface: #251526;
-  --mf-surface-hi: #351e34;
-  --mf-pink: #f3a8cf;
-  --mf-amber: #e8a63e;
-  --mf-green: #4bbc80;
-  --mf-accent: #eb83b4;
-  --mf-border: rgba(255, 207, 232, .20);
-  --mf-text: #f9eaf2;
-  --mf-muted: #d9becd;
-  --jf-card-borderRadius: 12px;
-  /* Jellyfin 12 uses CSS theme variables shared by Modern and Legacy. */
-  --jf-palette-primary-main: #ed89bc;
-  --jf-palette-secondary-main: #ffac74;
-  --jf-palette-background-default: #160b19;
-  --jf-palette-background-paper: #251526;
-  --jf-palette-AppBar-defaultBg: #130c17;
+  color-scheme: dark;
+  --mf-bg:#130a16;
+  --mf-ink:#ffeff8;
+  --mf-muted:#d5bdce;
+  --mf-surface:#251528;
+  --mf-surface-soft:rgba(39,21,41,.80);
+  --mf-border:rgba(245,175,211,.24);
+  --mf-pink:#f5a6ce;
+  --mf-amber:#e9ac4d;
+  --mf-green:#54c88b;
+  --mf-accent:#ef82b9;
+  --jf-palette-primary-main:#ef82b9;
+  --jf-palette-secondary-main:#ffac79;
+  --jf-palette-background-default:#130a16;
+  --jf-palette-background-paper:#251528;
+  --jf-palette-AppBar-defaultBg:#170e1b;
+  --jf-palette-AppBar-transparentBg:rgba(17,8,20,.80);
+  --jf-card-borderRadius:14px;
+  scrollbar-color:#6d3a5d #170c1b;
 }
 html.misioflix-skin body {
-  background-color: var(--mf-bg);
-  color: var(--mf-text);
+  background-color:var(--mf-bg)!important;
+  color:var(--mf-ink);
 }
-/* Preserve native page content: only change backdrop and its opacity. */
-html.misioflix-skin .backgroundContainer {
-  background: linear-gradient(180deg, #160b19ef, #160b19f5),
-    url('/MisioFlix/assets/background.png') center top / cover fixed no-repeat !important;
+html.misioflix-skin :is(.backgroundContainer, .backgroundContainer.withBackdrop) {
+  background:linear-gradient(180deg,rgba(16,8,20,.94),rgba(22,10,24,.94)),
+   url('/MisioFlix/assets/background.png') center / cover fixed no-repeat !important;
 }
-/* Jellyfin-owned navigation remains a SINGLE navigation bar. */
-html.misioflix-skin :is(.skinHeader, .MuiAppBar-root) {
-  background-color: rgba(19, 10, 22, .94) !important;
-  border-bottom: 1px solid var(--mf-border);
-  backdrop-filter: blur(12px);
+/* One native header — do not insert another one. */
+html.misioflix-skin :is(.skinHeader,.MuiAppBar-root) {
+  background:linear-gradient(95deg,rgba(16,9,19,.99),rgba(32,14,35,.96))!important;
+  border-bottom:1px solid rgba(251,176,221,.20)!important;
+  backdrop-filter:blur(16px);
+  box-shadow:0 6px 24px rgba(0,0,0,.25);
 }
-html.misioflix-skin :is(.mainDrawer, .MuiDrawer-paper) {
-  background-color: #1a0d1e !important;
-  border-color: var(--mf-border) !important;
+html.misioflix-skin :is(.skinHeader,.MuiAppBar-root) :is(.headerTabs,.MuiTabs-root) {
+  min-height:44px;
 }
-/* Native Jellyfin buttons/controls - no new buttons created. */
-html.misioflix-skin :is(.raised, .button-submit, .MuiButton-containedPrimary) {
-  background: linear-gradient(105deg, #ff7c66, #e954a1);
-  border-radius: 9px;
-  color: #fff;
+html.misioflix-skin :is(.headerTabs .emby-button,.MuiTab-root) {
+  font-weight:600;
+  letter-spacing:.01em;
+  transition:color .15s ease;
 }
-html.misioflix-skin :is(.paperList, .formDialogContent, .MuiPaper-root) {
-  border-color: var(--mf-border);
+html.misioflix-skin :is(.mainDrawer,.MuiDrawer-paper) {
+  background:rgba(25,12,29,.98)!important;
+  border-color:var(--mf-border)!important;
 }
-html.misioflix-skin :is(.emby-input, .emby-select, .emby-textarea, .MuiOutlinedInput-root) {
-  border-radius: 9px;
+html.misioflix-skin :is(.headerTabs .emby-button-selected,.MuiTab-root.Mui-selected) {
+  color:#ffb6d7!important;
 }
-html.misioflix-skin :is(.sectionTitle, .sectionTitleTextButton, .MuiTypography-h4, .MuiTypography-h5) {
-  color: #fff2f7;
-  letter-spacing: .005em;
+/* Home spacing and section headings — actual native content remains in place. */
+html.misioflix-skin :is(.homePage,#indexPage) {
+  --jf-home-section-gap:1.3rem;
 }
-/* Maintain the native scroller and card component sizing; adjust appearance only. */
-html.misioflix-skin :is(.cardBox, .MuiCard-root[data-mf-card="1"]) {
-  border-radius: 12px;
-  transition: transform .16s ease, box-shadow .16s ease;
+html.misioflix-skin :is(.homePage,#indexPage) :is(.verticalSection,.section0,.section1,.section2) {
+  margin-bottom:1.05rem;
 }
-html.misioflix-skin :is(.card, .MuiCard-root)[data-mf-card="1"]:hover {
-  transform: translateY(-2px);
+html.misioflix-skin :is(.sectionTitle,.sectionTitleTextButton, .MuiTypography-h4,.MuiTypography-h5) {
+  color:#fff1f7!important;
+  font-weight:700!important;
+  letter-spacing:-.015em;
 }
-html.misioflix-skin :is(.cardImageContainer, .MuiCard-root[data-mf-card="1"] img) {
-  border-radius: 10px;
+html.misioflix-skin .mf-section :is(h1,h2,h3,h4,.sectionTitle,.sectionTitleTextButton) {
+  color:#fff0f8!important;
+  line-height:1.18;
+  letter-spacing:-.025em;
 }
-/* Outlines occupy no layout space: no image shifts, no card reflow. */
-html.misioflix-skin [data-mf-card="1"][data-mf-watch="unwatched"] :is(.cardImageContainer, .MuiCardMedia-root, img) {
-  outline: 2px solid var(--mf-pink);
-  outline-offset: -2px;
+html.misioflix-skin .mf-section :is(.sectionTitle,.sectionTitleTextButton,h2,h3) {
+  margin-bottom:10px;
 }
-html.misioflix-skin [data-mf-card="1"][data-mf-watch="started"] :is(.cardImageContainer, .MuiCardMedia-root, img) {
-  outline: 2px solid var(--mf-amber);
-  outline-offset: -2px;
+/* Own colors for original native controls, only. */
+html.misioflix-skin :is(.raised.button-submit,.MuiButton-containedPrimary) {
+  color:#fff!important;
+  background:linear-gradient(110deg,#fc806d,#e64f9c)!important;
+  border-radius:11px!important;
+  box-shadow:0 6px 20px rgba(210,59,118,.19);
 }
-html.misioflix-skin [data-mf-card="1"][data-mf-watch="watched"] :is(.cardImageContainer, .MuiCardMedia-root, img) {
-  outline: 2px solid var(--mf-green);
-  outline-offset: -2px;
+html.misioflix-skin :is(.paperList,.formDialogContent,.MuiPaper-root,.MuiDialog-paper) {
+  border-color:var(--mf-border)!important;
 }
-/* Keep Jellyfin's own progress and played indicators intact. */
-html.misioflix-skin .itemProgressBarForeground { background: var(--mf-amber) !important; }
-html.misioflix-skin .playedIndicator { background: var(--mf-green) !important; }
-/* Slightly tighter poster-to-title spacing, up to two title lines in Legacy UI. */
-html.misioflix-skin .cardText-first {padding-top: .12em;}
-html.misioflix-skin .cardText {
-  line-height: 1.3;
+html.misioflix-skin :is(.emby-input,.emby-select,.emby-textarea,.MuiOutlinedInput-root) {
+  border-radius:11px;
+}
+/* MEDIA LIBRARIES — deliberately no solid neon pink background. */
+html.misioflix-skin .mf-section[data-mf-section="libraries"] {
+  padding:16px 18px 10px;
+  margin:7px 10px 18px;
+  border:1px solid rgba(245,166,206,.13);
+  border-radius:19px;
+  background:linear-gradient(118deg,rgba(61,31,55,.56),rgba(27,16,33,.38));
+}
+html.misioflix-skin .mf-section[data-mf-section="libraries"] :is(.MuiButton-root,.raised,.cardBox,.MuiCard-root,.card,[data-mf-library-tile="1"]) {
+  color:#fff3f9!important;
+  background:linear-gradient(115deg,rgba(84,39,68,.93),rgba(40,24,52,.96))!important;
+  border:1px solid rgba(247,168,211,.27)!important;
+  border-radius:13px!important;
+  box-shadow:0 5px 16px rgba(0,0,0,.17);
+  transition:border-color .16s ease,background .16s ease,transform .16s ease!important;
+}
+html.misioflix-skin .mf-section[data-mf-section="libraries"] :is(.MuiButton-root,.raised,.cardBox,.MuiCard-root,.card,[data-mf-library-tile="1"]):hover {
+  border-color:#ffa5cf!important;
+  background:linear-gradient(120deg,rgba(105,47,82,.98),rgba(54,29,63,.98))!important;
+  transform:translateY(-2px);
+}
+html.misioflix-skin .mf-section[data-mf-section="libraries"] :is(.MuiButton-root,.raised) {
+  padding-block:13px!important;
+  min-height:56px;
+}
+/* Fallback for Modern implementations whose home section wrapper lacks
+   a stable class. The original media-library buttons remain clickable. */
+html.misioflix-skin :is(.homePage,#indexPage) :is(.MuiButton-contained,.MuiButton-containedPrimary) {
+  background:linear-gradient(112deg,#57334c,#35243e)!important;
+  border:1px solid rgba(250,172,216,.26)!important;
+  box-shadow:none;
+}
+/* CONTINUE WATCHING — turn an existing Jellyfin section into the compact hero.
+   The original Jellyfin resume cards/controls/links are never replaced. */
+html.misioflix-skin .mf-section[data-mf-section="resume"] {
+  background:linear-gradient(111deg,rgba(54,22,49,.80),rgba(86,35,60,.73));
+  border:1px solid rgba(247,160,204,.29);
+  border-radius:21px;
+  padding:18px 20px 17px;
+  margin:8px 10px 20px;
+  box-shadow:0 14px 37px rgba(12,4,15,.18);
+}
+html.misioflix-skin .mf-section[data-mf-section="resume"] :is(.card,.MuiCard-root) {
+  border-radius:13px;
+  background:rgba(255,255,255,.075);
+}
+html.misioflix-skin .mf-section[data-mf-section="resume"] .itemProgressBarForeground {
+  background:linear-gradient(90deg,#ffa75e,#f27aad)!important;
+}
+/* Recently added — consistent shelves with refined outlines; no duplicate carousel. */
+html.misioflix-skin .mf-section[data-mf-section="latest"] {
+  padding:11px 10px 13px;
+  margin-bottom:4px;
+}
+html.misioflix-skin .mf-section[data-mf-section="latest"] :is(.sectionTitle,.sectionTitleTextButton,h2,h3) {
+  font-size:clamp(1.04rem,1.18vw,1.36rem);
+}
+/* Jellyfin's own cards (Modern/MUI and Legacy) */
+html.misioflix-skin :is(.cardBox,.MuiCard-root,[data-mf-card="1"]) {
+  border-radius:15px;
+  transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+html.misioflix-skin :is(.card,.MuiCard-root)[data-mf-card="1"] {
+  position:relative;
+  transform:translateZ(0);
+}
+html.misioflix-skin :is(.card,.MuiCard-root)[data-mf-card="1"]:hover {
+  transform:translateY(-4px);
+  filter:brightness(1.035);
+}
+html.misioflix-skin :is(.card,.MuiCard-root)[data-mf-card="1"] :is(.cardImageContainer,.cardContent,.MuiCardMedia-root,img) {
+  border-radius:12px;
+}
+html.misioflix-skin :is(.card,.MuiCard-root)[data-mf-card="1"]:hover :is(.cardImageContainer,.MuiCardMedia-root,img) {
+  box-shadow:0 10px 27px rgba(0,0,0,.35);
+}
+/* Apply status to the ORIGINAL poster image; never claim a state Jellyfin hasn't exposed. */
+html.misioflix-skin [data-mf-card="1"][data-mf-watch="unwatched"] :is(.cardImageContainer,.MuiCardMedia-root,img) {
+  outline:2px solid var(--mf-pink)!important;outline-offset:-2px;
+}
+html.misioflix-skin [data-mf-card="1"][data-mf-watch="started"] :is(.cardImageContainer,.MuiCardMedia-root,img) {
+  outline:2px solid var(--mf-amber)!important;outline-offset:-2px;
+}
+html.misioflix-skin [data-mf-card="1"][data-mf-watch="watched"] :is(.cardImageContainer,.MuiCardMedia-root,img) {
+  outline:2px solid var(--mf-green)!important;outline-offset:-2px;
+}
+html.misioflix-skin .itemProgressBarForeground {
+  background-color:var(--mf-amber)!important;
+}
+html.misioflix-skin .playedIndicator {
+  background-color:var(--mf-green)!important;
+}
+/* Titles: compact, two lines, readable and high-contrast. */
+html.misioflix-skin :is(.cardText,.MuiCardContent-root) {
+  color:#f8e8f1;
+  line-height:1.35;
+}
+html.misioflix-skin .cardText-first {
+  padding-top:.08em;
+  font-weight:600;
 }
 html.misioflix-skin .cardText-first:not(.cardText-secondary) {
-  white-space: normal;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
+  white-space:normal;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
 }
-/* Card text and genres in detail pages remain under Jellyfin control. */
-html.misioflix-skin :is(.detailPagePrimaryContainer, .detailPageContent, .detailRibbon, .MuiDialog-paper) {
-  color: var(--mf-text);
+html.misioflix-skin :is(.cardText-secondary,.MuiTypography-caption) {
+  color:#d2baca;
 }
-html.misioflix-skin .detailRibbon { background-color: rgba(31, 17, 33, .77); }
-html.misioflix-skin a:focus-visible,
-html.misioflix-skin button:focus-visible { outline-color: var(--mf-pink); }
-@media (max-width: 700px) {
-  html.misioflix-skin :is(.cardBox, .MuiCard-root[data-mf-card="1"]) { border-radius: 9px; }
-  html.misioflix-skin .cardText { font-size: .92em; }
+/* Better native detail layouts (does not replace anything). */
+html.misioflix-skin :is(.detailPageContent,.detailPagePrimaryContainer) {
+  color:#f9e8f1;
 }
-@media (prefers-reduced-motion: reduce) {
-  html.misioflix-skin :is(.cardBox, .MuiCard-root[data-mf-card="1"]) { transition: none; }
+html.misioflix-skin .detailRibbon {
+  background:linear-gradient(100deg,rgba(32,13,36,.91),rgba(61,28,56,.87))!important;
+  border-block:1px solid var(--mf-border);
+}
+html.misioflix-skin :is(.detailPageContent,.detailPagePrimaryContainer) :is(.overview,.itemMiscInfo,.detailPagePrimaryContent) {
+  line-height:1.58;
+}
+html.misioflix-skin :is(.tabsContent,.MuiTabs-root) .MuiTabs-indicator {
+  background-color:#ed8ebe;
+}
+html.misioflix-skin a:focus-visible,html.misioflix-skin button:focus-visible {
+  outline:2px solid #f5a6ce!important;
+  outline-offset:2px;
+}
+@media(max-width:760px) {
+  html.misioflix-skin .mf-section[data-mf-section="resume"] {padding:11px 12px;margin-inline:4px;border-radius:15px;}
+  html.misioflix-skin .mf-section[data-mf-section="libraries"] {padding:10px 9px;margin-inline:4px;border-radius:15px;}
+  html.misioflix-skin .mf-section[data-mf-section="latest"] {padding:7px 3px;}
+  html.misioflix-skin .cardText {font-size:.93em;}
+}
+@media(prefers-reduced-motion:reduce) {
+  html.misioflix-skin :is(.card,.MuiCard-root,.cardBox,.MuiButton-root) {transition:none!important;transform:none!important;}
 }

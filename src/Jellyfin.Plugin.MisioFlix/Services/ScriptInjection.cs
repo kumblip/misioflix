@@ -67,11 +67,11 @@ public sealed class MisioFlixStartupFilter : IStartupFilter
                 }
 
                 // Idempotent across restarts and multiple middleware instances.
-                const string marker = "data-misioflix=\"skin-v0.4.7\"";
+                const string marker = "data-misioflix=\"skin-v0.4.8\"";
                 if (!input.Contains(marker, StringComparison.Ordinal))
                 {
-                    const string inject = "<link data-misioflix=\"skin-v0.4.7\" rel=\"stylesheet\" href=\"../MisioFlix/assets/theme.css?v=0.4.7.0\">" +
-                        "<script data-misioflix=\"skin-v0.4.7\" defer src=\"../MisioFlix/assets/client.js?v=0.4.7.0\"></script>";
+                    const string inject = "<link data-misioflix=\"skin-v0.4.8\" rel=\"stylesheet\" href=\"../MisioFlix/assets/theme.css?v=0.4.8.0\">" +
+                        "<script data-misioflix=\"skin-v0.4.8\" defer src=\"../MisioFlix/assets/client.js?v=0.4.8.0\"></script>";
                     var at = input.LastIndexOf("</head>", StringComparison.OrdinalIgnoreCase);
                     input = input.Insert(at, inject);
                 }

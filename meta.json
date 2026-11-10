@@ -5,7 +5,7 @@
   "overview": "Native Jellyfin 12.4 skin and progressive enhancement; no duplicate catalogue",
   "owner": "MisioFlix",
   "category": "General",
-  "version": "0.4.7.0",
+  "version": "0.4.8.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,
