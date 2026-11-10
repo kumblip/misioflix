@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.IO;
 using System.Reflection;
@@ -15,14 +16,16 @@ namespace Jellyfin.Plugin.MisioFlix.Controllers;
 public sealed class MisioFlixController : ControllerBase
 {
     private readonly MisioFlixCatalogService _catalog;
+    private readonly MisioFlixMalService _mal;
 
-    public MisioFlixController(MisioFlixCatalogService catalog)
+    public MisioFlixController(MisioFlixCatalogService catalog,MisioFlixMalService mal)
     {
         _catalog = catalog;
+        _mal = mal;
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.2", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.3", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
@@ -112,6 +115,108 @@ public sealed class MisioFlixController : ControllerBase
         catch (HttpRequestException) { return StatusCode(502); }
     }
 
+    // Numeric personal rating — Jellyfin UserData.Rating, NOT CommunityRating.
+    public sealed record RatingRequest(double? Rating,Guid? SeasonId);
+    [HttpPost("api/item/{id:guid}/rating")]
+    [Authorize]
+    public async Task<IActionResult> Rating(Guid id,[FromBody] RatingRequest request,CancellationToken cancel)
+    {
+        if(Plugin.Instance?.Configuration.Enabled != true)return NotFound();
+        try
+        {
+            var value=request.SeasonId.HasValue
+                ? await _catalog.SetSeasonRatingAsync(Request,id,request.SeasonId.Value,request.Rating,cancel).ConfigureAwait(false)
+                : await _catalog.SetPersonalRatingAsync(Request,id,request.Rating,cancel).ConfigureAwait(false);
+            return Ok(new {rating=value});
+        }
+        catch(UnauthorizedAccessException){return Forbid();}
+        catch(ArgumentOutOfRangeException){return BadRequest(new {error="Ocena 1–10 (co 0,5)"});}
+        catch(HttpRequestException){return StatusCode(502,new{error="Nie udało się zapisać oceny w Jellyfin"});}
+    }
+
+    [HttpGet("api/mal/status")]
+    [Authorize]
+    public async Task<IActionResult> MalStatus([FromQuery] bool refresh,CancellationToken cancel)
+    {
+        try
+        {
+            var user=await _catalog.GetAuthenticatedUserIdAsync(Request,cancel).ConfigureAwait(false);
+            if(!_mal.Connected(user))return Ok(new {connected=false,entries=new Dictionary<int,MalEntry>()});
+            var entries=await _mal.ReadAllAsync(user,refresh,cancel).ConfigureAwait(false);
+            return Ok(new{connected=true,entries});
+        }
+        catch(UnauthorizedAccessException){return Unauthorized();}
+        catch(HttpRequestException){return StatusCode(502,new{error="Nie można pobrać listy MAL"});}
+        catch(InvalidOperationException e){return BadRequest(new{error=e.Message});}
+    }
+
+    [HttpGet("api/mal/connect")]
+    [Authorize]
+    public async Task<IActionResult> MalConnect(CancellationToken cancel)
+    {
+        try
+        {
+            var user=await _catalog.GetAuthenticatedUserIdAsync(Request,cancel).ConfigureAwait(false);
+            var link=_mal.Start(user);
+            return Ok(new{url=link.url,message=link.message});
+        }
+        catch(InvalidOperationException e){return BadRequest(new{error=e.Message});}
+        catch(UnauthorizedAccessException){return Unauthorized();}
+    }
+
+    // OAuth callback receives a state-bound one-time code; NEVER an access token in the URL.
+    [HttpGet("api/mal/callback")]
+    [AllowAnonymous]
+    public async Task<IActionResult> MalCallback([FromQuery] string? code,[FromQuery] string? state,CancellationToken cancel)
+    {
+        try
+        {
+            await _mal.FinishAsync(code??"",state??"",cancel).ConfigureAwait(false);
+            return Content("<!doctype html><html lang=pl><meta charset=utf-8><title>MisioFlix MAL</title>"+
+                "<body style='background:#201320;color:#ffe5f1;font:18px system-ui;padding:3rem'>"+
+                "MyAnimeList połączone. Zamknij to okno, wróć do MisioFlix i wybierz Odśwież MAL.</body></html>","text/html");
+        }
+        catch(Exception e) when(e is InvalidOperationException or HttpRequestException or ArgumentException)
+        {
+            // Do not echo external OAuth details or user credentials in a public callback.
+            return Content("Nie udało się połączyć MyAnimeList. Wróć do MisioFlix i ponów połączenie.","text/plain",System.Text.Encoding.UTF8);
+        }
+    }
+
+    [HttpPost("api/mal/disconnect")]
+    [Authorize]
+    public async Task<IActionResult> MalDisconnect(CancellationToken cancel)
+    {
+        try
+        {
+            var user=await _catalog.GetAuthenticatedUserIdAsync(Request,cancel).ConfigureAwait(false);
+            await _mal.DisconnectAsync(user,cancel).ConfigureAwait(false);
+            return Ok(new{connected=false});
+        }
+        catch(UnauthorizedAccessException){return Unauthorized();}
+    }
+
+    public sealed record MalEditRequest(Guid CatalogId,Guid? SeasonId,string? Status,int? Score,
+        int? EpisodesWatched,int? TimesRewatched);
+    [HttpPost("api/mal/update")]
+    [Authorize]
+    public async Task<IActionResult> MalUpdate([FromBody] MalEditRequest input,CancellationToken cancel)
+    {
+        try
+        {
+            var malId=await _catalog.AuthorizedMalIdAsync(Request,input.CatalogId,input.SeasonId,cancel).ConfigureAwait(false);
+            var user=await _catalog.GetAuthenticatedUserIdAsync(Request,cancel).ConfigureAwait(false);
+            var entry=await _mal.UpdateAsync(user,malId,
+                new MalUpdate(input.Status,input.Score,input.EpisodesWatched,input.TimesRewatched),cancel)
+                .ConfigureAwait(false);
+            return Ok(entry);
+        }
+        catch(UnauthorizedAccessException){return Forbid();}
+        catch(ArgumentException e){return BadRequest(new{error=e.Message});}
+        catch(InvalidOperationException e){return BadRequest(new{error=e.Message});}
+        catch(HttpRequestException){return StatusCode(502,new{error="MAL nie zapisał zmian"});}
+    }
+
     [HttpGet("api/item/{id:guid}")]
     [Authorize]
     public async Task<IActionResult> Item(Guid id, CancellationToken cancellationToken)
@@ -121,7 +226,11 @@ public sealed class MisioFlixController : ControllerBase
         {
             var catalog = await _catalog.ReadForAuthenticatedUserAsync(Request, cancellationToken).ConfigureAwait(false);
             var item = catalog.items.Find(x => x.id.Equals(id.ToString(), StringComparison.OrdinalIgnoreCase));
-            return item is null ? NotFound() : Ok(new { item, episodes = Array.Empty<object>() });
+            if(item is null)return NotFound();
+            var seasons=item.type=="Series"
+                ? await _catalog.ReadSeasonsAsync(Request,id,cancellationToken).ConfigureAwait(false)
+                : new System.Collections.Generic.List<SeasonInfo>();
+            return Ok(new { item, seasons, episodes = Array.Empty<object>() });
         }
         catch (UnauthorizedAccessException)
         {

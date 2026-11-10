@@ -2,11 +2,11 @@
 (() => {
   'use strict';
   if (window.__MISIOFLIX_NATIVE__) return;
-  window.__MISIOFLIX_NATIVE__ = '0.4.2';
+  window.__MISIOFLIX_NATIVE__ = '0.4.3';
   const h = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const state = {open:false, tab:'home', items:[], genres:{anime:[],media:[]}, genreFrequency:{anime:new Map(),media:new Map()}, resume:[], hiddenResume:[], showHiddenResume:false, resumeError:false, resumeLoading:false, resumePending:null, ready:false,
+  const state = {open:false, tab:'home', items:[], genres:{anime:[],media:[]}, genreFrequency:{anime:new Map(),media:new Map()}, resume:[], hiddenResume:[], showHiddenResume:false, resumeError:false, resumeLoading:false, resumePending:null, ready:false, homeRandom:{}, mal:{connected:false,entries:{},loading:false,error:null},
                  search:{anime:{q:'',type:'',year:'',include:[],exclude:[]},media:{q:'',type:'',year:'',include:[],exclude:[]}},
-                 detail:null, objectUrls:[], pageSizes:{anime:60,movies:60,series:60,'search-anime':60,'search-media':60}, client:null, token:null, pending:null};
+                 detail:null, objectUrls:[], pageSizes:{recent:60,anime:60,movies:60,series:60,'search-anime':60,'search-media':60}, client:null, token:null, pending:null};
   const $ = (s, root=document) => root.querySelector(s);
   const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 
@@ -21,7 +21,7 @@
   function jellyfinHeaders() {
     if (!apiClient()) return null;
     const t = state.token.replace(/["\r\n]/g,'');
-    return {'Authorization': `MediaBrowser Client="misioflix", Device="Jellyfin Web", DeviceId="misioflix-web", Version="0.4.2", Token="${t}"`};
+    return {'Authorization': `MediaBrowser Client="misioflix", Device="Jellyfin Web", DeviceId="misioflix-web", Version="0.4.3", Token="${t}"`};
   }
   async function get(path) {
     const headers = jellyfinHeaders();
@@ -30,6 +30,56 @@
     const d = await res.json().catch(()=>({error:'Nieprawidłowa odpowiedź serwera'}));
     if (!res.ok) throw Error(d.error || 'Błąd '+res.status);
     return d;
+  }
+  async function post(path,body={}) {
+    const headers=jellyfinHeaders();
+    if(!headers)throw Error('Zaloguj się do Jellyfin');
+    const res=await fetch('/MisioFlix/api/'+path,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const json=await res.json().catch(()=>({error:'Błąd połączenia z serwerem'}));
+    if(!res.ok)throw Error(json.error||'Błąd '+res.status);
+    return json;
+  }
+  async function refreshMal(force=false) {
+    state.mal.loading=true;
+    try {
+      const data=await get('mal/status'+(force?'?refresh=true':''));
+      state.mal={connected:!!data.connected,entries:data.entries||{},loading:false,error:null};
+    } catch(e) {
+      state.mal={...state.mal,loading:false,error:e.message};
+    }
+    if(state.open&&state.ready)render();
+  }
+  async function malConnect(){
+    // Open synchronously from the click; otherwise popup blockers may reject OAuth.
+    const popup=window.open('about:blank','_blank');
+    try {const result=await get('mal/connect');
+      if(popup)popup.location.href=result.url;else alert('Zezwól na otwarcie okna MAL i spróbuj ponownie.');
+    }catch(e){if(popup)popup.close();throw e;}
+  }
+  async function savePersonalRating(itemId,seasonId,score){
+    const data=await post('item/'+encodeURIComponent(itemId)+'/rating',{rating:score,seasonId:seasonId||null});
+    if(seasonId && state.detail){
+      const season=(state.detail.seasons||[]).find(x=>x.id===seasonId);
+      if(season)season.rating=data.rating;
+    } else {
+      const item=state.items.find(x=>x.id===itemId);
+      if(item)item.rating=data.rating;
+      if(state.detail?.item?.id===itemId)state.detail.item.rating=data.rating;
+    }
+    render();
+  }
+  async function saveMalRow(element){
+    const row=element.closest('[data-mf-mal-row]');
+    if(!row)return;
+    const catalogId=row.dataset.mfMalParent,seasonId=row.dataset.mfMalSeason||null;
+    const status=row.querySelector('[data-mf-mal-field="status"]')?.value;
+    const score=row.querySelector('[data-mf-mal-field="score"]')?.value;
+    const watched=row.querySelector('[data-mf-mal-field="episodes"]')?.value;
+    const repeats=row.querySelector('[data-mf-mal-field="repeats"]')?.value;
+    const result=await post('mal/update',{catalogId,seasonId,status,
+      score:score===''?0:Number(score),episodesWatched:Number(watched),timesRewatched:Number(repeats)});
+    state.mal.entries[String(result.mal_id)]=result;
+    render();
   }
   async function saveResumeVisibility(catalogId, hidden) {
     const headers=jellyfinHeaders();
@@ -76,7 +126,7 @@
     document.body.classList.add('mf-is-open');
     if (addHistory) history.pushState({misioflix:tab},'',urlFor(tab));
     sessionStorage.setItem('mf-last-tab',tab);
-    if (!state.ready && !state.pending) load(); else {render(); if (wasClosed && state.ready) refreshResume();}
+    if (!state.ready && !state.pending) load(); else {render(); if (wasClosed && state.ready) {refreshResume();refreshMal();}}
   }
   function close() {
     state.open=false; $('#mf-portal')?.classList.add('mf-hidden');
@@ -92,10 +142,11 @@
       try {
         const d=await get('catalog');
         state.items=d.items||[];state.genres=d.genres||{anime:[],media:[]};
-        state.genreFrequency=buildGenreFrequency(state.items);state.ready=true;
+        state.genreFrequency=buildGenreFrequency(state.items);state.homeRandom={};state.ready=true;
       } catch(e){state.ready=false; if(page)page.innerHTML='<section class="mf-error"><h2>Nie udało się pobrać katalogu</h2><p>'+h(e.message)+'</p><button data-mf-refresh>Spróbuj ponownie</button><p>Sprawdź czy pozycje zostały dodane do Jellyfin i czy ścieżki NFO są dostępne.</p></section>';return;}
       render();
       refreshResume();
+      refreshMal();
     })();
     try {await state.pending;} finally {state.pending=null;}
   }
@@ -140,7 +191,7 @@
     if(value===null || value===undefined || value==='') return '';
     const n=Number(value);
     if(!Number.isFinite(n)) return '';
-    const shown=label==='Ocena'?n.toFixed(1):(n>99?'99+':String(Math.max(0,Math.floor(n))));
+    const shown=color==='rating'?n.toFixed(1):(n>99?'99+':String(Math.max(0,Math.floor(n))));
     return `<span class="mf-stat mf-stat-${color}" aria-label="${label}: ${h(shown)}"><strong>${h(shown)}</strong>${pawIcon}</span>`;
   }
   function resumeEntry(x,hidden=false){
@@ -173,12 +224,21 @@
         ${state.showHiddenResume?`<div class="mf-resume-hidden" aria-label="Ukryte pozycje">${hidden.join('')}</div>`:''}`:''}
     </aside>`;
   }
+  function userState(it){
+    if(!it.anime || !state.mal.connected || !it.mal_id)return {rating:it.rating,status:it.watch_status};
+    const entry=it.mal_id?state.mal.entries[String(it.mal_id)]:null;
+    if(!entry)return {rating:null,status:'unwatched'};
+    const status=entry.status==='completed'?'watched':
+      ['watching','on_hold','dropped'].includes(entry.status)?'started':'unwatched';
+    return {rating:entry.score>0?entry.score:null,status};
+  }
   function mediaCard(it) {
-    const status=['watched','started','unwatched'].includes(it.watch_status)?it.watch_status:'unwatched';
+    const user=userState(it);
+    const status=['watched','started','unwatched'].includes(user.status)?user.status:'unwatched';
     const typ=it.anime?'ANIME':it.type==='Movie'?'FILM':'SERIAL';
     const stats=it.type==='Series'?pawStat(it.season_count,'Sezony','season')+pawStat(it.episode_count,'Odcinki','episode'):'';
-    const rating=pawStat(it.rating,'Ocena','rating');
-    const format=it.kind;
+    const rating=pawStat(user.rating,'Ocena użytkownika','rating');
+    const format=it.anime?it.kind:''; // For movies / series, the badge already names the format.
     const meta=[it.year,format].filter(Boolean).join(' · ');
     const progress=Math.min(100,Math.max(0,Number(it.progress_percent)||0));
     return `<article class="mf-card mf-status-${status}" data-mf-id="${h(it.id)}" role="button" tabindex="0" aria-label="${h(it.title)} — szczegóły">
@@ -193,23 +253,32 @@
         <p>${h(it.plot||'Brak opisu w źródle metadanych.')}</p></div>
     </article>`;
   }
-  function carousel(title,items) {
-    if (!items.length) return '';
-    return `<section class="mf-section"><h2>${h(title)}</h2><div class="mf-scroll">${items.slice(0,25).map(mediaCard).join('')}</div></section>`;
+  function recentSort(items){return [...items].sort((a,b)=>(b.date_added||'').localeCompare(a.date_added||'')||(a.title||'').localeCompare(b.title||'','pl'));}
+  function shuffled(items){const copy=[...items];for(let i=copy.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[copy[i],copy[j]]=[copy[j],copy[i]];}return copy;}
+  function carousel(title,items,tab) {
+    if(!items.length)return '';
+    const ordered=recentSort(items);
+    const randomIds=state.homeRandom[tab];
+    const indexed=new Map(ordered.map(x=>[x.id,x]));
+    const view=randomIds?randomIds.map(id=>indexed.get(id)).filter(Boolean):ordered;
+    return `<section class="mf-section"><div class="mf-carousel-heading"><button type="button" class="mf-carousel-title" data-mf-tab="${tab}" aria-label="Otwórz katalog: ${h(title)}">${h(title)} <span aria-hidden="true">›</span></button>
+      <div class="mf-carousel-controls">${randomIds?`<button type="button" data-mf-recent="${tab}">Najnowsze</button>`:''}
+      <button type="button" data-mf-random="${tab}">Losuj ↻</button></div></div>
+      <div class="mf-scroll">${view.slice(0,25).map(mediaCard).join('')}</div></section>`;
   }
   function home() {
     const all=state.items;
-    const recent=[...all].sort((a,b)=>(b.date_added||'').localeCompare(a.date_added||''));
-    const anime=all.filter(x=>x.anime);const movies=all.filter(x=>!x.anime && x.type==='Movie');const series=all.filter(x=>!x.anime&&x.type==='Series');
+    const anime=all.filter(x=>x.anime),movies=all.filter(x=>!x.anime&&x.type==='Movie'),series=all.filter(x=>!x.anime&&x.type==='Series');
     return `<section class="mf-hero"><div class="mf-hero-content"><img src="/MisioFlix/assets/logo.png" alt="MisioFlix"><h1>Twój świat filmów i anime</h1><p>Własny katalog i wyszukiwanie. Oryginalny odtwarzacz Jellyfin.</p><div class="mf-hero-actions"><button data-mf-tab="search-anime" class="mf-primary">Wyszukaj anime</button><button data-mf-tab="search-media">Wyszukaj filmy i seriale</button></div></div>
       ${continueWatchingHero()}</section>
-    ${all.length?'':`<div class="mf-empty"><h2>Biblioteka jest jeszcze pusta</h2><p>Dodaj produkcje w Jellyfin — wtedy pojawią się tu karuzele, karty i obie wyszukiwarki.</p></div>`}
-    ${carousel('Ostatnio dodane',recent)}${carousel('Anime',anime)}${carousel('Filmy',movies)}${carousel('Seriale',series)}`;
+    ${all.length?'':`<div class="mf-empty"><h2>Biblioteka jest jeszcze pusta</h2><p>Dodaj produkcje w Jellyfin — wtedy pojawią się tu karuzele.</p></div>`}
+    ${carousel('Ostatnio dodane',all,'recent')}${carousel('Anime',anime,'anime')}${carousel('Filmy',movies,'movies')}${carousel('Seriale',series,'series')}`;
   }
   function listings(kind) {
-    const its=state.items.filter(x=>kind==='anime'?x.anime:kind==='movies'?(!x.anime&&x.type==='Movie'):(!x.anime&&x.type==='Series'));
-    return `<section class="mf-section"><h1>${kind==='anime'?'Anime':kind==='movies'?'Filmy':'Seriale'}</h1><p class="mf-sub">${its.length} pozycji · ${kind==='anime'?'metadane wyłącznie z NFO':'gatunki z Jellyfin'}</p>
-      ${its.length?`<div class="mf-grid">${its.slice(0,state.pageSizes[kind]).map(mediaCard).join('')}</div>${its.length>state.pageSizes[kind]?`<button class="mf-more" data-mf-more="${kind}">Pokaż więcej (${its.length-state.pageSizes[kind]} pozostałych)</button>`:''}`:'<div class="mf-empty">Brak pozycji w bibliotece Jellyfin.</div>'}</section>`;
+    const its=recentSort(state.items.filter(x=>kind==='recent'?true:kind==='anime'?x.anime:kind==='movies'?(!x.anime&&x.type==='Movie'):(!x.anime&&x.type==='Series')));
+    const title=kind==='recent'?'Ostatnio dodane':kind==='anime'?'Anime':kind==='movies'?'Filmy':'Seriale';
+    return `<section class="mf-section"><h1>${title}</h1><p class="mf-sub">${its.length} pozycji · od najnowszych</p>
+      ${its.length?`<div class="mf-grid">${its.slice(0,state.pageSizes[kind]||60).map(mediaCard).join('')}</div>${its.length>(state.pageSizes[kind]||60)?`<button class="mf-more" data-mf-more="${kind}">Pokaż więcej (${its.length-(state.pageSizes[kind]||60)} pozostałych)</button>`:''}`:'<div class="mf-empty">Brak pozycji w bibliotece Jellyfin.</div>'}</section>`;
   }
   function contains(text,search){return String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pl').includes(String(search||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pl'));}
   function matches(it,f){
@@ -239,12 +308,59 @@
       <div class="mf-search-count">Wyniki: <strong>${filtered.length}</strong> / ${items.length} <button data-mf-clear="${scope}">Wyczyść filtry</button></div>
       ${filtered.length?`<div class="mf-grid">${filtered.slice(0,state.pageSizes[tab]).map(mediaCard).join('')}</div>${filtered.length>state.pageSizes[tab]?`<button class="mf-more" data-mf-more="${tab}">Pokaż więcej (${filtered.length-state.pageSizes[tab]} pozostałych)</button>`:''}`:'<div class="mf-empty">Brak wyników dla aktualnych filtrów.</div>'}</section>`;
   }
-  function detail(it,episodes) {
+  function scoreChoices(value,allowHalves=true){
+    const current=value==null?0:Number(value);
+    let result=`<option value="">Bez oceny</option>`;
+    for(let n=1;n<=10;n+=allowHalves?0.5:1){
+      const str=String(n);result+=`<option value="${str}" ${current===n?'selected':''}>${str} / 10</option>`;
+    }
+    return result;
+  }
+  const malStatusLabels={watching:'Oglądam',completed:'Obejrzane',on_hold:'Wstrzymane',dropped:'Porzucone',plan_to_watch:'Do obejrzenia'};
+  function malRow(it,season,caption){
+    const malId=season?season.mal_id:it.mal_id;
+    const record=malId?state.mal.entries[String(malId)]:null;
+    if(!state.mal.connected)return `<p class="mf-mal-hint">Połącz konto MyAnimeList, aby edytować status, ocenę i powtórki.</p>`;
+    if(!malId)return `<p class="mf-mal-hint">Brak &lt;uniqueid type="mal"&gt; w lokalnym NFO ${season?'tego sezonu':'anime'}.</p>`;
+    const status=record?.status||'plan_to_watch';
+    return `<div class="mf-mal-row" data-mf-mal-row data-mf-mal-parent="${h(it.id)}" ${season?`data-mf-mal-season="${h(season.id)}"`:''}>
+      <strong>${h(caption)} · MAL #${malId}</strong>
+      <label>Status<select data-mf-mal-field="status">${Object.entries(malStatusLabels).map(([k,label])=>`<option value="${k}" ${status===k?'selected':''}>${label}</option>`).join('')}</select></label>
+      <label>Moja ocena<select data-mf-mal-field="score">${scoreChoices(record?.score,false)}</select></label>
+      <label>Odcinki<input type="number" min="0" max="10000" data-mf-mal-field="episodes" value="${record?.episodes_watched??0}"></label>
+      <label>Powtórki<input type="number" min="0" max="10000" data-mf-mal-field="repeats" value="${record?.times_rewatched??0}"></label>
+      <button type="button" class="mf-primary" data-mf-save-mal>Zapisz w MAL</button>
+    </div>`;
+  }
+  function ratingForm(it,season){
+    const rating=season?season.rating:it.rating;
+    return `<label class="mf-user-rating">Moja ocena (Jellyfin)
+      <select data-mf-rating data-mf-rating-parent="${h(it.id)}" ${season?`data-mf-rating-season="${h(season.id)}"`:''}>
+        ${scoreChoices(rating)}
+      </select></label>`;
+  }
+  function malAccountControls(){
+    return `<div class="mf-mal-account"><b>MyAnimeList</b>
+      ${state.mal.connected?`<span>Połączono</span><button data-mf-mal-refresh>Odśwież MAL</button><button data-mf-mal-disconnect>Odłącz</button>`:
+      `<button type="button" data-mf-mal-connect>Połącz konto MAL</button>`}
+      ${state.mal.error?`<small class="mf-mal-error">${h(state.mal.error)}</small>`:''}</div>`;
+  }
+  function detail(it,episodes,seasons=[]) {
+    const firstSeason=(seasons||[]).find(x=>x.number===1);
+    const seasonRows=(seasons||[]).map(s=>`<div class="mf-season-row"><h3>${h(s.name||'Sezon '+(s.number||'?'))}</h3>
+      ${s.number===1?'<small>Ocena pierwszego sezonu: w głównej sekcji produkcji</small>':(!it.anime||!state.mal.connected||!s.mal_id?ratingForm(it,s):'')}
+      ${it.anime && s.number!==1?malRow(it,s,'Sezon '+(s.number??'?')):''}
+      </div>`).join('');
     return `<section class="mf-detail"><button data-mf-back>← Wróć do katalogu</button><div class="mf-detail-grid">
       <div class="mf-detail-poster mf-poster" data-image="${h(it.has_image?it.id:'')}"><span class="mf-icon">▶</span></div>
-      <div><h1>${h(it.title)}</h1><div class="mf-mini">${h(it.year||'—')} · ${h(it.kind)} · ${it.anime?'ANIME':'FILM / SERIAL'}</div><div class="mf-pills">${genrePills(it.genres)}</div>
-      <p>${h(it.plot||'Brak opisu w źródle metadanych.')}</p><div class="mf-actions"><button class="mf-primary" data-mf-jellyfin="${h(it.id)}">Otwórz w Jellyfin</button><button data-mf-back>Powrót</button></div>
-      <small>Odtwarzacz i ścieżki audio/napisy pozostają oryginalne w Jellyfin.</small></div></div>
+      <div><h1>${h(it.title)}</h1><div class="mf-mini">${h(it.year||'—')}${it.anime&&it.kind?' · '+h(it.kind):''}</div><div class="mf-pills">${genrePills(it.genres)}</div>
+      <p>${h(it.plot||'Brak opisu w źródle metadanych.')}</p>
+      ${it.anime?malAccountControls():''}
+      ${!it.anime||!state.mal.connected||!it.mal_id?ratingForm(it,null):''}
+      ${it.anime?malRow(it,null,'Pierwszy sezon / seria'):''}
+      <div class="mf-actions"><button class="mf-primary" data-mf-jellyfin="${h(it.id)}">Otwórz w Jellyfin</button><button data-mf-back>Powrót</button></div>
+      <small>Odtwarzacz pozostaje oryginalny Jellyfin.</small></div></div>
+      ${seasonRows?`<h2>Sezony</h2><div class="mf-season-list">${seasonRows}</div>`:''}
       ${episodes?.length?`<h2>Odcinki</h2><div class="mf-episode-grid">${episodes.map(x=>`<button data-mf-jellyfin="${h(x.id)}" class="mf-episode">S${h(x.season??'?')}E${h(x.number??'?')} · ${h(x.title||'Odcinek')} <span>▶</span></button>`).join('')}</div>`:''}</section>`;
   }
   function applyActiveTabs(){$$('[data-mf-tab]',$('#mf-portal')).forEach(x=>x.classList.toggle('active',x.dataset.mfTab===state.tab));}
@@ -252,9 +368,9 @@
     if (!state.open || !state.ready) return;
     const page=$('#mf-content'); if(!page)return;
     for (const url of state.objectUrls) URL.revokeObjectURL(url);state.objectUrls=[];
-    if(state.detail){page.innerHTML=detail(state.detail.item,state.detail.episodes);}
+    if(state.detail){page.innerHTML=detail(state.detail.item,state.detail.episodes,state.detail.seasons);}
     else if(state.tab==='home')page.innerHTML=home();
-    else if(['anime','movies','series'].includes(state.tab))page.innerHTML=listings(state.tab);
+    else if(['recent','anime','movies','series'].includes(state.tab))page.innerHTML=listings(state.tab);
     else page.innerHTML=search(state.tab);
     applyActiveTabs(); loadImages(page);page.scrollTop=0;
   }
@@ -297,6 +413,22 @@
     location.assign(base + '#!/details?id=' + encodeURIComponent(id));
   }
   function clicked(e){
+    const random=e.target.closest('[data-mf-random]');
+    if(random){
+      const key=random.dataset.mfRandom;
+      const source=state.items.filter(x=>key==='recent'?true:key==='anime'?x.anime:key==='movies'?(!x.anime&&x.type==='Movie'):(!x.anime&&x.type==='Series'));
+      state.homeRandom[key]=shuffled(source).map(x=>x.id);render();return;
+    }
+    const recent=e.target.closest('[data-mf-recent]');
+    if(recent){delete state.homeRandom[recent.dataset.mfRecent];render();return;}
+    if(e.target.closest('[data-mf-mal-connect]')){malConnect().catch(err=>alert(err.message));return;}
+    if(e.target.closest('[data-mf-mal-refresh]')){refreshMal(true);return;}
+    if(e.target.closest('[data-mf-mal-disconnect]')){
+      if(!confirm('Odłączyć MyAnimeList od tego konta MisioFlix? Oceny pozostaną w MAL.'))return;
+      post('mal/disconnect').then(()=>refreshMal(true)).catch(err=>alert(err.message));return;
+    }
+    const save=e.target.closest('[data-mf-save-mal]');
+    if(save){save.disabled=true;saveMalRow(save).catch(err=>{save.disabled=false;alert(err.message)});return;}
     const tab=e.target.closest('[data-mf-tab]');if(tab){toTab(tab.dataset.mfTab);return;}
     if(e.target.closest('[data-mf-close]')){close();return;}
     if(e.target.closest('[data-mf-back]')){state.detail=null;render();return;}
@@ -320,7 +452,16 @@
       else f.include.push(g);render();return;}
     const card=e.target.closest('[data-mf-id]');if(card)showDetails(card.dataset.mfId);
   }
-  function changed(e){const input=e.target.closest('[data-mf-input]');if(!input)return;
+  function changed(e){
+    const rating=e.target.closest('[data-mf-rating]');
+    if(rating && e.type==='change'){
+      rating.disabled=true;
+      savePersonalRating(rating.dataset.mfRatingParent,rating.dataset.mfRatingSeason||null,
+        rating.value===''?null:Number(rating.value))
+        .catch(err=>{rating.disabled=false;alert(err.message)});
+      return;
+    }
+    const input=e.target.closest('[data-mf-input]');if(!input)return;
     const f=state.search[input.dataset.mfScope];if(!f)return;
     const key=input.dataset.mfInput;f[key]=input.value;state.pageSizes[state.tab]=60;
     const start=key==='q'?{position:input.selectionStart, focus:true}:null;

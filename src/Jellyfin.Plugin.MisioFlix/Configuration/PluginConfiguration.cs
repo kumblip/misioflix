@@ -6,6 +6,10 @@ namespace Jellyfin.Plugin.MisioFlix.Configuration;
 public sealed class PluginConfiguration : BasePluginConfiguration
 {
     public bool Enabled { get; set; } = true;
+    // Register this callback URL in the MAL API application. Never commit credentials.
+    public string MalClientId { get; set; } = string.Empty;
+    public string MalClientSecret { get; set; } = string.Empty;
+    public string MalRedirectUri { get; set; } = string.Empty;
 
     // Path seen FROM INSIDE the Jellyfin container, NOT the NAS host path.
     public string AnimeRoot { get; set; } = "/media/raid/animelektor";

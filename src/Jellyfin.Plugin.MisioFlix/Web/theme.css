@@ -85,3 +85,32 @@
 #mf-portal .mf-resume-hidden{margin-top:8px;padding:6px 0 9px;border-top:1px solid #ffffff25}
 @media(max-width:1350px){#mf-portal .mf-resume-list{display:flex}#mf-portal .mf-resume-item:nth-child(n+3){display:flex}}
 @media(max-width:650px){#mf-portal .mf-year-format{font-size:11px}#mf-portal .mf-stats-panel{min-width:43px;padding:3px 4px}#mf-portal .mf-stat strong{font-size:13px}#mf-portal .mf-paw{width:12px;height:12px;flex-basis:12px}#mf-portal .mf-resume-card{flex-basis:218px}#mf-portal .mf-resume-list{display:flex}}
+
+/* MisioFlix 0.4.3 — smaller vertical gaps and clickable, recent-first carousels. */
+#mf-portal .mf-card-body{padding:7px 12px 11px}
+#mf-portal .mf-card-body h3{margin:0;min-height:0;max-height:2.5em;line-height:1.25;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
+#mf-portal .mf-card-body p{margin:5px 0 0;line-height:1.55}
+#mf-portal .mf-carousel-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+#mf-portal .mf-carousel-title{padding:0;background:transparent;border:0;text-align:left;font-size:21px;font-weight:650}
+#mf-portal .mf-carousel-title:hover{text-decoration:underline;text-decoration-color:#ed95bd;text-underline-offset:4px}
+#mf-portal .mf-carousel-title span{color:#ed95bd}
+#mf-portal .mf-carousel-controls{display:flex;gap:6px;align-items:center}
+#mf-portal .mf-carousel-controls button{border:1px solid #ffffff35;border-radius:8px;background:#ffffff10;padding:5px 11px;font-size:12px}
+#mf-portal .mf-carousel-controls button:hover{background:#ffffff22}
+#mf-portal .mf-user-rating{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:13px 0;color:#f4d7ea;font-size:13px;font-weight:600}
+#mf-portal .mf-user-rating select,#mf-portal .mf-mal-row select,#mf-portal .mf-mal-row input{background:#301d30;color:#fff1f5;border:1px solid #ffffff44;border-radius:7px;padding:6px 9px;max-width:170px}
+#mf-portal .mf-mal-account{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid #ffffff22;border-radius:10px;padding:10px;margin:14px 0;background:#251529}
+#mf-portal .mf-mal-account>span{color:#7bdda1}
+#mf-portal .mf-mal-account button{background:#ffffff12;border:1px solid #ffffff35;border-radius:8px;padding:6px 10px}
+#mf-portal .mf-mal-error{color:#f9aaa8}
+#mf-portal .mf-mal-row{display:flex;align-items:flex-end;gap:9px;flex-wrap:wrap;margin:14px 0;border:1px solid #ffffff30;border-radius:11px;padding:12px;background:#251626}
+#mf-portal .mf-mal-row>strong{width:100%;color:#f5d5e7}
+#mf-portal .mf-mal-row label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#efd5e2}
+#mf-portal .mf-mal-row button{border-radius:8px;padding:7px 11px;background:#b13b72;color:#fff;font-weight:650;border:1px solid #ffffff33}
+#mf-portal .mf-mal-row input{max-width:90px}
+#mf-portal .mf-mal-hint{font-size:12px;opacity:.8}
+#mf-portal .mf-season-list{display:grid;gap:14px}
+#mf-portal .mf-season-row{padding:12px;border:1px solid #ffffff24;border-radius:10px;background:#211221}
+#mf-portal .mf-season-row h3{font-size:17px;margin:0 0 8px}
+#mf-portal .mf-season-row small{opacity:.75}
+@media(max-width:650px){#mf-portal .mf-carousel-title{font-size:18px}#mf-portal .mf-card-body{padding:6px 8px 10px}#mf-portal .mf-card-body p{margin-top:4px}}

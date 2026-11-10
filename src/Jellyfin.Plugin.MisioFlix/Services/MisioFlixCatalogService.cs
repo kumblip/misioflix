@@ -108,7 +108,8 @@ public sealed class MisioFlixCatalogService
                         progress_percent = Progress(json),
                         season_count = PositiveInt(Get(json, "ChildCount")),
                         episode_count = PositiveInt(Get(json, "RecursiveItemCount")),
-                        rating = local?.Rating,
+                        rating = PersonalRating(json),
+                        mal_id = local?.MalId,
                         watch_status = WatchStatus(json)
                     });
                 }
@@ -130,7 +131,7 @@ public sealed class MisioFlixCatalogService
                         progress_percent = Progress(json),
                         season_count = type == "Series" ? PositiveInt(Get(json, "ChildCount")) : null,
                         episode_count = type == "Series" ? PositiveInt(Get(json, "RecursiveItemCount")) : null,
-                        rating = PositiveRating(Get(json, "CommunityRating")),
+                        rating = PersonalRating(json),
                         watch_status = WatchStatus(json)
                     });
                 }
@@ -305,6 +306,118 @@ public sealed class MisioFlixCatalogService
         };
     }
 
+    public async Task<string> GetAuthenticatedUserIdAsync(HttpRequest caller,CancellationToken cancel)
+    {
+        var (_,_,userId)=await AuthenticatedUserAsync(caller,cancel).ConfigureAwait(false);
+        return userId;
+    }
+
+    public async Task<int> AuthorizedMalIdAsync(HttpRequest caller,Guid catalogId,Guid? seasonId,CancellationToken cancel)
+    {
+        var catalog=await ReadForAuthenticatedUserAsync(caller,cancel).ConfigureAwait(false);
+        var item=catalog.items.FirstOrDefault(x=>x.id.Equals(catalogId.ToString(),StringComparison.OrdinalIgnoreCase) && x.anime);
+        if(item is null) throw new UnauthorizedAccessException("Anime not accessible");
+        if(!seasonId.HasValue)return item.mal_id ?? throw new ArgumentException("Brak identyfikatora MAL w NFO serii");
+        var seasons=await ReadSeasonsAsync(caller,catalogId,cancel).ConfigureAwait(false);
+        var season=seasons.FirstOrDefault(x=>x.id.Equals(seasonId.Value.ToString(),StringComparison.OrdinalIgnoreCase));
+        return season?.mal_id ?? throw new ArgumentException("Brak identyfikatora MAL w NFO sezonu");
+    }
+
+    /// <summary>Update per-user numeric rating in Jellyfin; never CommunityRating or NFO.</summary>
+    public async Task<double?> SetPersonalRatingAsync(HttpRequest caller, Guid itemId, double? score, CancellationToken cancel)
+    {
+        if (score.HasValue && (!double.IsFinite(score.Value) || score.Value < 1 || score.Value > 10 ||
+            Math.Abs(score.Value * 2 - Math.Round(score.Value * 2)) > 0.00001))
+            throw new ArgumentOutOfRangeException(nameof(score), "Ocena: 1–10, skok 0,5");
+        var catalog = await ReadForAuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        if (!catalog.items.Any(x => x.id.Equals(itemId.ToString(), StringComparison.OrdinalIgnoreCase)))
+            throw new UnauthorizedAccessException("Item not accessible");
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        return await UpdateRatingForItemAsync(origin, auth, userId, itemId, score, cancel).ConfigureAwait(false);
+    }
+
+    public async Task<double?> SetSeasonRatingAsync(HttpRequest caller, Guid parentId, Guid seasonId,
+        double? score, CancellationToken cancel)
+    {
+        if (score.HasValue && (!double.IsFinite(score.Value) || score.Value < 1 || score.Value > 10 ||
+            Math.Abs(score.Value * 2 - Math.Round(score.Value * 2)) > 0.00001))
+            throw new ArgumentOutOfRangeException(nameof(score));
+        var catalog = await ReadForAuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        if (!catalog.items.Any(x => x.id.Equals(parentId.ToString(), StringComparison.OrdinalIgnoreCase) && x.type == "Series"))
+            throw new UnauthorizedAccessException("Series not accessible");
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        using var doc = await GetJsonAsync(origin,
+            $"Shows/{parentId}/Seasons?UserId={Uri.EscapeDataString(userId)}&Fields=Overview&EnableUserData=true", auth, cancel)
+            .ConfigureAwait(false);
+        var seasons = Get(doc.RootElement, "Items");
+        if (seasons.ValueKind != JsonValueKind.Array || !seasons.EnumerateArray().Any(x =>
+            Text(Get(x,"Id")).Equals(seasonId.ToString("N"), StringComparison.OrdinalIgnoreCase) ||
+            Text(Get(x,"Id")).Equals(seasonId.ToString(), StringComparison.OrdinalIgnoreCase)))
+            throw new UnauthorizedAccessException("Season not accessible");
+        return await UpdateRatingForItemAsync(origin, auth, userId, seasonId, score, cancel).ConfigureAwait(false);
+    }
+
+    private async Task<double?> UpdateRatingForItemAsync(Uri origin, string auth, string userId, Guid id,
+        double? score, CancellationToken cancel)
+    {
+        var route = $"UserItems/{id}/UserData?userId={Uri.EscapeDataString(userId)}";
+        using var current = await GetJsonAsync(origin, route, auth, cancel).ConfigureAwait(false);
+        // Jellyfin UserData updates use a complete DTO. Preserve every existing playback field.
+        var original = current.RootElement;
+        var props = new Dictionary<string, object?>
+        {
+            ["ItemId"] = id,
+            ["Key"] = Text(Get(original, "Key")),
+            ["Played"] = Get(original,"Played").ValueKind == JsonValueKind.True,
+            ["PlayCount"] = (int)Number(Get(original,"PlayCount")),
+            ["PlaybackPositionTicks"] = (long)Number(Get(original,"PlaybackPositionTicks")),
+            ["IsFavorite"] = Get(original,"IsFavorite").ValueKind == JsonValueKind.True,
+            ["Rating"] = score,
+        };
+        var last = Text(Get(original, "LastPlayedDate"));
+        if (!string.IsNullOrEmpty(last)) props["LastPlayedDate"] = last;
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(origin, route));
+        request.Headers.TryAddWithoutValidation("Authorization", auth);
+        request.Content = new System.Net.Http.StringContent(JsonSerializer.Serialize(props),
+            System.Text.Encoding.UTF8, "application/json");
+        using var response = await _client.SendAsync(request, cancel).ConfigureAwait(false);
+        if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
+            throw new UnauthorizedAccessException("Jellyfin denied rating update");
+        response.EnsureSuccessStatusCode();
+        return score;
+    }
+
+    public async Task<List<SeasonInfo>> ReadSeasonsAsync(HttpRequest caller, Guid seriesId, CancellationToken cancel)
+    {
+        var catalog = await ReadForAuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        var series = catalog.items.FirstOrDefault(x => x.id.Equals(seriesId.ToString(), StringComparison.OrdinalIgnoreCase) && x.type == "Series");
+        if (series is null) throw new UnauthorizedAccessException("Series not accessible");
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        using var doc = await GetJsonAsync(origin,
+            $"Shows/{seriesId}/Seasons?UserId={Uri.EscapeDataString(userId)}&EnableUserData=true", auth, cancel)
+            .ConfigureAwait(false);
+        var array = Get(doc.RootElement,"Items");
+        var list = new List<SeasonInfo>();
+        if (array.ValueKind != JsonValueKind.Array) return list;
+        foreach (var it in array.EnumerateArray())
+        {
+            var id = Text(Get(it,"Id"));
+            if (!Guid.TryParse(id,out var guid)) continue;
+            var season = _library.GetItemById(guid);
+            // A local tvshow.nfo may exist under each physical season's folder.
+            var nfo = series.anime ? ReadSeasonNfo(season?.Path) : null;
+            list.Add(new SeasonInfo(id,Text(Get(it,"Name")),(int?)PositiveInt(Get(it,"IndexNumber")),
+                PersonalRating(it),nfo?.MalId,WatchStatus(it)));
+        }
+        return list;
+    }
+
+    private static LocalNfo? ReadSeasonNfo(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        return ReadNfo(path,"Series");
+    }
+
     private async Task<(Uri origin, string auth, string userId)> AuthenticatedUserAsync(HttpRequest caller, CancellationToken cancel)
     {
         var auth = caller.Headers.Authorization.ToString();
@@ -355,7 +468,7 @@ public sealed class MisioFlixCatalogService
         var folder = Directory.Exists(itemPath) ? itemPath : Path.GetDirectoryName(itemPath);
         if (string.IsNullOrWhiteSpace(folder)) return null;
         var candidates = new List<string>();
-        if (type == "Series") candidates.Add(Path.Combine(folder, "tvshow.nfo"));
+        if (type == "Series") { candidates.Add(Path.Combine(folder, "tvshow.nfo")); candidates.Add(Path.Combine(folder, "season.nfo")); }
         else
         {
             candidates.Add(Path.Combine(folder, "movie.nfo"));
@@ -390,7 +503,10 @@ public sealed class MisioFlixCatalogService
                     nfo.Elements("genre").Select(e => e.Value.Trim())
                         .Where(s => !string.IsNullOrWhiteSpace(s))
                         .Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-                    ParseNfoRating(nfo));
+                    ParseNfoRating(nfo),
+                    int.TryParse(nfo.Elements("uniqueid").FirstOrDefault(e =>
+                        string.Equals((string?)e.Attribute("type"), "mal", StringComparison.OrdinalIgnoreCase))?.Value,
+                        NumberStyles.None, CultureInfo.InvariantCulture, out var malId) && malId > 0 ? malId : null);
             }
             catch (XmlException) { /* Invalid NFO: no guessing */ }
             catch (IOException) { /* File in use: retry next request */ }
@@ -416,6 +532,9 @@ public sealed class MisioFlixCatalogService
             return value;
         return null;
     }
+
+    private static double? PersonalRating(JsonElement item)
+        => PositiveRating(Get(Get(item, "UserData"), "Rating"));
 
     private static double? PositiveRating(JsonElement item)
     {
@@ -482,7 +601,7 @@ public sealed class MisioFlixCatalogService
             .Select(x => x.GetString() ?? string.Empty).Where(x => x.Length > 0).ToList();
     }
 
-    private sealed record LocalNfo(string OriginalTitle, string Year, string Plot, string Kind, List<string> Genres, double? Rating);
+    private sealed record LocalNfo(string OriginalTitle, string Year, string Plot, string Kind, List<string> Genres, double? Rating, int? MalId);
 }
 
 public sealed record GenreSets(string[] anime, string[] media);
@@ -504,6 +623,7 @@ public sealed class CatalogItem
     public int? season_count { get; set; }
     public int? episode_count { get; set; }
     public double? rating { get; set; }
+    public int? mal_id { get; set; }
     public string watch_status { get; set; } = "unwatched";
 }
 
@@ -517,3 +637,5 @@ public sealed class ResumeItem
     public int? episode { get; set; }
     public bool next_up { get; set; }
 }
+
+public sealed record SeasonInfo(string id, string name, int? number, double? rating, int? mal_id, string watch_status);

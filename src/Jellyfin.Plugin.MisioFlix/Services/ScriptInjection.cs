@@ -67,11 +67,11 @@ public sealed class MisioFlixStartupFilter : IStartupFilter
                 }
 
                 // Idempotent across restarts and multiple middleware instances.
-                const string marker = "data-misioflix=\"native-v0.4.2\"";
+                const string marker = "data-misioflix=\"native-v0.4.3\"";
                 if (!input.Contains(marker, StringComparison.Ordinal))
                 {
-                    const string inject = "<link data-misioflix=\"native-v0.4.2\" rel=\"stylesheet\" href=\"../MisioFlix/assets/theme.css?v=0.4.2.0\">" +
-                        "<script data-misioflix=\"native-v0.4.2\" defer src=\"../MisioFlix/assets/client.js?v=0.4.2.0\"></script>";
+                    const string inject = "<link data-misioflix=\"native-v0.4.3\" rel=\"stylesheet\" href=\"../MisioFlix/assets/theme.css?v=0.4.3.0\">" +
+                        "<script data-misioflix=\"native-v0.4.3\" defer src=\"../MisioFlix/assets/client.js?v=0.4.3.0\"></script>";
                     var at = input.LastIndexOf("</head>", StringComparison.OrdinalIgnoreCase);
                     input = input.Insert(at, inject);
                 }
@@ -103,6 +103,8 @@ public sealed class MisioFlixServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection services, IServerApplicationHost applicationHost)
     {
         services.AddTransient<IStartupFilter, MisioFlixStartupFilter>();
+        services.AddHttpClient<MisioFlixMalService>(http => { http.Timeout=TimeSpan.FromSeconds(30); })
+            .ConfigurePrimaryHttpMessageHandler(() => new System.Net.Http.HttpClientHandler { AllowAutoRedirect=false });
         services.AddHttpClient<MisioFlixCatalogService>(http =>
         {
             http.Timeout = TimeSpan.FromSeconds(30);

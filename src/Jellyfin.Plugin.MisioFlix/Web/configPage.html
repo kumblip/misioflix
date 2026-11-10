@@ -1,12 +1,42 @@
 <!doctype html>
-<html lang="pl">
-<head><meta charset="UTF-8"><title>MisioFlix</title></head>
-<body>
+<html lang="pl"><head><meta charset="utf-8"><title>MisioFlix</title></head><body>
 <div data-role="page" class="page type-interior pluginConfigurationPage" id="misioflixConfigPage">
-  <div data-role="content"><h1>MisioFlix 0.4.2</h1>
-    <p>Autorska wtyczka do Jellyfin 12.4. Ten etap służy weryfikacji ładowania zasobów w Jellyfin Web.</p>
-    <p>Domyślny katalog NFO anime wewnątrz kontenera: <code>/media/raid/animelektor</code>.</p>
-    <p>Ustawienia techniczne zapisuje Jellyfin w konfiguracji wtyczki. Przed udostępnieniem katalogu innym użytkownikom sprawdź uprawnienia i działanie NFO.</p>
-  </div>
-</div>
-</body></html>
+ <div data-role="content">
+  <h1>MisioFlix 0.4.3 — konfiguracja MyAnimeList</h1>
+  <p>Wpisz dane własnej aplikacji z <a href="https://myanimelist.net/apiconfig">MAL API Config</a>.
+   Połączenie i tokeny są osobne dla każdego użytkownika Jellyfin. Nie wpisuj tokenów ręcznie.</p>
+  <form id="mf-config-form">
+   <div class="inputContainer"><label class="inputLabel" for="mf-mal-client">MAL Client ID</label>
+    <input class="emby-input" id="mf-mal-client" type="text" autocomplete="off" /></div>
+   <div class="inputContainer"><label class="inputLabel" for="mf-mal-secret">MAL Client Secret (jeśli aplikacja posiada)</label>
+    <input class="emby-input" id="mf-mal-secret" type="password" autocomplete="new-password" /></div>
+   <div class="inputContainer"><label class="inputLabel" for="mf-mal-redirect">Callback URL (dokładnie taki sam jak w MAL)</label>
+    <input class="emby-input" id="mf-mal-redirect" type="url" placeholder="https://twoj-adres/MisioFlix/api/mal/callback" autocomplete="off" /></div>
+   <p>W obrębie sieci lokalnej możesz użyć adresu http://kumadlaneko:8096/MisioFlix/api/mal/callback, o ile MAL zaakceptuje go przy rejestracji aplikacji. Dla dostępu z Internetu użyj HTTPS.</p>
+   <button type="submit" class="raised button-submit emby-button">Zapisz ustawienia MAL</button>
+   <p id="mf-config-status" aria-live="polite"></p>
+  </form>
+ </div>
+ <script>
+ (()=>{
+  const view=document.querySelector('#misioflixConfigPage');
+  const pluginId='97d15b37-b868-492b-83da-eb67b16a0d44';
+  view.addEventListener('pageshow',async()=>{
+   try{const config=await ApiClient.getPluginConfiguration(pluginId);
+    view.querySelector('#mf-mal-client').value=config.MalClientId||'';
+    view.querySelector('#mf-mal-secret').value=config.MalClientSecret||'';
+    view.querySelector('#mf-mal-redirect').value=config.MalRedirectUri||'';
+   }catch(e){view.querySelector('#mf-config-status').textContent='Nie udało się pobrać konfiguracji: '+e.message;}
+  });
+  view.querySelector('#mf-config-form').addEventListener('submit',async e=>{
+   e.preventDefault();const status=view.querySelector('#mf-config-status');
+   try{const config=await ApiClient.getPluginConfiguration(pluginId);
+    config.MalClientId=view.querySelector('#mf-mal-client').value.trim();
+    config.MalClientSecret=view.querySelector('#mf-mal-secret').value;
+    config.MalRedirectUri=view.querySelector('#mf-mal-redirect').value.trim();
+    await ApiClient.updatePluginConfiguration(pluginId,config);status.textContent='Ustawienia zapisane. W MisioFlix wybierz Połącz konto MAL.';
+   }catch(error){status.textContent='Błąd: '+error.message;}
+  });
+ })();
+ </script>
+</div></body></html>

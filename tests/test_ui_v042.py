@@ -8,7 +8,7 @@ CSS=(SRC/'Web/theme.css').read_text()
 SERVICE=(SRC/'Services/MisioFlixCatalogService.cs').read_text()
 CONTROLLER=(SRC/'Controllers/MisioFlixController.cs').read_text()
 
-class V042Tests(unittest.TestCase):
+class V043Tests(unittest.TestCase):
  def test_visual_css_and_js(self):
   for s in ['mf-status-unwatched','mf-status-started','mf-status-watched','mf-stats-panel','mf-year-format','mf-poster-genres','mf-poster-progress']:
    self.assertIn(s,CSS)
@@ -20,9 +20,10 @@ class V042Tests(unittest.TestCase):
   self.assertIn('line-clamp:4',CSS)
   self.assertIn('aria-label="Oglądaj dalej"',JS)
  def test_nfo_anime_rating_and_play_status(self):
-  self.assertIn('rating = local?.Rating',SERVICE)
+  self.assertIn('rating = PersonalRating(json)',SERVICE)
   self.assertIn('ParseNfoRating',SERVICE)
-  self.assertIn('rating = PositiveRating(Get(json, "CommunityRating"))',SERVICE)
+  self.assertNotIn('rating = PositiveRating(Get(json, "CommunityRating"))',SERVICE)
+  self.assertIn('mal_id = local?.MalId',SERVICE)
   self.assertIn('UnplayedItemCount',SERVICE)
   self.assertIn('RecursiveItemCount',SERVICE)
  def test_resumes_are_per_user_and_dont_write_jellyfin_history(self):
