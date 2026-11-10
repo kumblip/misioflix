@@ -149,6 +149,59 @@ public sealed class MisioFlixCatalogService
     }
 
     /// <summary>
+    /// Small, permission-filtered batch of overlay metadata. Unlike /api/catalog this
+    /// never scans the full library. Max 18 items; anime text/genres come ONLY from NFO.
+    /// The Jellyfin /Items query with UserId and the caller's own token acts as the
+    /// authorisation gate. Item paths/identifiers are never accepted as filesystem paths.
+    /// </summary>
+    public async Task<List<OverlayInfo>> ReadOverlaysForAuthenticatedUserAsync(
+        HttpRequest caller, string? ids, CancellationToken cancel)
+    {
+        var requested = (ids ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => Guid.TryParse(x, out _))
+            .Select(Guid.Parse).Distinct().Take(18).ToList();
+        if (requested.Count == 0) return new List<OverlayInfo>();
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        var query = $"Items?UserId={Uri.EscapeDataString(userId)}" +
+            $"&Ids={Uri.EscapeDataString(string.Join(",", requested.Select(g => g.ToString("N"))))}" +
+            "&Fields=Genres,ChildCount,RecursiveItemCount" +
+            "&EnableUserData=true&Limit=18";
+        using var doc = await GetJsonAsync(origin, query, auth, cancel).ConfigureAwait(false);
+        var items = Get(doc.RootElement, "Items");
+        var output = new List<OverlayInfo>();
+        if (items.ValueKind != JsonValueKind.Array) return output;
+        var allowedIds = requested.ToHashSet();
+        var root = Path.GetFullPath(Plugin.Instance?.Configuration.AnimeRoot
+            ?? throw new InvalidOperationException("Missing anime root"));
+        foreach (var item in items.EnumerateArray())
+        {
+            if (!Guid.TryParse(Text(Get(item,"Id")), out var id) || !allowedIds.Contains(id)) continue;
+            var libItem = _library.GetItemById(id);
+            if (libItem is null) continue;
+            var type = Text(Get(item,"Type"));
+            var anime = IsBelowRoot(libItem.Path, root);
+            var nfo = anime ? ReadNfo(libItem.Path, type) : null;
+            var genres = anime ? (nfo?.Genres ?? new List<string>()) : Strings(Get(item,"Genres"));
+            var info = new OverlayInfo
+            {
+                id = id.ToString("N"),
+                anime = anime,
+                year = anime ? (nfo?.Year ?? string.Empty) : Text(Get(item,"ProductionYear")),
+                format = anime ? (nfo?.Kind ?? string.Empty) : string.Empty,
+                genres = genres.Take(3).ToList(),
+                seasons = type == "Series" ? PositiveInt(Get(item,"ChildCount")) : null,
+                episodes = type == "Series" ? PositiveInt(Get(item,"RecursiveItemCount")) : null,
+                userRating = PersonalRating(item),
+                watchStatus = type == "Series" && Get(Get(item,"UserData"),"UnplayedItemCount").ValueKind != JsonValueKind.Number
+                    && Get(Get(item,"UserData"),"Played").ValueKind != JsonValueKind.True
+                    ? string.Empty : WatchStatus(item)
+            };
+            output.Add(info);
+        }
+        return output;
+    }
+
+    /// <summary>
     /// Playback items are resolved via the current Jellyfin Resume and NextUp endpoints.
     /// Text/genre metadata still comes only from the authorised catalogue / anime NFO.
     /// Hidden entries are per user and never alter Jellyfin's playback history.
@@ -506,6 +559,7 @@ public sealed class MisioFlixCatalogService
         if (string.IsNullOrWhiteSpace(folder)) return null;
         var candidates = new List<string>();
         if (type == "Series") { candidates.Add(Path.Combine(folder, "tvshow.nfo")); candidates.Add(Path.Combine(folder, "season.nfo")); }
+        else if (type == "Season") { candidates.Add(Path.Combine(folder, "season.nfo")); candidates.Add(Path.Combine(folder, "tvshow.nfo")); }
         else
         {
             candidates.Add(Path.Combine(folder, "movie.nfo"));
@@ -678,3 +732,17 @@ public sealed class ResumeItem
 public sealed record SeasonInfo(string id, string name, int? number, double? rating, int? mal_id, string watch_status);
 
 public sealed record EpisodeInfo(string id, string title, int? season, int? number, bool watched);
+
+/// <summary>Exactly the fields needed by decorative badges on existing Jellyfin cards.</summary>
+public sealed class OverlayInfo
+{
+    public string id { get; set; } = string.Empty;
+    public bool anime { get; set; }
+    public string year { get; set; } = string.Empty;
+    public string format { get; set; } = string.Empty;
+    public List<string> genres { get; set; } = new();
+    public int? seasons { get; set; }
+    public int? episodes { get; set; }
+    public double? userRating { get; set; }
+    public string watchStatus { get; set; } = string.Empty;
+}

@@ -25,7 +25,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.6", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.9", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
@@ -49,6 +49,21 @@ public sealed class MisioFlixController : ControllerBase
         stream.CopyTo(memory);
         Response.Headers.CacheControl = "public, max-age=3600";
         return File(memory.ToArray(), contentType);
+    }
+
+    [HttpGet("api/overlays")]
+    [Authorize]
+    public async Task<IActionResult> Overlays([FromQuery] string? ids, CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        try
+        {
+            return Ok(await _catalog.ReadOverlaysForAuthenticatedUserAsync(Request,ids,cancel).ConfigureAwait(false));
+        }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (HttpRequestException) { return StatusCode(502,new {error="Błąd odczytu Jellyfin"}); }
+        catch (InvalidOperationException) { return StatusCode(503,new {error="Niedostępne metadane"}); }
     }
 
     [HttpGet("api/catalog")]
