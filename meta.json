@@ -1,0 +1,13 @@
+{
+  "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
+  "name": "MisioFlix",
+  "description": "Autorski interfejs, dwie wyszukiwarki i NFO anime wewnątrz Jellyfin Web.",
+  "overview": "MisioFlix native extension for Jellyfin 12.4",
+  "owner": "MisioFlix",
+  "category": "General",
+  "version": "0.4.0.0",
+  "targetAbi": "12.4.0.0",
+  "status": "Active",
+  "autoUpdate": false,
+  "assemblies": ["Jellyfin.Plugin.MisioFlix.dll"]
+}
