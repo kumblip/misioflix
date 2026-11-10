@@ -1,1 +1,21 @@
-[]
+[
+  {
+    "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
+    "name": "MisioFlix",
+    "description": "Autorski interfejs, dwie wyszukiwarki i NFO anime wewnątrz Jellyfin Web.",
+    "overview": "MisioFlix native extension for Jellyfin 12.4",
+    "owner": "kumblip",
+    "category": "General",
+    "imageUrl": "https://raw.githubusercontent.com/kumblip/misioflix/main/src/Jellyfin.Plugin.MisioFlix/Web/assets/mark.png",
+    "versions": [
+      {
+        "version": "0.4.0.0",
+        "changelog": "MisioFlix 0.4.0.0 dla Jellyfin 12.4.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://github.com/kumblip/misioflix/releases/download/v0.4.0.0/MisioFlix_0.4.0.0_JF12.4.zip",
+        "checksum": "4a923c5218d89cac89fba13fcbf484c0",
+        "timestamp": "2026-11-10T09:44:25Z"
+      }
+    ]
+  }
+]
