@@ -25,7 +25,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.10", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.12", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
@@ -35,6 +35,7 @@ public sealed class MisioFlixController : ControllerBase
         var (resource, contentType) = filename switch
         {
             "client.js" => ("Web.client.js", "text/javascript; charset=utf-8"),
+            "home.js" => ("Web.home.js", "text/javascript; charset=utf-8"),
             "theme.css" => ("Web.theme.css", "text/css; charset=utf-8"),
             "logo.png" => ("Web.assets.logo.png", "image/png"),
             "mark.png" => ("Web.assets.mark.png", "image/png"),
@@ -64,6 +65,46 @@ public sealed class MisioFlixController : ControllerBase
         catch (UnauthorizedAccessException) { return Unauthorized(); }
         catch (HttpRequestException) { return StatusCode(502,new {error="Błąd odczytu Jellyfin"}); }
         catch (InvalidOperationException) { return StatusCode(503,new {error="Niedostępne metadane"}); }
+    }
+
+    // Original Jellyfin home only. These endpoints return small user-authorized
+    // content rows and do not create a parallel Jellyfin app or catalogue.
+    [HttpGet("api/home/libraries")]
+    [Authorize]
+    public async Task<IActionResult> HomeLibraries(CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        try { return Ok(await _catalog.ReadHomeLibrariesAsync(Request, cancel).ConfigureAwait(false)); }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (HttpRequestException) { return StatusCode(502, new { error="Biblioteki Jellyfin są niedostępne" }); }
+    }
+
+    [HttpGet("api/home/shelf")]
+    [Authorize]
+    public async Task<IActionResult> HomeShelf([FromQuery] Guid libraryId,
+        [FromQuery] string? mode, [FromQuery] int startIndex=0,
+        [FromQuery] int limit=12, CancellationToken cancel=default)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        if (libraryId == Guid.Empty || startIndex < 0 || startIndex > 40000 || limit < 1 || limit > 24)
+            return BadRequest(new { error="Nieprawidłowe parametry karuzeli" });
+        Response.Headers.CacheControl = "private, no-store";
+        try { return Ok(await _catalog.ReadHomeShelfAsync(Request, libraryId, mode, startIndex, limit, cancel).ConfigureAwait(false)); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (ArgumentOutOfRangeException) { return BadRequest(); }
+        catch (HttpRequestException) { return StatusCode(502, new { error="Nie udało się odczytać biblioteki" }); }
+        catch (InvalidOperationException) { return StatusCode(503, new { error="Niedostępny katalog NFO" }); }
+    }
+
+    [HttpGet("api/home/resume")]
+    [Authorize]
+    public async Task<IActionResult> HomeResume(CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        try { return Ok(await _catalog.ReadHomeResumeAsync(Request, cancel).ConfigureAwait(false)); }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (HttpRequestException) { return StatusCode(502, new { error="Nie udało się odczytać postępu oglądania" }); }
     }
 
     [HttpGet("api/catalog")]

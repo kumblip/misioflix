@@ -459,3 +459,158 @@ html.misioflix-skin .mf-section[data-mf-section="latest"] .itemsContainer {align
 html.misioflix-skin .mf-section[data-mf-anime-shelf="1"] .card[data-mf-anime-poster="1"][data-mf-primary-image="1"] .cardImageContainer {
   background-size:cover!important;
 }
+
+/* ==================== v0.4.12 / native-home custom shelves ====================
+ * Scoped to the original Jellyfin #indexPage / main. User disables native
+ * Latest sections in Jellyfin preferences; we do not replace the web router.
+ */
+html.misioflix-skin .mf-home-0412{
+  --mf-h-pink:#f4a5ce;--mf-h-amber:#e6a23c;--mf-h-green:#45b879;
+  color:#ffedf7;max-width:100%;padding:12px clamp(16px,2.9vw,55px) 60px;
+  box-sizing:border-box;display:flex;flex-direction:column;gap:32px;
+  font-family:inherit;
+}
+html.misioflix-skin .mf-home-0412 *{box-sizing:border-box}
+html.misioflix-skin .mf-home-0412 [hidden]{display:none!important}
+html.misioflix-skin .mf-home-hero{
+  display:grid;grid-template-columns:minmax(230px,38%) minmax(0,62%);
+  gap:24px;min-height:205px;padding:22px 24px;border-radius:20px;
+  background:linear-gradient(112deg,#291228,#58283b 75%,#74354b);
+  border:1px solid rgba(246,161,207,.17);
+}
+html.misioflix-skin .mf-home-intro{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:9px;min-width:0}
+html.misioflix-skin .mf-home-logo{max-width:94px;max-height:58px;width:auto;height:auto;object-fit:contain}
+html.misioflix-skin .mf-home-intro h1{font-size:clamp(21px,2vw,32px);line-height:1.16;margin:0;font-weight:700;color:#fff1f8;letter-spacing:-.02em}
+html.misioflix-skin .mf-home-intro p{font-size:13px;margin:0;color:#d9bdd0}
+html.misioflix-skin .mf-home-resume{min-width:0;display:flex;flex-direction:column;gap:11px}
+html.misioflix-skin .mf-home-resume-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+html.misioflix-skin .mf-home-resume-head h2{font-size:18px;line-height:1.3;margin:0;color:#fff0f6}
+html.misioflix-skin .mf-home-resume-items,html.misioflix-skin .mf-home-resume-hidden{
+  display:flex;flex-wrap:nowrap;gap:9px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;
+  scroll-snap-type:x proximity;padding:2px 1px 7px;
+}
+html.misioflix-skin .mf-home-resume-hidden{border-top:1px solid #79516e;padding-top:11px}
+html.misioflix-skin .mf-home-resume-card{
+  flex:0 0 245px;max-width:245px;display:flex;align-items:center;gap:9px;position:relative;
+  padding:10px;border-radius:13px;border:1px solid rgba(244,165,206,.19);
+  background:rgba(255,255,255,.075);scroll-snap-align:start;
+}
+html.misioflix-skin .mf-home-resume-poster{
+  display:block;flex:0 0 57px;height:80px;border-radius:6px;overflow:hidden;background:#302134;
+}
+html.misioflix-skin .mf-home-resume-poster img{width:100%;height:100%;object-fit:cover}
+html.misioflix-skin .mf-home-resume-content{min-width:0;display:flex;flex:1;flex-direction:column;gap:5px}
+html.misioflix-skin .mf-home-resume-title{
+  color:#fff;font-size:12px;font-weight:700;text-decoration:none;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+}
+html.misioflix-skin .mf-home-resume-subtitle{font-size:11px;color:#e1cada}
+html.misioflix-skin .mf-home-progress{height:4px;background:#7b6574;border-radius:3px;margin-top:4px;overflow:hidden}
+html.misioflix-skin .mf-home-progress-bar{height:100%;background:linear-gradient(90deg,#ffa05e,#f04196)}
+html.misioflix-skin .mf-home-resume-remove{
+  position:absolute;right:6px;top:5px;border:1px solid rgba(255,255,255,.17);
+  background:rgba(37,17,33,.75);border-radius:7px;padding:1px 6px;min-height:23px;
+  color:#fff;font-size:13px;cursor:pointer;
+}
+html.misioflix-skin .mf-home-resume-remove:hover{background:#74334f}
+html.misioflix-skin .mf-home-rows{display:flex;flex-direction:column;gap:32px;min-width:0}
+html.misioflix-skin .mf-home-shelf{display:flex;flex-direction:column;gap:12px;min-width:0}
+html.misioflix-skin .mf-home-shelf-heading{display:flex;justify-content:space-between;align-items:center;gap:8px}
+html.misioflix-skin .mf-home-shelf-heading h2{margin:0;font-size:21px;font-weight:700;line-height:1.28}
+html.misioflix-skin .mf-home-shelf-heading h2 a{color:#fceefa!important;text-decoration:none!important}
+html.misioflix-skin .mf-home-shelf-heading h2 a:hover{color:#f49bc3!important}
+html.misioflix-skin .mf-home-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+html.misioflix-skin .mf-home-button,html.misioflix-skin .mf-home-nav{
+  background:rgba(255,255,255,.075);border:1px solid rgba(245,167,207,.26);
+  border-radius:9px;color:#fff0f7;cursor:pointer;padding:6px 11px;font-size:12px;
+  line-height:1.3;min-height:28px;
+}
+html.misioflix-skin .mf-home-nav{font-size:21px;line-height:22px;padding:1px 10px;min-width:30px}
+html.misioflix-skin .mf-home-button:hover,html.misioflix-skin .mf-home-nav:hover{background:#5c314f}
+html.misioflix-skin .mf-home-button:disabled{opacity:.45;cursor:wait}
+html.misioflix-skin .mf-home-shelf-scroll{
+  display:flex;align-items:stretch;gap:14px;min-height:275px;overflow-x:auto;overflow-y:hidden;
+  scroll-snap-type:x proximity;overscroll-behavior-inline:contain;scrollbar-width:thin;
+  scrollbar-color:#6c4563 transparent;padding:3px 2px 9px;
+}
+html.misioflix-skin .mf-home-card{
+  flex:0 0 clamp(162px,11.4vw,218px);width:clamp(162px,11.4vw,218px);
+  border-radius:15px;overflow:hidden;display:flex;flex-direction:column;
+  background:linear-gradient(180deg,#291a2a,#201320);
+  border:1px solid rgba(247,181,219,.17);scroll-snap-align:start;
+  box-shadow:0 6px 13px rgba(0,0,0,.09);
+  transition:transform .15s ease,border-color .15s ease;
+}
+html.misioflix-skin .mf-home-card:hover{transform:translateY(-2px);border-color:#aa7096}
+html.misioflix-skin .mf-home-poster{
+  position:relative;display:block;width:100%;aspect-ratio:2/3;overflow:hidden;
+  background:linear-gradient(130deg,#4e3447 12%,#2d2032 43%,#533b4e 73%);
+  color:#fff!important;text-decoration:none!important;isolation:isolate;
+}
+html.misioflix-skin .mf-home-cover{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  background:#302137;
+}
+html.misioflix-skin .mf-home-poster:after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(to bottom,rgba(20,5,21,.22),transparent 28%,transparent 69%,rgba(23,8,24,.67));
+  z-index:1;
+}
+html.misioflix-skin .mf-home-poster[data-mf-watch="unwatched"]{outline:2px solid #f4a5ce;outline-offset:-2px}
+html.misioflix-skin .mf-home-poster[data-mf-watch="started"]{outline:2px solid #e6a23c;outline-offset:-2px}
+html.misioflix-skin .mf-home-poster[data-mf-watch="watched"]{outline:2px solid #45b879;outline-offset:-2px}
+html.misioflix-skin .mf-home-top-left{
+  position:absolute;z-index:2;left:8px;top:8px;display:flex;flex-direction:column;align-items:start;gap:4px;
+}
+html.misioflix-skin .mf-home-kind,html.misioflix-skin .mf-home-year{
+  display:inline-block;background:rgba(31,17,32,.84);border-radius:5px;padding:3px 6px;
+  color:#fff0f7;font-weight:700;line-height:1.1;font-size:11px;
+}
+html.misioflix-skin .mf-home-kind{letter-spacing:.04em}
+html.misioflix-skin .mf-home-year{font-size:12px;color:#f6d0a0}
+html.misioflix-skin .mf-home-stats{
+  position:absolute;z-index:2;top:8px;right:8px;border:1px solid rgba(255,255,255,.4);
+  border-radius:10px;background:rgba(21,12,24,.8);padding:4px 5px;
+  display:flex;flex-direction:column;gap:4px;min-width:36px;
+}
+html.misioflix-skin .mf-home-stat{display:flex;align-items:center;gap:3px;justify-content:flex-end;font-size:12px;font-weight:750;color:#fff}
+html.misioflix-skin .mf-home-paw{width:13px;height:13px;flex:0 0 13px}
+html.misioflix-skin .mf-home-genres{
+  position:absolute;z-index:2;left:7px;right:7px;bottom:8px;display:flex;flex-wrap:wrap;gap:3px;
+}
+html.misioflix-skin .mf-home-genre{
+  background:rgba(40,22,43,.8);border:1px solid rgba(255,255,255,.22);
+  border-radius:10px;color:#f5eaf3;padding:2px 5px;font-size:10px;line-height:1.2;
+}
+html.misioflix-skin .mf-home-card-body{padding:10px 11px 12px;display:flex;flex-direction:column;gap:6px;min-height:138px}
+html.misioflix-skin .mf-home-card-title{
+  color:#fff0f8!important;text-decoration:none!important;font-weight:650;font-size:13px;line-height:1.33;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-height:34px;
+}
+html.misioflix-skin .mf-home-card-desc{
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;
+  margin:0;color:#d8c7d5;font-size:12px;line-height:1.48;max-height:71px;
+}
+html.misioflix-skin .mf-home-empty{padding:12px 6px;color:#c8b5c5;font-size:13px}
+@media(max-width:920px){
+  html.misioflix-skin .mf-home-0412{padding:10px 16px 42px;gap:24px}
+  html.misioflix-skin .mf-home-hero{grid-template-columns:minmax(0,1fr);gap:18px;padding:17px;min-height:0}
+  html.misioflix-skin .mf-home-resume-card{flex-basis:220px}
+  html.misioflix-skin .mf-home-shelf-scroll{gap:10px}
+  html.misioflix-skin .mf-home-card{flex-basis:172px;width:172px}
+}
+@media(max-width:560px){
+  html.misioflix-skin .mf-home-0412{padding:9px 11px 32px;gap:20px}
+  html.misioflix-skin .mf-home-hero{border-radius:13px;padding:15px;gap:17px}
+  html.misioflix-skin .mf-home-intro h1{font-size:23px}
+  html.misioflix-skin .mf-home-shelf-heading h2{font-size:17px}
+  html.misioflix-skin .mf-home-nav{display:none}
+  html.misioflix-skin .mf-home-card{flex-basis:153px;width:153px}
+  html.misioflix-skin .mf-home-card-body{padding:9px;min-height:132px}
+  html.misioflix-skin .mf-home-card-title{font-size:12px}
+  html.misioflix-skin .mf-home-card-desc{font-size:11px}
+}
+@media(prefers-reduced-motion:reduce){
+  html.misioflix-skin .mf-home-card{transition:none}
+  html.misioflix-skin .mf-home-shelf-scroll,html.misioflix-skin .mf-home-resume-items{scroll-behavior:auto}
+}
