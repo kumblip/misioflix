@@ -40,6 +40,7 @@ jobs:
           node --check src/Jellyfin.Plugin.MisioFlix/Web/home.js
           python3 -m unittest discover -s tests -p test_v0412.py -v
           python3 -m unittest discover -s tests -p test_home_0412.py -v
+          python3 -m unittest discover -s tests -p test_drag_0413.py -v
           python3 -m unittest discover -s tests -p test_release_tools.py -v
           node tests/ui_v0411.cjs
 
