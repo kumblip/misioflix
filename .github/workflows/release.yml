@@ -41,7 +41,10 @@ jobs:
           python3 -m unittest discover -s tests -p test_v0412.py -v
           python3 -m unittest discover -s tests -p test_home_0412.py -v
           python3 -m unittest discover -s tests -p test_drag_0413.py -v
+          python3 -m unittest discover -s tests -p test_search_0415.py -v
           python3 -m unittest discover -s tests -p test_release_tools.py -v
+          python3 -m unittest discover -s tests -p test_search_relation_0416.py -v
+          node tests/search_relation_0416.cjs
           node tests/ui_v0411.cjs
 
       - name: Kompilacja wtyczki
