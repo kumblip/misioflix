@@ -31,6 +31,9 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Instalacja parsera CSS PostCSS dla testow
+        run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund postcss@8
+
       - name: Testy źródeł
         run: |
           node --check src/Jellyfin.Plugin.MisioFlix/Web/client.js
