@@ -37,7 +37,9 @@ jobs:
       - name: Testy źródeł
         run: |
           node --check src/Jellyfin.Plugin.MisioFlix/Web/client.js
-          python3 -m unittest discover -s tests -p test_v0411.py -v
+          node --check src/Jellyfin.Plugin.MisioFlix/Web/home.js
+          python3 -m unittest discover -s tests -p test_v0412.py -v
+          python3 -m unittest discover -s tests -p test_home_0412.py -v
           python3 -m unittest discover -s tests -p test_release_tools.py -v
           node tests/ui_v0411.cjs
 
@@ -82,7 +84,7 @@ jobs:
             "$ZIP_FILE" "$ZIP_FILE.md5" "$ZIP_FILE.sha256" \
             --target "${GITHUB_SHA}" \
             --title "MisioFlix $VERSION — Jellyfin 12.4" \
-            --notes "MisioFlix: wyglad oryginalnego Jellyfin Web bez dodatkowej strony ani dodatkowego pobierania katalogu. Po instalacji wymagany restart Jellyfin."
+            --notes "MisioFlix: natywna strona Jellyfin z wlasnymi karuzelami bibliotek, pelnymi seriami anime i prywatnym Ogladaj dalej. Restart Jellyfin wymagany."
 
       - name: Opublikuj manifest w gałęzi main
         run: |
