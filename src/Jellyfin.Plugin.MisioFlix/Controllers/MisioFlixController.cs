@@ -25,7 +25,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.5", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.6", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
@@ -247,10 +247,28 @@ public sealed class MisioFlixController : ControllerBase
             var catalog = await _catalog.ReadForAuthenticatedUserAsync(Request, cancellationToken).ConfigureAwait(false);
             var item = catalog.items.Find(x => x.id.Equals(id.ToString(), StringComparison.OrdinalIgnoreCase));
             if(item is null)return NotFound();
-            var seasons=item.type=="Series"
-                ? await _catalog.ReadSeasonsAsync(Request,id,cancellationToken).ConfigureAwait(false)
-                : new System.Collections.Generic.List<SeasonInfo>();
-            return Ok(new { item, seasons, episodes = Array.Empty<object>() });
+            var seasons = new System.Collections.Generic.List<SeasonInfo>();
+            var episodes = new System.Collections.Generic.List<EpisodeInfo>();
+            if (item.type == "Series")
+            {
+                try
+                {
+                    seasons = await _catalog.ReadSeasonsAsync(Request,id,cancellationToken).ConfigureAwait(false);
+                }
+                catch (HttpRequestException e) when (e.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.BadRequest)
+                {
+                    // Keep the details view usable when the optional seasons API is unavailable.
+                }
+                try
+                {
+                    episodes = await _catalog.ReadEpisodesAsync(Request,id,item.anime,cancellationToken).ConfigureAwait(false);
+                }
+                catch (HttpRequestException e) when (e.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.BadRequest)
+                {
+                    // The series details page must remain usable without an episode listing.
+                }
+            }
+            return Ok(new { item, seasons, episodes });
         }
         catch (UnauthorizedAccessException)
         {

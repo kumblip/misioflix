@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   if (window.__MISIOFLIX_NATIVE__) return;
-  window.__MISIOFLIX_NATIVE__ = '0.4.5';
+  window.__MISIOFLIX_NATIVE__ = '0.4.6';
   const h = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const state = {open:false, tab:'home', items:[], genres:{anime:[],media:[]}, genreFrequency:{anime:new Map(),media:new Map()}, resume:[], hiddenResume:[], showHiddenResume:false, resumeError:false, resumeLoading:false, resumePending:null, ready:false, homeRandom:{}, mal:{connected:false,malUserId:null,username:null,entries:{},loading:false,error:null},
                  search:{anime:{q:'',type:'',year:'',include:[],exclude:[]},media:{q:'',type:'',year:'',include:[],exclude:[]}},
@@ -35,7 +35,7 @@
   function jellyfinHeaders() {
     if (!apiClient()) return null;
     const t = state.token.replace(/["\r\n]/g,'');
-    return {'Authorization': `MediaBrowser Client="misioflix", Device="Jellyfin Web", DeviceId="misioflix-web", Version="0.4.5", Token="${t}"`};
+    return {'Authorization': `MediaBrowser Client="misioflix", Device="Jellyfin Web", DeviceId="misioflix-web", Version="0.4.6", Token="${t}"`};
   }
   async function get(path) {
     const headers = jellyfinHeaders();
@@ -130,54 +130,136 @@
     if(!response.ok) throw Error('Nie udało się zapisać zmiany. Spróbuj ponownie.');
     await refreshResume(true);
   }
-  function inject() {
-    if ($('#mf-launch')) return;
-    const btn = document.createElement('button'); btn.id='mf-launch'; btn.type='button';
-    btn.title='Otwórz misioflix'; btn.innerHTML='<img src="/MisioFlix/assets/mark.png" alt=""> <span>misioflix</span>';
-    btn.addEventListener('click', () => open('home'));
-    document.body.appendChild(btn);
-    const root = document.createElement('div'); root.id='mf-portal'; root.className='mf-hidden'; root.setAttribute('aria-label','misioflix');
-    root.innerHTML = `
+  // The native Jellyfin home view is the host. No floating launch button,
+  // fullscreen portal or additional port. Login, settings, details and playback
+  // outside this home view remain under the original Jellyfin router.
+  const ownTabs=new Set(['home','recent','anime','movies','series','search-anime','search-media','mal-account']);
+  let booted=false;
+  let navQueued=false;
+  let routeSequence=0;
+  function currentHomeHost(){
+    const page=document.querySelector('#indexPage');
+    if(!page || page.classList?.contains('hide') || page.closest?.('.hide'))return null;
+    const route=(location.pathname+' '+location.hash).toLowerCase();
+    // Home is mounted but can remain in the DOM while other native pages show.
+    if(/(?:\/|#\/?|#!\/)(?:login|selectserver|dashboard|details|video|playback|mypreferences|search|movies|series)(?:[/?# ]|$)/.test(route))return null;
+    const host=page.querySelector('.homeSectionsContainer');
+    if(!host || !host.isConnected)return null;
+    // Do not show during login or on an invisible home page.
+    if(typeof getComputedStyle==='function'){
+      if(getComputedStyle(page).display==='none' || getComputedStyle(host).display==='none')return null;
+    }
+    return host;
+  }
+  function routeUrl(tab,id=null){
+    const url=new URL(location.href);
+    if(tab==='home') url.searchParams.delete('misioflix');
+    else url.searchParams.set('misioflix',tab);
+    if(tab==='detail'&&id)url.searchParams.set('mfitem',id);
+    else url.searchParams.delete('mfitem');
+    return url.pathname+url.search+url.hash;
+  }
+  function rememberRoute(tab,id=null){
+    history.pushState({...history.state,mfView:tab,mfItem:id},'',routeUrl(tab,id));
+  }
+  function buildHome(){
+    const root=document.createElement('section');
+    root.id='mf-portal';root.className='mf-native-home';
+    root.setAttribute('aria-label','MisioFlix — strona główna Jellyfin');
+    root.innerHTML=`
       <header class="mf-header"><div class="mf-head-inner">
-        <button type="button" class="mf-brand" data-mf-tab="home" aria-label="misioflix — główna"><img src="/MisioFlix/assets/logo.png" alt="misioflix"></button>
-        <nav class="mf-nav"><button data-mf-tab="home">Główna</button><button data-mf-tab="anime">Anime</button><button data-mf-tab="movies">Filmy</button><button data-mf-tab="series">Seriale</button><button data-mf-tab="search-anime">Szukaj anime</button><button data-mf-tab="search-media">Szukaj filmów i seriali</button><button data-mf-tab="mal-account">Moje MAL</button></nav>
-        <button type="button" class="mf-leave" data-mf-close>Powrót do Jellyfin <span aria-hidden="true">×</span></button>
+        <button type="button" class="mf-brand" data-mf-tab="home" aria-label="MisioFlix — strona główna"><img src="/MisioFlix/assets/logo.png" alt="MisioFlix"></button>
+        <nav class="mf-nav" aria-label="Nawigacja MisioFlix"><button data-mf-tab="home">Główna</button><button data-mf-tab="anime">Anime</button><button data-mf-tab="movies">Filmy</button><button data-mf-tab="series">Seriale</button><button data-mf-tab="search-anime">Szukaj anime</button><button data-mf-tab="search-media">Szukaj filmów i seriali</button><button data-mf-tab="mal-account">Moje MAL</button></nav>
       </div></header>
       <main class="mf-main" id="mf-content" tabindex="-1" aria-live="polite"></main>
-      <div class="mf-foot">misioflix · Własna prezentacja, oryginalny odtwarzacz Jellyfin · NFO dla anime</div>`;
-    root.addEventListener('click', clicked);
-    root.addEventListener('keydown', e=>{const c=e.target.closest?.('[data-mf-id]');if(c && ['Enter',' '].includes(e.key)){e.preventDefault();showDetails(c.dataset.mfId);}});
-    root.addEventListener('input', changed);
-    root.addEventListener('change', changed);
-    document.body.appendChild(root);
-    window.addEventListener('keydown', e=>{if(e.key==='Escape' && state.open && !state.detail)close();});
-    window.addEventListener('focus',()=>{
-      const active=apiClient();
-      if(!active && state.open){close();return;}
-      if(active && state.open && !state.ready && !state.pending)load();
+      <div class="mf-foot">MisioFlix · Jellyfin Web · Oryginalny odtwarzacz · Anime: NFO</div>`;
+    root.addEventListener('click',clicked);
+    root.addEventListener('keydown',e=>{
+      const card=e.target.closest?.('[data-mf-id]');
+      if(card && ['Enter',' '].includes(e.key)) {e.preventDefault();showDetails(card.dataset.mfId);}
     });
-    window.addEventListener('popstate',()=>{ if(new URL(location.href).searchParams.has('misioflix'))open(new URL(location.href).searchParams.get('misioflix')||'home',false); });
+    root.addEventListener('input',changed);
+    root.addEventListener('change',changed);
+    return root;
   }
-  function urlFor(tab) {
-    const u = new URL(location.href); u.searchParams.set('misioflix',tab); return u.pathname+u.search+u.hash;
+  function inject(){
+    const host=currentHomeHost();
+    if(!host || !apiClient())return null;
+    let root=document.querySelector('#mf-portal');
+    if(!root){root=buildHome();}
+    if(root.parentElement!==host){
+      host.appendChild(root);
+    }
+    host.classList.add('mf-hosted');
+    // If an old Jellyfin home container was detached, its class has no effect.
+    state.open=true;
+    if(!state.ready && !state.pending)load();
+    return root;
   }
-  function open(tab='home', addHistory=true) {
-    inject();
-    if (!apiClient()) { alert('Zaloguj się do Jellyfin, a potem otwórz misioflix.'); return; }
-    const wasClosed = !state.open;
-    state.open = true; state.tab = tab;
-    $('#mf-portal').classList.remove('mf-hidden');
-    document.body.classList.add('mf-is-open');
-    if (addHistory) history.pushState({misioflix:tab},'',urlFor(tab));
-    sessionStorage.setItem('mf-last-tab',tab);
-    if (!state.ready && !state.pending) load(); else {render(); if (wasClosed && state.ready) {refreshResume();refreshMal();}}
+  function syncHome(){
+    navQueued=false;
+    if(!apiClient()){
+      state.open=false;
+      const root=document.querySelector('#mf-portal');
+      if(root){root.parentElement?.classList.remove('mf-hosted');root.remove();}
+      return;
+    }
+    const host=currentHomeHost();
+    if(!host){state.open=false;return;}
+    const firstMount=!document.querySelector('#mf-portal') || !document.querySelector('#mf-portal').isConnected;
+    if(!inject())return;
+    if(firstMount){restoreRoute();}
   }
-  function close() {
-    state.open=false; $('#mf-portal')?.classList.add('mf-hidden');
-    document.body.classList.remove('mf-is-open');
-    for (const url of state.objectUrls) URL.revokeObjectURL(url); state.objectUrls=[];
-    const u=new URL(location.href);u.searchParams.delete('misioflix');
-    history.replaceState(null,'',u.pathname+u.search+u.hash);
+  function scheduleHomeSync(){
+    if(navQueued)return;
+    navQueued=true;
+    setTimeout(syncHome,60);
+  }
+  function restoreRoute(){
+    if(!state.open)return;
+    const url=new URL(location.href);
+    const raw=url.searchParams.get('misioflix')||'home';
+    const tab=ownTabs.has(raw)?raw:'home';
+    if(raw==='detail'){
+      const id=url.searchParams.get('mfitem');
+      if(id && /^[a-f\d-]{32,36}$/i.test(id)){
+        if(state.ready) showDetails(id,false);
+        else {const seq=++routeSequence;
+          const untilReady=()=>{if(seq!==routeSequence || !state.open)return;
+            if(state.ready)showDetails(id,false);
+            else if(state.pending)setTimeout(untilReady,120);};
+          setTimeout(untilReady,120);
+        }
+        return;
+      }
+    }
+    state.detail=null;state.tab=tab;
+    if(state.ready)render();
+  }
+  function toTab(tab){
+    if(!ownTabs.has(tab))tab='home';
+    if(!state.open || !document.querySelector('#mf-portal'))return;
+    routeSequence++;
+    const unchanged=!state.detail && state.tab===tab;
+    state.detail=null;state.tab=tab;
+    if(!unchanged)rememberRoute(tab);
+    try{sessionStorage.setItem('mf-last-tab',tab);}catch(_){/* optional browser storage */}
+    if(state.ready)render();
+    document.querySelector('#mf-portal')?.scrollIntoView?.({block:'start',behavior:'instant'});
+  }
+  function boot(){
+    if(booted)return;
+    if(!document.body){setTimeout(boot,100);return;}
+    booted=true;
+    const observer=new MutationObserver(scheduleHomeSync);
+    observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+    document.addEventListener('viewshow',scheduleHomeSync);
+    document.addEventListener('HISTORY_UPDATE',scheduleHomeSync);
+    window.addEventListener('hashchange',scheduleHomeSync);
+    window.addEventListener('popstate',()=>{scheduleHomeSync();setTimeout(restoreRoute,80);});
+    window.addEventListener('focus',scheduleHomeSync);
+    window.addEventListener('pageshow',scheduleHomeSync);
+    scheduleHomeSync();
   }
   async function load(force=false) {
     if (state.pending) return state.pending;
@@ -427,6 +509,19 @@
       ${s.number===1?'<small>Ocena pierwszego sezonu: w głównej sekcji produkcji</small>':(!it.anime||!state.mal.connected||!s.mal_id?ratingForm(it,s):'')}
       ${it.anime && s.number!==1?malRow(it,s,'Sezon '+(s.number??'?')):''}
       </div>`).join('');
+    const grouped=new Map();
+    for(const ep of episodes||[]){
+      const number=ep.season??0;
+      if(!grouped.has(number))grouped.set(number,[]);
+      grouped.get(number).push(ep);
+    }
+    const episodesHtml=[...grouped.entries()].sort((a,b)=>a[0]-b[0]).map(([number,eps])=>{
+      const ordered=[...eps].sort((a,b)=>(a.number??0)-(b.number??0));
+      return `<details class="mf-episode-season" ${number===1?'open':''}>
+        <summary>Sezon ${h(number)} · ${ordered.length} odcinków</summary>
+        <div class="mf-episode-grid">${ordered.map(ep=>`<button type="button" data-mf-jellyfin="${h(ep.id)}" class="mf-episode" aria-label="Otwórz odcinek ${h(ep.number??'?')} w Jellyfin"><span>S${h(number)}E${h(ep.number??'?')}${!it.anime&&ep.title?' · '+h(ep.title):''}</span><span>${ep.watched?'✓ ':'▶'}</span></button>`).join('')}</div>
+      </details>`;
+    }).join('');
     return `<section class="mf-detail"><button data-mf-back>← Wróć do katalogu</button><div class="mf-detail-grid">
       <div class="mf-detail-poster mf-poster" data-image="${h(it.has_image?it.id:'')}"><span class="mf-icon">▶</span></div>
       <div><h1>${h(it.title)}</h1><div class="mf-mini">${h(it.year||'—')}${it.anime&&it.kind?' · '+h(it.kind):''}</div><div class="mf-pills">${genrePills(it.genres)}</div>
@@ -437,7 +532,7 @@
       <div class="mf-actions"><button class="mf-primary" data-mf-jellyfin="${h(it.id)}">Otwórz w Jellyfin</button><button data-mf-back>Powrót</button></div>
       <small>Odtwarzacz pozostaje oryginalny Jellyfin.</small></div></div>
       ${seasonRows?`<h2>Sezony</h2><div class="mf-season-list">${seasonRows}</div>`:''}
-      ${episodes?.length?`<h2>Odcinki</h2><div class="mf-episode-grid">${episodes.map(x=>`<button data-mf-jellyfin="${h(x.id)}" class="mf-episode">S${h(x.season??'?')}E${h(x.number??'?')} · ${h(x.title||'Odcinek')} <span>▶</span></button>`).join('')}</div>`:''}</section>`;
+      ${episodesHtml?`<h2>Odcinki</h2>${episodesHtml}`:''}</section>`;
   }
   function applyActiveTabs(){$$('[data-mf-tab]',$('#mf-portal')).forEach(x=>x.classList.toggle('active',x.dataset.mfTab===state.tab));}
   function render() {
@@ -472,22 +567,32 @@
       targets.forEach(x=>observer.observe(x));
     }else targets.slice(0,35).forEach(load);
   }
-  function toTab(tab){state.detail=null;open(tab);}
-  async function showDetails(id){
-    if(!state.items.some(x=>x.id===id))return;
-    const page=$('#mf-content'); page.innerHTML='<div class="mf-loading">Wczytywanie szczegółów…</div>';
-    try{state.detail=await get('item/'+encodeURIComponent(id));render();}
-    catch(e){page.innerHTML='<div class="mf-empty">'+h(e.message)+'</div>';}
+  async function showDetails(id,addHistory=true){
+    if(!state.open||!state.items.some(x=>x.id===id))return;
+    const page=$('#mf-content');if(!page)return;
+    const seq=++routeSequence;
+    page.innerHTML='<div class="mf-loading">Wczytywanie szczegółów…</div>';
+    try{
+      const next=await get('item/'+encodeURIComponent(id));
+      if(seq!==routeSequence||!state.open)return;
+      state.detail=next;
+      if(addHistory)rememberRoute('detail',id);
+      render();
+      document.querySelector('#mf-portal')?.scrollIntoView?.({block:'start',behavior:'instant'});
+    }catch(e){if(seq===routeSequence)page.innerHTML='<div class="mf-empty">'+h(e.message)+'</div>';}
   }
   function openNative(id){
     // Hide custom catalog and hand control back to the ORIGINAL Jellyfin Web route/player.
-    close();
+    state.open=false; // Jellyfin's native details/player route now takes over.
     // Jellyfin Web uses its own router. This route may need adapting after an upstream change.
     try {
       if (typeof window.Emby?.Page?.showItem === 'function') { window.Emby.Page.showItem(id); return; }
-    }catch(_){/* fallback below */}
-    const base = '/web/index.html';
-    location.assign(base + '#!/details?id=' + encodeURIComponent(id));
+      if (typeof window.Emby?.Page?.show === 'function') {
+        window.Emby.Page.show('/details?id=' + encodeURIComponent(id));return;
+      }
+    }catch(_){/* fallback to normal Jellyfin web navigation below */}
+    // The original Jellyfin app owns item details and playback; never build a custom player.
+    location.assign('/web/index.html#!/details?id=' + encodeURIComponent(id));
   }
   function clicked(e){
     const random=e.target.closest('[data-mf-random]');
@@ -511,8 +616,13 @@
     const save=e.target.closest('[data-mf-save-mal]');
     if(save){save.disabled=true;saveMalRow(save).catch(err=>{save.disabled=false;alert(err.message)});return;}
     const tab=e.target.closest('[data-mf-tab]');if(tab){toTab(tab.dataset.mfTab);return;}
-    if(e.target.closest('[data-mf-close]')){close();return;}
-    if(e.target.closest('[data-mf-back]')){state.detail=null;render();return;}
+    if(e.target.closest('[data-mf-back]')){
+      const tab=state.tab;routeSequence++;state.detail=null;
+      const u=new URL(location.href);
+      if(u.searchParams.get('misioflix')==='detail')history.back();
+      else toTab(tab);
+      render();return;
+    }
     if(e.target.closest('[data-mf-refresh]')){load(true);return;}
     const hide=e.target.closest('[data-mf-resume-hide]');
     const restore=e.target.closest('[data-mf-resume-restore]');
@@ -548,13 +658,6 @@
     const start=key==='q'?{position:input.selectionStart, focus:true}:null;
     render();
     if(start){const q=$(`[data-mf-input="q"][data-mf-scope="${input.dataset.mfScope}"]`);q?.focus();q?.setSelectionRange(start.position,start.position);}
-  }
-  function boot(){
-    if(!document.body){setTimeout(boot,250);return;}
-    inject();
-    const requested=new URL(location.href).searchParams.get('misioflix');
-    if(requested){let tries=0;const attempt=()=>{if(apiClient())open(requested,false);else if(++tries<60)setTimeout(attempt,500);};attempt();}
-    // Default stays original Jellyfin until user confirms browser/app compatibility.
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();

@@ -412,6 +412,43 @@ public sealed class MisioFlixCatalogService
         return list;
     }
 
+    /// <summary>
+    /// Returns episodes that Jellyfin itself authorizes for the current user.
+    /// For anime, do not take episode titles or descriptions from Jellyfin:
+    /// the interface displays only structural season/episode numbers.
+    /// </summary>
+    public async Task<List<EpisodeInfo>> ReadEpisodesAsync(HttpRequest caller, Guid seriesId, bool anime, CancellationToken cancel)
+    {
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        const int pageSize = 200;
+        const int maxEpisodes = 4000;
+        var list = new List<EpisodeInfo>();
+        for (var start = 0; start < maxEpisodes; start += pageSize)
+        {
+            using var doc = await GetJsonAsync(origin,
+                $"Shows/{seriesId}/Episodes?UserId={Uri.EscapeDataString(userId)}" +
+                $"&IsMissing=false&EnableUserData=true&StartIndex={start}&Limit={pageSize}",
+                auth, cancel).ConfigureAwait(false);
+            var items = Get(doc.RootElement, "Items");
+            if (items.ValueKind != JsonValueKind.Array) break;
+            var received = 0;
+            foreach (var item in items.EnumerateArray())
+            {
+                received++;
+                var id = Text(Get(item, "Id"));
+                if (!Guid.TryParse(id, out _)) continue;
+                var season = Get(item, "ParentIndexNumber");
+                var episode = Get(item, "IndexNumber");
+                var seasonNo = season.ValueKind == JsonValueKind.Number && season.TryGetInt32(out var sn) ? sn : (int?)null;
+                var episodeNo = episode.ValueKind == JsonValueKind.Number && episode.TryGetInt32(out var en) ? en : (int?)null;
+                list.Add(new EpisodeInfo(id, anime ? "" : Text(Get(item, "Name")), seasonNo, episodeNo,
+                    Get(Get(item, "UserData"), "Played").ValueKind == JsonValueKind.True));
+            }
+            if (received < pageSize) break;
+        }
+        return list;
+    }
+
     private static LocalNfo? ReadSeasonNfo(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
@@ -639,3 +676,5 @@ public sealed class ResumeItem
 }
 
 public sealed record SeasonInfo(string id, string name, int? number, double? rating, int? mal_id, string watch_status);
+
+public sealed record EpisodeInfo(string id, string title, int? season, int? number, bool watched);

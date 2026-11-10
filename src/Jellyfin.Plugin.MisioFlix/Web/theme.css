@@ -135,3 +135,18 @@
 #mf-portal .mf-mal-manual button{align-self:flex-start;background:#b53e79;color:white;border:1px solid #ffffff55;border-radius:8px;padding:8px 12px}
 #mf-portal .mf-mal-manual button:disabled{opacity:.6}
 #mf-portal .mf-mal-manual small{font-size:12px;color:#dac2d0}
+
+/* v0.4.6: integrated Jellyfin Home view (NOT a floating portal). */
+#mf-launch{display:none!important}
+#indexPage .homeSectionsContainer.mf-hosted{display:block!important;max-width:none!important;width:100%!important;}
+#indexPage .homeSectionsContainer.mf-hosted > :not(#mf-portal){display:none!important;}
+#mf-portal.mf-native-home{position:relative!important;inset:auto!important;z-index:auto!important;overflow:visible!important;isolation:isolate;display:block;min-height:75vh;margin:0 auto;width:100%;padding:0 0 30px;background:#130b16;border:1px solid #ffffff12;border-radius:16px;}
+#mf-portal.mf-native-home:before{position:absolute!important;inset:0!important;z-index:-1;opacity:.5;border-radius:16px;background:linear-gradient(180deg,#130b1688,#130b16 65%),url('/MisioFlix/assets/background.png') center top/cover no-repeat;}
+#mf-portal.mf-native-home .mf-header{position:relative!important;top:auto!important;border-radius:16px 16px 0 0;}
+#mf-portal.mf-native-home .mf-main{width:100%;max-width:1530px;overflow:visible;}
+#mf-portal.mf-native-home .mf-leave{display:none!important}
+@media(max-width:650px){#mf-portal.mf-native-home{border-radius:9px}#mf-portal.mf-native-home .mf-header{border-radius:9px 9px 0 0}}
+
+#mf-portal .mf-episode-season{margin:12px 0;padding:12px;border:1px solid #ffffff29;background:#241627;border-radius:11px}
+#mf-portal .mf-episode-season>summary{cursor:pointer;padding:5px 0 10px;color:#ffe9f0;font-weight:700}
+#mf-portal .mf-episode-season .mf-episode-grid{margin-top:10px}
