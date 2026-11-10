@@ -37,7 +37,7 @@ public sealed class MisioFlixCatalogService
         _hiddenResumePath = Path.Combine(applicationPaths.DataPath, "misioflix", "hidden-resume.json");
     }
 
-    public async Task<CatalogResponse> ReadForAuthenticatedUserAsync(HttpRequest caller, CancellationToken cancel)
+    public async Task<CatalogResponse> ReadForAuthenticatedUserAsync(HttpRequest caller, CancellationToken cancel, Guid? libraryId = null)
     {
         var auth = caller.Headers.Authorization.ToString();
         if (string.IsNullOrWhiteSpace(auth))
@@ -61,6 +61,14 @@ public sealed class MisioFlixCatalogService
             throw new UnauthorizedAccessException("Jellyfin did not recognize the caller");
         }
 
+        // An optional library scope is accepted only when the current Jellyfin user
+        // can see that library in their UserViews. No arbitrary folder IDs.
+        if (libraryId.HasValue)
+        {
+            var allowed = await GetHomeLibrariesAsync(origin, auth, userId, cancel).ConfigureAwait(false);
+            if (!allowed.Any(view => view.id.Equals(libraryId.Value.ToString("N"), StringComparison.OrdinalIgnoreCase)))
+                throw new UnauthorizedAccessException("Requested library is not accessible");
+        }
         var root = Path.GetFullPath(config.AnimeRoot);
         var result = new List<CatalogItem>();
         const int pageSize = 400;
@@ -69,8 +77,9 @@ public sealed class MisioFlixCatalogService
         for (var start = 0; start < maxItems; start += pageSize)
         {
             var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
-                       "&Recursive=true&IncludeItemTypes=Movie,Series" +
-                       "&Fields=Genres,Overview,Tags,DateCreated,ChildCount,RecursiveItemCount" +
+                       (libraryId.HasValue ? $"&ParentId={libraryId.Value:N}" : string.Empty) +
+                       "&Recursive=true&IncludeItemTypes=Movie,Series,Season" +
+                       "&Fields=Genres,Overview,Tags,DateCreated,ChildCount,RecursiveItemCount,ParentId" +
                        "&EnableUserData=true" +
                        $"&StartIndex={start}&Limit={pageSize}";
             using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
@@ -98,6 +107,19 @@ public sealed class MisioFlixCatalogService
                         id = itemId,
                         anime = true,
                         type = Text(Get(json, "Type")),
+                        // Season -> its Jellyfin Series GUID, never a title-based guess.
+                        // The parent still must be present in the user's authorised catalog
+                        // before the client may display a parent Series result.
+                        parent_series_id = Text(Get(json, "Type")) == "Season"
+                            ? NormalizeCatalogGuid(Get(json, "SeriesId"), Get(json, "ParentId"))
+                            : string.Empty,
+                        // Both alternatives come from the same NFO, never from Jellyfin's
+                        // potentially unrelated/translated season Name.
+                        search_titles = local is null
+                            ? new List<string>()
+                            : new[] { local.OriginalTitle, local.DisplayTitle }
+                                .Where(x => !string.IsNullOrWhiteSpace(x))
+                                .Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
                         title = local?.OriginalTitle ?? "Brak tytułu w NFO",
                         year = local?.Year ?? string.Empty,
                         plot = local?.Plot ?? string.Empty,
@@ -116,6 +138,8 @@ public sealed class MisioFlixCatalogService
                 else
                 {
                     var type = Text(Get(json, "Type"));
+                    // Search Seasons/Specials only for anime, where each season has its own NFO.
+                    if (type == "Season") continue;
                     result.Add(new CatalogItem
                     {
                         id = itemId,
@@ -760,6 +784,7 @@ public sealed class MisioFlixCatalogService
                 var kind = tags.FirstOrDefault(t => t.StartsWith("Typ:", StringComparison.OrdinalIgnoreCase));
                 return new LocalNfo(
                     V("originaltitle"),
+                    V("title"),
                     V("year"),
                     V("plot"),
                     kind is null ? string.Empty : kind[4..].Trim(),
@@ -857,6 +882,17 @@ public sealed class MisioFlixCatalogService
         _ => string.Empty
     };
 
+    private static string NormalizeCatalogGuid(JsonElement primary, JsonElement fallback)
+    {
+        var raw = Text(primary);
+        if (!Guid.TryParse(raw, out var id) || id == Guid.Empty)
+        {
+            raw = Text(fallback);
+            if (!Guid.TryParse(raw, out id) || id == Guid.Empty) return string.Empty;
+        }
+        return id.ToString("N");
+    }
+
     private static List<string> Strings(JsonElement value)
     {
         if (value.ValueKind != JsonValueKind.Array) return new List<string>();
@@ -864,7 +900,7 @@ public sealed class MisioFlixCatalogService
             .Select(x => x.GetString() ?? string.Empty).Where(x => x.Length > 0).ToList();
     }
 
-    private sealed record LocalNfo(string OriginalTitle, string Year, string Plot, string Kind, List<string> Genres, double? Rating, int? MalId);
+    private sealed record LocalNfo(string OriginalTitle, string DisplayTitle, string Year, string Plot, string Kind, List<string> Genres, double? Rating, int? MalId);
 }
 
 public sealed record GenreSets(string[] anime, string[] media);
@@ -876,6 +912,10 @@ public sealed class CatalogItem
     public bool anime { get; set; }
     public string type { get; set; } = string.Empty;
     public string title { get; set; } = string.Empty;
+    // Parent relationship is an actual Jellyfin SeriesId/ParentId GUID, not a name match.
+    public string parent_series_id { get; set; } = string.Empty;
+    // NFO title and originaltitle; helps find a series by any linked season/Special.
+    public List<string> search_titles { get; set; } = new();
     public string year { get; set; } = string.Empty;
     public string plot { get; set; } = string.Empty;
     public string kind { get; set; } = string.Empty;

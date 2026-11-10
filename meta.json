@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.14: mniej pustego miejsca na Home, skróty bibliotek oraz dwie wyszukiwarki (anime i nie-anime) z filtrami gatunków oraz typów.",
+  "description": "MisioFlix 0.4.16: wyszukiwanie sezonow i Speciali po NFO prowadzi do glownej serii; 52 gatunki anime i osobne gatunki Jellyfin dla filmow i seriali.",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.14.0",
+  "version": "0.4.16.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

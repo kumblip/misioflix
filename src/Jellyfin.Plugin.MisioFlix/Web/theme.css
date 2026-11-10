@@ -513,27 +513,74 @@ html.misioflix-skin .mf-home-resume-remove{
   color:#fff;font-size:13px;cursor:pointer;
 }
 html.misioflix-skin .mf-home-resume-remove:hover{background:#74334f}
-html.misioflix-skin .mf-home-discovery{display:flex;flex-direction:column;gap:16px;min-width:0}
-html.misioflix-skin .mf-home-folder-bar{display:flex;flex-direction:column;gap:10px;padding:2px 2px 0}
-html.misioflix-skin .mf-home-folder-bar h2{margin:0;font-size:18px;line-height:1.3;color:#fff0f6}
-html.misioflix-skin .mf-home-search-helper{margin:0;font-size:12px;line-height:1.45;color:#ceb3c3}
-html.misioflix-skin .mf-home-folder-buttons{display:flex;flex-wrap:wrap;gap:9px}
-html.misioflix-skin .mf-home-folder-button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 14px;border-radius:12px;text-decoration:none!important;color:#fff0f7!important;background:rgba(255,255,255,.075);border:1px solid rgba(245,167,207,.26);font-weight:600}
+/* Search controls are two launch buttons IN the library shortcuts row;
+   search results exist only in an on-demand modal, not on the homepage. */
+html.misioflix-skin .mf-home-discovery{display:block;min-width:0}
+html.misioflix-skin .mf-home-folder-buttons{display:flex;flex-wrap:wrap;gap:9px;min-width:0}
+html.misioflix-skin .mf-home-folder-button{
+  display:inline-flex;align-items:center;justify-content:center;min-height:40px;
+  padding:8px 14px;border-radius:12px;text-decoration:none!important;
+  color:#fff0f7!important;background:rgba(255,255,255,.075);
+  border:1px solid rgba(245,167,207,.26);font-weight:600;
+  font-size:13px;line-height:1.3;cursor:pointer;
+}
 html.misioflix-skin .mf-home-folder-button:hover{background:#5c314f}
-html.misioflix-skin .mf-home-search-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;min-width:0}
-html.misioflix-skin .mf-home-search-panel{display:flex;flex-direction:column;gap:10px;padding:16px 18px;border-radius:18px;border:1px solid rgba(246,161,207,.17);background:linear-gradient(135deg,rgba(48,23,47,.9),rgba(79,33,58,.86))}
-html.misioflix-skin .mf-home-search-panel h3{margin:0;font-size:17px;line-height:1.3;color:#fff2f8}
-html.misioflix-skin .mf-home-search-form{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(160px,.9fr) minmax(140px,.8fr) auto auto;gap:8px;align-items:center}
-html.misioflix-skin .mf-home-search-input,html.misioflix-skin .mf-home-search-select{width:100%;min-height:38px;padding:8px 12px;border-radius:10px;border:1px solid rgba(245,167,207,.23);background:rgba(34,17,33,.8);color:#fff4f8;outline:none;font:inherit}
-html.misioflix-skin .mf-home-search-input::placeholder{color:#bfa1b5}
-html.misioflix-skin .mf-home-search-input:focus,html.misioflix-skin .mf-home-search-select:focus{border-color:#e68ebd;box-shadow:0 0 0 2px rgba(244,165,206,.16)}
-html.misioflix-skin .mf-home-search-status{margin:0;min-height:18px;font-size:12px;color:#dec5d5}
-html.misioflix-skin .mf-home-search-results{display:flex;flex-direction:column;gap:10px;padding-top:4px}
-html.misioflix-skin .mf-home-search-results-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-html.misioflix-skin .mf-home-search-results-head h4{margin:0;font-size:15px;color:#fff1f8}
-html.misioflix-skin .mf-home-search-results-meta{font-size:12px;color:#d7bfd0}
-html.misioflix-skin .mf-home-search-grid{display:flex;flex-wrap:wrap;gap:14px;min-width:0}
-html.misioflix-skin .mf-home-search-grid .mf-home-card{flex:0 0 clamp(158px,11vw,210px);width:clamp(158px,11vw,210px)}
+html.misioflix-skin .mf-home-search-launch{border-color:rgba(244,165,206,.62);background:linear-gradient(105deg,rgba(93,40,78,.8),rgba(62,28,67,.85))}
+html.misioflix-skin .mf-home-search-helper{margin:0;color:#cbb9c8;font-size:13px}
+html.misioflix-skin body.mf-home-search-open{overflow:hidden!important}
+html.misioflix-skin .mf-home-search-overlay{
+  position:fixed;inset:0;z-index:99999;background:rgba(7,4,10,.82);
+  display:flex;align-items:center;justify-content:center;padding:16px;
+  overscroll-behavior:contain;color:#ffedf7;
+}
+html.misioflix-skin .mf-home-search-overlay [hidden]{display:none!important}
+html.misioflix-skin .mf-home-search-dialog{
+  display:flex;flex-direction:column;min-width:0;max-height:calc(100dvh - 32px);
+  width:min(1540px,100%);border:1px solid rgba(244,165,206,.35);
+  border-radius:18px;overflow:hidden;
+  background:linear-gradient(145deg,#211322,#170e1b);
+  box-shadow:0 20px 70px rgba(0,0,0,.65);
+}
+html.misioflix-skin .mf-home-search-modal-header{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:16px 22px;background:linear-gradient(100deg,#371a35,#58223f);
+  border-bottom:1px solid rgba(244,165,206,.24)
+}
+html.misioflix-skin .mf-home-search-modal-header h2{margin:0;font-size:22px;color:#fff2f8}
+html.misioflix-skin .mf-home-search-modal-main{overflow:auto;flex:1;min-height:0;padding:20px 22px 28px;display:flex;flex-direction:column;gap:12px}
+html.misioflix-skin .mf-home-search-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:9px}
+html.misioflix-skin .mf-home-search-input-wrap{position:relative;flex:1 1 320px;min-width:220px}
+html.misioflix-skin .mf-home-search-input,html.misioflix-skin .mf-home-search-select{
+  min-height:41px;padding:8px 12px;border-radius:9px;
+  border:1px solid rgba(245,167,207,.33);background:#2a1a2b;
+  color:#fff4f8;font:inherit;outline:none;
+}
+html.misioflix-skin .mf-home-search-input{width:100%}
+html.misioflix-skin .mf-home-search-input::placeholder{color:#bd9fb4}
+html.misioflix-skin .mf-home-search-input:focus,html.misioflix-skin .mf-home-search-select:focus{border-color:#efa0c8;box-shadow:0 0 0 2px rgba(244,165,206,.18)}
+html.misioflix-skin .mf-home-search-seasons{display:flex;gap:5px;align-items:center;cursor:pointer;font-size:13px;white-space:nowrap}
+html.misioflix-skin .mf-home-suggestions{
+  position:absolute;top:100%;left:0;right:0;z-index:20;
+  max-height:260px;overflow:auto;border:1px solid #885b7e;
+  background:#29192a;box-shadow:0 12px 25px #0009;
+}
+html.misioflix-skin .mf-home-suggestion{display:block;color:#fff0f7!important;text-decoration:none!important;padding:10px 12px;border-bottom:1px solid #55334c}
+html.misioflix-skin .mf-home-suggestion:hover{background:#59314e}
+html.misioflix-skin .mf-home-genres-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+html.misioflix-skin .mf-home-genres-head h3{font-size:18px;margin:0;color:#fff0f7}
+html.misioflix-skin .mf-home-search-summary,.mf-home-search-help,.mf-home-search-status{margin:0;font-size:12px;color:#d9c6d4;line-height:1.55}
+html.misioflix-skin .mf-home-genre-filters{display:flex;flex-wrap:wrap;gap:7px}
+html.misioflix-skin .mf-home-genre-filter{
+  border-radius:9px;border:1px solid #6c5067;
+  background:#332335;padding:6px 10px;min-height:31px;
+  color:#f6eaf1;font-size:12px;cursor:pointer;
+}
+html.misioflix-skin .mf-home-genre-filter:hover{border-color:#d9a1be}
+html.misioflix-skin .mf-home-genre-filter.mf-genre-on{background:#183c2b;border-color:#52cb8d;color:#d8ffe9}
+html.misioflix-skin .mf-home-genre-filter.mf-genre-no{background:#491f2b;border-color:#fa727f;color:#ffe1e5}
+html.misioflix-skin .mf-home-search-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(162px,1fr));gap:16px;align-items:stretch;min-width:0}
+html.misioflix-skin .mf-home-search-grid .mf-home-card{width:100%;min-width:0;flex:none}
+html.misioflix-skin .mf-home-search-more{align-self:center}
 html.misioflix-skin .mf-home-rows{display:flex;flex-direction:column;gap:32px;min-width:0}
 html.misioflix-skin .mf-home-shelf{display:flex;flex-direction:column;gap:12px;min-width:0}
 html.misioflix-skin .mf-home-shelf-heading{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -645,4 +692,17 @@ html.misioflix-skin .mf-home-empty{padding:12px 6px;color:#c8b5c5;font-size:13px
 @media(prefers-reduced-motion:reduce){
   html.misioflix-skin .mf-home-card{transition:none}
   html.misioflix-skin .mf-home-shelf-scroll,html.misioflix-skin .mf-home-resume-items{scroll-behavior:auto}
+}
+
+/* Mobile popup: controls can be reached without horizontal overflow. */
+@media(max-width:680px){
+  html.misioflix-skin .mf-home-search-overlay{padding:0}
+  html.misioflix-skin .mf-home-search-dialog{width:100%;max-height:100dvh;height:100dvh;border-radius:0}
+  html.misioflix-skin .mf-home-search-modal-header{padding:12px 14px}
+  html.misioflix-skin .mf-home-search-modal-header h2{font-size:18px}
+  html.misioflix-skin .mf-home-search-modal-main{padding:14px 12px 24px}
+  html.misioflix-skin .mf-home-search-toolbar{align-items:stretch}
+  html.misioflix-skin .mf-home-search-input-wrap{flex-basis:100%;min-width:0}
+  html.misioflix-skin .mf-home-search-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  html.misioflix-skin .mf-home-folder-button{font-size:12px}
 }

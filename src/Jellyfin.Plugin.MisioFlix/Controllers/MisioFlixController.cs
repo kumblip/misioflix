@@ -25,7 +25,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.14", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.16", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
@@ -109,12 +109,12 @@ public sealed class MisioFlixController : ControllerBase
 
     [HttpGet("api/catalog")]
     [Authorize]
-    public async Task<IActionResult> Catalog(CancellationToken cancellationToken)
+    public async Task<IActionResult> Catalog([FromQuery] Guid? libraryId, CancellationToken cancellationToken)
     {
         if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
         try
         {
-            return Ok(await _catalog.ReadForAuthenticatedUserAsync(Request, cancellationToken).ConfigureAwait(false));
+            return Ok(await _catalog.ReadForAuthenticatedUserAsync(Request, cancellationToken, libraryId).ConfigureAwait(false));
         }
         catch (UnauthorizedAccessException)
         {
