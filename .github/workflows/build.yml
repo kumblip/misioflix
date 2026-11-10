@@ -1,37 +1,28 @@
-
-name: MisioFlix - build dla Jellyfin 12.4
-
+name: MisioFlix — build dla Jellyfin 12.4
 on:
   workflow_dispatch:
   push:
     branches: [main]
-
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-
-      - name: Test plikow frontendu
+      - name: Test plików frontendu
         run: |
           node --check src/Jellyfin.Plugin.MisioFlix/Web/client.js
           python3 -m unittest discover -s tests -v
-
-      - name: Kompilacja DLL
+      - name: Kompilacja DLL (bez kompilowania na NAS)
         run: dotnet publish src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj --configuration Release --output build/publish
-
-      - name: Pakowanie wtyczki
+      - name: Pakowanie
         run: python3 tools/package.py
-
       - uses: actions/upload-artifact@v4
         with:
-          name: MisioFlix_0.4.0_JF12.4
-          path: dist/MisioFlix_0.4.0_JF12.4.zip
+          name: MisioFlix_JF12.4_build
+          path: dist/MisioFlix_*_JF12.4.zip
           if-no-files-found: error
