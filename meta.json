@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.13: karuzele Jellyfin z przeciagnieciem mysza, gestami dotykowymi i automatycznym doladowywaniem.",
+  "description": "MisioFlix 0.4.14: mniej pustego miejsca na Home, skróty bibliotek oraz dwie wyszukiwarki (anime i nie-anime) z filtrami gatunków oraz typów.",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.13.0",
+  "version": "0.4.14.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

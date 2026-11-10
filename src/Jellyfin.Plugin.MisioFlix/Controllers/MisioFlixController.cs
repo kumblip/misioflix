@@ -25,7 +25,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.13", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.14", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
