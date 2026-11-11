@@ -1,20 +1,22 @@
-/* MisioFlix 0.4.17: ONLY custom shelves INSIDE Jellyfin's native home view.
+/* MisioFlix 0.4.18: ONLY custom shelves INSIDE Jellyfin's native home view.
  * No second site, no page/router replacement, no bulk catalog loading.
  * Requires the user to set native home slots to "Brak" in Jellyfin preferences.
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_HOME_0417__) return;
-  window.__MISIOFLIX_HOME_0417__ = true;
+  if (window.__MISIOFLIX_HOME_0418__) return;
+  window.__MISIOFLIX_HOME_0418__ = true;
 
   const API = '/MisioFlix/api';
   const SHELF_LIMIT = 12;
+  const RANDOM_LIMIT = 5;
   let homeRoot = null;
   let homeHost = null;
   let owner = '';
   let epoch = 0;
   let mounting = false;
   let resumeData = {items: [], hidden: []};
+  let showHiddenResume = false;
   let librariesCache = [];
   let discoveryRefs = null;
   const catalogCache = new Map();
@@ -36,7 +38,7 @@
   };
   const homeRoute = () => /^#\/(?:home)?(?:\?|$)/i.test(window.location.hash || '#/');
   const isCurrent = serial => homeRoot?.isConnected && epoch === serial && homeRoute() && currentToken() === owner;
-  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.17", Token="${owner.replace(/["\r\n]/g, '')}"`});
+  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.18", Token="${owner.replace(/["\r\n]/g, '')}"`});
   async function request(path, method='GET', payload, timeoutMs=18000) {
     const control = new AbortController();
     const timeout = window.setTimeout(() => control.abort(), timeoutMs);
@@ -226,7 +228,7 @@
     const shuffle=own('button','mf-home-button mf-home-shuffle','Losuj ↻');
     shuffle.type='button';
     const reset=own('button','mf-home-button mf-home-latest','Ostatnio dodane');
-    reset.type='button';reset.hidden=true;
+    reset.type='button';reset.classList.add('mf-home-view-active');
     const prev=own('button','mf-home-nav','‹');prev.type='button';prev.setAttribute('aria-label',`Przewiń ${lib.name} w lewo`);
     const next=own('button','mf-home-nav','›');next.type='button';next.setAttribute('aria-label',`Przewiń ${lib.name} w prawo`);
     append(tools,shuffle,reset,prev,next);
@@ -261,7 +263,7 @@
     row.reset.disabled=true;
     try{
       const data=await request(`/home/shelf?libraryId=${encodeURIComponent(row.lib.id)}`+
-        `&mode=${mode}&startIndex=${start}&limit=${SHELF_LIMIT}`);
+        `&mode=${mode}&startIndex=${start}&limit=${mode==='random'?RANDOM_LIMIT:SHELF_LIMIT}`);
       if(!isCurrent(serial)||!row.section.isConnected)return;
       if(reset)row.scroll.replaceChildren();
       const list=Array.isArray(data.items)?data.items:[];
@@ -269,8 +271,9 @@
       row.offset=start+list.length;
       row.hasMore=Boolean(data.hasMore)&&list.length>0;
       row.mode=mode;
-      row.reset.hidden=mode==='latest';
-      row.shuffle.hidden=mode==='random';
+      // Both actions stay available: another click on Losuj draws five NEW choices.
+      row.reset.classList.toggle('mf-home-view-active',mode==='latest');
+      row.shuffle.classList.toggle('mf-home-view-active',mode==='random');
       if(!row.scroll.childElementCount)row.scroll.appendChild(own('p','mf-home-empty','Brak pozycji w tej bibliotece.'));
     }catch(e){
       if(!isCurrent(serial))return;
@@ -286,7 +289,7 @@
   }
   function resumeTile(entry,hidden=false){
     const item=entry.item;
-    const card=own('article','mf-home-resume-card');
+    const card=own('article',hidden?'mf-home-resume-card mf-home-resume-card-hidden':'mf-home-resume-card');
     const link=set(own('a','mf-home-resume-poster'), 'href',nativeDetails(entry.resumeId,item.serverId));
     link.setAttribute('aria-label','Przejdź do odtwarzania: '+(item.title||''));
     const image=imageFor(item);
@@ -302,7 +305,9 @@
       p.appendChild(bar);body.appendChild(p);
     }
     const x=own('button','mf-home-resume-remove',hidden?'Przywróć':'×');
-    x.type='button';x.setAttribute('aria-label',hidden?'Przywróć z ukrytych':'Ukryj z Oglądaj dalej');
+    x.type='button';
+    x.setAttribute('aria-label',hidden?'Przywróć z ukrytych':'Ukryj z Oglądaj dalej (bez usuwania historii Jellyfin)');
+    x.setAttribute('title',hidden?'Przywróć do Oglądaj dalej':'Ukryj kartę; historia Jellyfin pozostaje bez zmian');
     x.addEventListener('click',async()=>{
       x.disabled=true;
       try{
@@ -320,15 +325,20 @@
   function paintResume(){
     const area=homeRoot?.querySelector('.mf-home-resume-items');
     const controls=homeRoot?.querySelector('.mf-home-hidden-toggle');
-    const hiddenArea=homeRoot?.querySelector('.mf-home-resume-hidden');
-    if(!area||!controls||!hiddenArea)return;
+    if(!area||!controls)return;
+    const oldOffset=area.scrollLeft;
     area.replaceChildren();
-    if(!resumeData.items.length)area.appendChild(own('p','mf-home-empty','Nie masz rozpoczętych pozycji.'));
-    else resumeData.items.forEach(v=>area.appendChild(resumeTile(v)));
-    controls.textContent=`Ukryte (${resumeData.hidden.length})`;
-    controls.hidden=!resumeData.hidden.length;
-    hiddenArea.replaceChildren();
-    resumeData.hidden.forEach(v=>hiddenArea.appendChild(resumeTile(v,true)));
+    if(!resumeData.items.length && !(showHiddenResume && resumeData.hidden.length)){
+      area.appendChild(own('p','mf-home-empty','Nie masz rozpoczętych pozycji.'));
+    }
+    resumeData.items.forEach(v=>area.appendChild(resumeTile(v)));
+    // Hidden titles belong to THIS same full-width carousel when requested.
+    if(showHiddenResume)resumeData.hidden.forEach(v=>area.appendChild(resumeTile(v,true)));
+    controls.textContent=`${showHiddenResume?'Ukryj ukryte':'Pokaż ukryte'} (${resumeData.hidden.length})`;
+    controls.disabled=resumeData.hidden.length===0;
+    controls.setAttribute('aria-expanded',String(showHiddenResume));
+    controls.setAttribute('aria-pressed',String(showHiddenResume));
+    area.scrollLeft=oldOffset;
   }
   async function loadResume(serial){
     try{
@@ -817,29 +827,40 @@
       box.appendChild(btn);
     }
   }
-  function hero(){
+  function hero(shortcuts){
     const hero=own('section','mf-home-hero');
     const intro=own('div','mf-home-intro');
     const logo=own('img','mf-home-logo');logo.src='/MisioFlix/assets/logo.png';logo.alt='MisioFlix';
     const title=own('h1','', 'Twój świat filmów i anime');
     const sub=own('p','','Własna biblioteka. Oryginalny odtwarzacz Jellyfin.');
     append(intro,logo,title,sub);
-    const watch=own('div','mf-home-resume');
-    const header=own('div','mf-home-resume-head');
-    header.appendChild(own('h2','','Oglądaj dalej'));
-    const toggle=own('button','mf-home-button mf-home-hidden-toggle','Ukryte');
-    toggle.type='button';toggle.hidden=true;
-    toggle.addEventListener('click',()=>{
-      const hidden=watch.querySelector('.mf-home-resume-hidden');
-      hidden.hidden=!hidden.hidden;
-      toggle.setAttribute('aria-expanded',String(!hidden.hidden));
-    });
-    header.appendChild(toggle);
-    const row=own('div','mf-home-resume-items');row.appendChild(own('p','mf-home-empty','Ładowanie oglądanych…'));
-    const hiddenArea=own('div','mf-home-resume-hidden');hiddenArea.hidden=true;
-    append(watch,header,row,hiddenArea);
-    append(hero,intro,watch);
+    // The original right-hand hero zone now holds the library/search shortcuts.
+    append(hero,intro,shortcuts);
     return hero;
+  }
+  function resumeShelf(){
+    // All of the current user's resume items, not just the three that fit in the hero.
+    const watch=own('section','mf-home-resume mf-home-resume-shelf');
+    watch.setAttribute('aria-label','Oglądaj dalej');
+    const header=own('div','mf-home-resume-head');
+    const title=own('h2','','Oglądaj dalej');
+    const actions=own('div','mf-home-actions');
+    const toggle=own('button','mf-home-button mf-home-hidden-toggle','Pokaż ukryte (0)');
+    toggle.type='button';toggle.disabled=true;toggle.setAttribute('aria-expanded','false');
+    const prev=own('button','mf-home-nav','‹');prev.type='button';prev.setAttribute('aria-label','Przewiń Oglądaj dalej w lewo');
+    const next=own('button','mf-home-nav','›');next.type='button';next.setAttribute('aria-label','Przewiń Oglądaj dalej w prawo');
+    append(actions,toggle,prev,next);
+    append(header,title,actions);
+    const scroll=own('div','mf-home-resume-items');
+    scroll.setAttribute('aria-label','Wszystkie pozycje Oglądaj dalej');
+    scroll.appendChild(own('p','mf-home-empty','Ładowanie oglądanych…'));
+    // Reuse the tested carousel drag/touch behavior without any pagination trigger.
+    enableShelfDrag(scroll,{busy:true,hasMore:false,mode:'resume'});
+    toggle.addEventListener('click',()=>{showHiddenResume=!showHiddenResume;paintResume();});
+    prev.addEventListener('click',()=>scroll.scrollBy({left:-Math.max(400,scroll.clientWidth*.75),behavior:'smooth'}));
+    next.addEventListener('click',()=>scroll.scrollBy({left:Math.max(420,scroll.clientWidth*.77),behavior:'smooth'}));
+    append(watch,header,scroll);
+    return watch;
   }
   async function loadLibraries(serial){
     const container=homeRoot?.querySelector('.mf-home-rows');
@@ -885,10 +906,11 @@
       homeRoot=own('div','mf-home-0412');
       homeRoot.id='mf-home-0412';
       homeHost=host;
-      homeRoot.appendChild(hero());
       discoveryRefs = discoverySection();
-      homeRoot.appendChild(discoveryRefs.section);
-    paintFolderButtons();
+      homeRoot.appendChild(hero(discoveryRefs.section));
+      paintFolderButtons();
+      showHiddenResume=false;
+      homeRoot.appendChild(resumeShelf());
       const rowsArea=own('div','mf-home-rows');
       rowsArea.appendChild(own('p','mf-home-empty','Ładowanie bibliotek…'));
       homeRoot.appendChild(rowsArea);

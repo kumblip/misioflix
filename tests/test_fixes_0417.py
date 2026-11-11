@@ -1,4 +1,4 @@
-"""Regression checks for v0.4.17 search controls, resume fallback and video skin isolation.
+"""Regression checks for v0.4.18 search controls, resume fallback and video skin isolation.
 These checks do not replace building/running Jellyfin 12.4 on the actual NAS.
 """
 import json
@@ -15,8 +15,8 @@ SERVICE=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixCatalogService.cs
 class Fixes0417(unittest.TestCase):
     def test_versions(self):
         meta=json.loads((ROOT/'meta.json').read_text(encoding='utf8'))
-        self.assertEqual(meta['version'],'0.4.17.0')
-        self.assertIn('home.js?v=0.4.17.0',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Services/ScriptInjection.cs').read_text())
+        self.assertEqual(meta['version'],'0.4.18.0')
+        self.assertIn('home.js?v=0.4.18.0',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Services/ScriptInjection.cs').read_text())
 
     def test_tristate_library_and_type(self):
         self.assertIn('function renderChoiceGroup(',HOME)

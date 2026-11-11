@@ -1,4 +1,4 @@
-"""Source-level checks for MisioFlix 0.4.17 modal search.
+"""Source-level checks for MisioFlix 0.4.18 modal search.
 Browser interaction checks are run locally with Playwright; GitHub needs no browser.
 """
 import json
@@ -69,6 +69,6 @@ class TestSearch0415(unittest.TestCase):
         for name in ['client.js','home.js']:
             result=subprocess.run(['node','--check',str(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web'/name)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.17.0')
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.18.0')
 
 if __name__ == '__main__': unittest.main()

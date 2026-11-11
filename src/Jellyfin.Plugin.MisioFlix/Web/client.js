@@ -1,4 +1,4 @@
-/* MisioFlix 0.4.17 - progressive enhancements to ORIGINAL Jellyfin Web.
+/* MisioFlix 0.4.18 - progressive enhancements to ORIGINAL Jellyfin Web.
  * No separate page, no catalog request, no router changes, no player replacement.
  * Native Jellyfin cards are ONLY decorated with small noninteractive ornaments.
  * Netflin is a design/selector reference; this is original MisioFlix code.
@@ -66,7 +66,7 @@
   function markSections(){
     const headings=[...document.body.querySelectorAll(TITLE)].slice(0,110);
     for(const h of headings){
-      // v0.4.17 home shelves live in their own scoped subtree, not native sections.
+      // v0.4.18 home shelves live in their own scoped subtree, not native sections.
       if(h.closest?.('#mf-home-0412'))continue;
       const t=text(h);
       if(!t || t.length>130)continue;
@@ -323,7 +323,7 @@
     const requested=token;
     hydrationBusy=true;
     try{
-      const headers={Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-theme", Version="0.4.17", Token="'+token.replace(/["\r\n]/g,'')+'"'};
+      const headers={Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-theme", Version="0.4.18", Token="'+token.replace(/["\r\n]/g,'')+'"'};
       const q=picked.map(([id])=>id).join(',');
       const controller=new AbortController();
       const timeout=window.setTimeout(()=>controller.abort(),9000);

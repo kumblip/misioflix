@@ -224,6 +224,8 @@ public sealed class MisioFlixCatalogService
         if (startIndex < 0 || startIndex > 40000) throw new ArgumentOutOfRangeException(nameof(startIndex));
         if (limit < 1 || limit > 24) throw new ArgumentOutOfRangeException(nameof(limit));
         var random = string.Equals(mode, "random", StringComparison.OrdinalIgnoreCase);
+        const int randomCount = 5;
+        var resultLimit = random ? randomCount : limit;
         var types = view.category switch
         {
             "movies" => "Movie",
@@ -239,7 +241,9 @@ public sealed class MisioFlixCatalogService
                    "&SortOrder=Descending&EnableUserData=true" +
                    "&EnableTotalRecordCount=false" +
                    "&Fields=Genres,Overview,DateCreated,ChildCount,RecursiveItemCount" +
-                   $"&StartIndex={(random ? 0 : startIndex)}&Limit={limit + 1}";
+                   // Draw more candidates so an anime with missing/invalid NFO does
+                   // not reduce a five-title random draw when valid items exist.
+                   $"&StartIndex={(random ? 0 : startIndex)}&Limit={(random ? 60 : limit + 1)}";
         using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
         var items = Get(doc.RootElement, "Items");
         var list = new List<HomeTile>();
@@ -247,7 +251,7 @@ public sealed class MisioFlixCatalogService
         {
             foreach (var item in items.EnumerateArray())
             {
-                if (list.Count >= limit) break;
+                if (list.Count >= resultLimit) break;
                 var tile = MakeHomeTile(item, view.category);
                 if (tile is not null) list.Add(tile);
             }
