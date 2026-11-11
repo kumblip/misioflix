@@ -1,11 +1,11 @@
-/* MisioFlix 0.4.22 — a compact layout for ORIGINAL Jellyfin item details (Jellyfin 12.4 DOM verified).
+/* MisioFlix 0.4.23 — a compact layout for ORIGINAL Jellyfin item details (Jellyfin 12.4 DOM verified).
  * Reparents Jellyfin's existing nodes; does not change player, URL handling,
  * series/season links, metadata, playback state, or media files.
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_DETAILS_0422__) return;
-  window.__MISIOFLIX_DETAILS_0422__ = true;
+  if (window.__MISIOFLIX_DETAILS_0423__) return;
+  window.__MISIOFLIX_DETAILS_0423__ = true;
 
   const API = '/MisioFlix/api';
   const ID = /^[0-9a-f]{32}$/i;
@@ -38,7 +38,7 @@
     return typeof value === 'string' ? value : '';
   };
   function headers() {
-    return {Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-details", Version="0.4.22", Token="${token().replace(/["\r\n]/g,'')}"`};
+    return {Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-details", Version="0.4.23", Token="${token().replace(/["\r\n]/g,'')}"`};
   }
   function itemRoute() {
     const hash = window.location.hash || '';
@@ -390,7 +390,11 @@
   }
   function update() {
     const id=itemRoute();
-    const page=activeDetailsPage(id);
+    const page=id?activeDetailsPage(id):null;
+    if(lastPage && (!id || (page && lastPage!==page))){
+      restoreLayout(lastPage);
+      lastPage=null;lastItem='';generation++;
+    }
     if (!id || !page) return;
     const grid=ensureLayout(page);
     if (!grid) return;
@@ -420,6 +424,17 @@
       if(changes.some(change=>change.type==='childList'))schedule();
     });
     observer.observe(document.body,{childList:true,subtree:true});
+    // Restore original React-owned elements before the navigation click is
+    // handled by Jellyfin. Otherwise the next library renderer can see a
+    // mutated/cached detail tree. Do not touch the player or navigation URLs.
+    document.addEventListener('click',event=>{
+      if(!lastPage || !lastPage.isConnected)return;
+      const link=event.target.closest?.('a[href]');
+      const href=link?.getAttribute('href')||'';
+      if(href.startsWith('#/') && !/^#\/details(?:\?|$)/i.test(href)){
+        restoreLayout(lastPage);lastPage=null;lastItem='';generation++;
+      }
+    },true);
     // Capture before the native delegated Jellyfin router handles genre links.
     document.addEventListener('click',onGenreClick,true);
     for(const name of ['hashchange','pageshow','popstate']) window.addEventListener(name,()=>{

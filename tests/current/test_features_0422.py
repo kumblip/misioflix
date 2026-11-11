@@ -17,15 +17,17 @@ SERVICE=(P/'Services/MisioFlixCatalogService.cs').read_text(encoding='utf-8')
 
 class Features0422(unittest.TestCase):
     def test_release_single_version_source(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.22.0')
-        self.assertIn('0.4.22.0',(P/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertRegex(json.loads((ROOT/'meta.json').read_text())['version'],r'^0\.4\.\d+\.0$')
+        self.assertIn(json.loads((ROOT/'meta.json').read_text())['version'],(P/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
     def test_home_uses_proven_native_detail_button_for_resume(self):
         self.assertIn('window.MisioFlixPlayItem(entry.resumeId)',HOME)
         self.assertIn('window.MisioFlixPlayItem = playEpisode;',DETAILS)
         self.assertIn('const page = activeDetailsPage(target)',DETAILS)
         self.assertIn('button.click(); return true;',DETAILS)
         self.assertIn('await playViaItemDetails(entry,serial)',HOME) # only fallback
-        self.assertNotIn("'data-id':compactId(entry.resumeId)",HOME)
+        self.assertIn('async function tryNativeResume(entry, serial)',HOME)
+        self.assertIn("'data-id':compactId(entry.resumeId)",HOME)
+        self.assertIn('if(!click.defaultPrevented)return false;',HOME)
         self.assertNotIn('manager.play({ids:',HOME)
     def test_back_and_native_shuffle_hidden_only_on_details(self):
         self.assertIn('ensureBackButton(page);',DETAILS)

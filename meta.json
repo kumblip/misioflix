@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.22: odtwarzanie Oglądaj dalej przez natywny przycisk Jellyfin, Wstecz w szczegółach, bez losowania, gatunki kierowane do wyszukiwarki anime lub filmów i seriali.",
+  "description": "MisioFlix 0.4.23: obejście awarii renderowania bibliotek Jellyfin 12, odtworzenie DOM po opuszczeniu szczegółów, bezpośrednie wznowienie z bezpiecznym fallbackiem.",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.22.0",
+  "version": "0.4.23.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

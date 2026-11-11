@@ -15,7 +15,8 @@ class ActualJellyfin124DOM(unittest.TestCase):
         self.assertIn('function activeDetailsPage(id = itemRoute())',SCRIPT)
         self.assertIn("'.mainDetailButtons .btnPlaystate[data-id]'",SCRIPT)
         self.assertIn('knownId(page) === id',SCRIPT)
-        self.assertIn('const page=activeDetailsPage(id);',SCRIPT)
+        self.assertIn('const page=id?activeDetailsPage(id):null;',SCRIPT)
+        self.assertIn('restoreLayout(lastPage)',SCRIPT)
     def test_playback_uses_same_active_page(self):
         self.assertIn('const page = activeDetailsPage(target);', SCRIPT)
         self.assertIn('nativePlayButton(activeDetailsPage(itemRoute()),active)', SCRIPT)

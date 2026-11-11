@@ -1,11 +1,11 @@
-/* MisioFlix 0.4.22: ONLY custom shelves INSIDE Jellyfin's native home view.
+/* MisioFlix 0.4.23: ONLY custom shelves INSIDE Jellyfin's native home view.
  * No second site, no page/router replacement, no bulk catalog loading.
  * Requires the user to set native home slots to "Brak" in Jellyfin preferences.
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_HOME_0422__) return;
-  window.__MISIOFLIX_HOME_0422__ = true;
+  if (window.__MISIOFLIX_HOME_0423__) return;
+  window.__MISIOFLIX_HOME_0423__ = true;
 
   const API = '/MisioFlix/api';
   const SHELF_LIMIT = 12;
@@ -39,7 +39,7 @@
   };
   const homeRoute = () => /^#\/(?:home)?(?:\?|$)/i.test(window.location.hash || '#/');
   const isCurrent = serial => homeRoot?.isConnected && epoch === serial && homeRoute() && currentToken() === owner;
-  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.22", Token="${owner.replace(/["\r\n]/g, '')}"`});
+  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.23", Token="${owner.replace(/["\r\n]/g, '')}"`});
   async function request(path, method='GET', payload, timeoutMs=18000) {
     const control = new AbortController();
     const timeout = window.setTimeout(() => control.abort(), timeoutMs);
@@ -92,6 +92,43 @@
     }
     return '#/details?id='+encodeURIComponent(compactId(id))+
       (validId(server)?'&serverId='+encodeURIComponent(compactId(server)):'');
+  }
+  // Jellyfin 12 native Modern /movies and /tv routes may hit a React #130
+  // render error in this installation. The supported legacy list route keeps
+  // EXACT library scoping, without creating a second media catalog.
+  const LIBRARY_ROUTE = /^#\/(?:movies|tv)\?(?:[^#]*&)?topParentId=[0-9a-f-]{32,36}/i;
+  function libraryListUrl(id){
+    if(!validId(id))return '';
+    return '#/list?parentId='+encodeURIComponent(compactId(id));
+  }
+  function safeLibraryHref(href,id){
+    if(!LIBRARY_ROUTE.test(href||''))return href;
+    return libraryListUrl(id)||href;
+  }
+  function interceptLibraryNavigation(event){
+    const link=event.target.closest?.('a[href]');
+    if(!link)return;
+    const href=link.getAttribute('href')||'';
+    if(!LIBRARY_ROUTE.test(href))return;
+    let id='';
+    try{id=new URLSearchParams(href.split('?')[1]).get('topParentId')||'';}catch{}
+    const target=libraryListUrl(id);
+    if(!target)return;
+    // Native header shortcuts and our shelf buttons must use the same safe
+    // destination. Never rewrite details, plugin pages, or arbitrary routes.
+    event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
+    if(window.location.hash!==target)window.location.hash=target;
+  }
+  function normalizeLibraryRoute(){
+    const route=window.location.hash||'';
+    if(!LIBRARY_ROUTE.test(route))return false;
+    let id='';
+    try{id=new URLSearchParams(route.split('?')[1]).get('topParentId')||'';}catch{}
+    const target=libraryListUrl(id);
+    if(!target)return false;
+    // Replace the crashing Modern route rather than polluting Back history.
+    window.location.replace(window.location.pathname+window.location.search+target);
+    return true;
   }
   function imageFor(item){
     return validId(item?.id) && item?.hasPrimary
@@ -224,7 +261,7 @@
     const section=own('section','mf-home-shelf');
     section.setAttribute('data-mf-library', lib.id);
     const top=own('div','mf-home-shelf-heading');
-    const head=append(own('h2',''),set(own('a','',lib.name),'href',lib.href));
+    const head=append(own('h2',''),set(own('a','',lib.name),'href',safeLibraryHref(lib.href,lib.id)));
     const tools=own('div','mf-home-actions');
     const shuffle=own('button','mf-home-button mf-home-shuffle','Losuj ↻');
     shuffle.type='button';
@@ -364,13 +401,55 @@
       window.setTimeout(()=>warning.remove(),6000);
     }
   }
+  async function tryNativeResume(entry, serial){
+    const item=entry.item||{};
+    const api=window.ApiClient||window.ConnectionManager?.getApiClient?.();
+    const server=validId(item.serverId)?compactId(item.serverId):
+      compactId(typeof api?.serverId==='function'?api.serverId():api?.serverId);
+    if(!validId(server))return false;
+    // shortcuts.onClick is bound by Jellyfin to its ORIGINAL itemsContainer
+    // (not document.body or arbitrary MisioFlix elements).
+    const scope=[...document.querySelectorAll('#indexPage .itemsContainer, .homeTab .itemsContainer, .itemsContainer')]
+      .find(node=>!node.closest('#mf-home-0412') && node.isConnected);
+    if(!scope)return false;
+    const proxy=own('div','itemAction mf-home-native-resume-proxy');
+    proxy.style.cssText='position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none';
+    const isEpisode=entry.resumeType==='Episode' || entry.season!=null || entry.episode!=null;
+    for(const [key,value] of Object.entries({
+      'data-id':compactId(entry.resumeId),'data-serverid':server,
+      'data-type':isEpisode?'Episode':'Movie','data-mediatype':'Video',
+      'data-isfolder':'false','data-positionticks':String(Math.max(0,Number(entry.positionTicks)||0))
+    }))proxy.setAttribute(key,value);
+    const button=own('button','mf-home-native-resume-action','');
+    button.type='button';button.setAttribute('data-action','resume');
+    proxy.appendChild(button);scope.appendChild(proxy);
+    try{
+      await pause(80); // give Jellyfin's delegated listener a stable ancestor
+      if(serial!==resumePlaySerial)return false;
+      const click=new MouseEvent('click',{bubbles:true,cancelable:true,view:window});
+      button.dispatchEvent(click);
+      // Shortcut must explicitly consume the event. Do not assume that the
+      // click worked merely because the button exists.
+      if(!click.defaultPrevented)return false;
+      const startedAt=Date.now();
+      while(serial===resumePlaySerial && Date.now()-startedAt<2200){
+        if(playingLocally())return true;
+        await pause(120);
+      }
+      return playingLocally();
+    } catch(error){
+      console.warn('[MisioFlix] Direct native resume unavailable',error);
+      return false;
+    } finally {proxy.remove();}
+  }
   async function playResume(entry){
     if(!validId(entry.resumeId))return;
-    // Verified from the user's detail-page test: navigate to the exact playable
-    // item and press Jellyfin's genuine Resume/Play button after it mounts.
-    // No unverified playbackManager calls and no synthetic click proxy.
     const serial=++resumePlaySerial;
-    if(typeof window.MisioFlixPlayItem==='function') {
+    // Fast path: try Jellyfin's actual playback shortcut without navigating.
+    if(await tryNativeResume(entry,serial))return;
+    if(serial!==resumePlaySerial)return;
+    // Compatible fallback known to work on the user's Jellyfin build.
+    if(typeof window.MisioFlixPlayItem==='function'){
       const started=await window.MisioFlixPlayItem(entry.resumeId);
       if(started || serial!==resumePlaySerial)return;
     }
@@ -962,7 +1041,7 @@
       box.appendChild(own('p','mf-home-search-helper','Brak dostępnych bibliotek.'));
     }
     for(const lib of librariesCache){
-      const link=set(own('a','mf-home-folder-button',lib.name),'href',lib.href);
+      const link=set(own('a','mf-home-folder-button',lib.name),'href',safeLibraryHref(lib.href,lib.id));
       link.setAttribute('aria-label',`Otwórz bibliotekę ${lib.name}`);
       box.appendChild(link);
     }
@@ -1100,11 +1179,12 @@
     window.setTimeout(()=>{queued=false;reconcile();},180);
   }
   function start(){
-    reconcile();
+    if(!normalizeLibraryRoute())reconcile();
     document.addEventListener('keydown',event=>{
       if(event.key==='Escape' && searchModal){event.preventDefault();closeSearch();}
     });
-    window.addEventListener('hashchange',schedule);
+    document.addEventListener('click',interceptLibraryNavigation,true);
+    window.addEventListener('hashchange',()=>{if(!normalizeLibraryRoute())schedule();});
     window.addEventListener('pageshow',schedule);
     document.addEventListener('viewshow',schedule);
     const observer=new MutationObserver(mutations=>{
