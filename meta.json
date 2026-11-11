@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.30: logowanie każdego użytkownika do MAL oraz edycja listy z widoku anime/sezonu z NFO MAL ID.",
+  "description": "MisioFlix v0.4.31: stabilne dane MAL dla anime/sezonów, brak powtarzania zapytań po odświeżeniu DOM.",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.30.0",
+  "version": "0.4.31.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,
