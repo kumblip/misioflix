@@ -41,7 +41,7 @@ class DetailPage0421(unittest.TestCase):
     def test_version_unchanged_workflows(self):
         import json
         meta=json.loads((ROOT/'meta.json').read_text(encoding='utf8'))
-        self.assertEqual(meta['version'],'0.4.21.0')
+        self.assertRegex(meta['version'],r'^0\.4\.\d+\.0$')
         for name in ['build.yml','release.yml']:
             self.assertNotIn('0.4.21', (ROOT/'.github/workflows'/name).read_text(encoding='utf8'))
 

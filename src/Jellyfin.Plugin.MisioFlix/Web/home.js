@@ -1,11 +1,11 @@
-/* MisioFlix 0.4.20: ONLY custom shelves INSIDE Jellyfin's native home view.
+/* MisioFlix 0.4.22: ONLY custom shelves INSIDE Jellyfin's native home view.
  * No second site, no page/router replacement, no bulk catalog loading.
  * Requires the user to set native home slots to "Brak" in Jellyfin preferences.
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_HOME_0420__) return;
-  window.__MISIOFLIX_HOME_0420__ = true;
+  if (window.__MISIOFLIX_HOME_0422__) return;
+  window.__MISIOFLIX_HOME_0422__ = true;
 
   const API = '/MisioFlix/api';
   const SHELF_LIMIT = 12;
@@ -19,6 +19,7 @@
   let showHiddenResume = false;
   let librariesCache = [];
   let discoveryRefs = null;
+  let processedGenreLink = '';
   const catalogCache = new Map();
   const rows = new Map();
   const own = (t, cls, value) => {
@@ -38,7 +39,7 @@
   };
   const homeRoute = () => /^#\/(?:home)?(?:\?|$)/i.test(window.location.hash || '#/');
   const isCurrent = serial => homeRoot?.isConnected && epoch === serial && homeRoute() && currentToken() === owner;
-  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.20", Token="${owner.replace(/["\r\n]/g, '')}"`});
+  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.22", Token="${owner.replace(/["\r\n]/g, '')}"`});
   async function request(path, method='GET', payload, timeoutMs=18000) {
     const control = new AbortController();
     const timeout = window.setTimeout(() => control.abort(), timeoutMs);
@@ -287,10 +288,9 @@
       row.busy=false;row.shuffle.disabled=false;row.reset.disabled=false;
     }
   }
-  // v0.4.20: playable cards have NO details anchors. Try Jellyfin's player,
-  // then a delegated native action; if neither starts playback, open the exact
-  // movie/episode detail and activate its REAL play/resume control after render.
-  // Never send the user to the series or season on a playable-card click.
+  // v0.4.22: playable cards reuse the proven native Jellyfin detail-page
+  // Resume/Play button. Never route the playable click to its parent series.
+  // The old detail-waiter remains an error fallback only.
   let resumePlaySerial = 0;
   const pause = ms => new Promise(resolve => window.setTimeout(resolve,ms));
   function playingLocally(){
@@ -365,45 +365,14 @@
     }
   }
   async function playResume(entry){
-    const item=entry.item;
     if(!validId(entry.resumeId))return;
+    // Verified from the user's detail-page test: navigate to the exact playable
+    // item and press Jellyfin's genuine Resume/Play button after it mounts.
+    // No unverified playbackManager calls and no synthetic click proxy.
     const serial=++resumePlaySerial;
-    const serverId=validId(item.serverId)?compactId(item.serverId):compactId((()=>{
-      const api=window.ApiClient||window.ConnectionManager?.getApiClient?.();
-      return typeof api?.serverId==='function'?api.serverId():api?.serverId;
-    })());
-    const ticks=Math.max(0,Number(entry.positionTicks)||0);
-    const manager=window.playbackManager||window.Emby?.PlaybackManager;
-    if(typeof manager?.play==='function' && validId(serverId)){
-      try{
-        // Public PlaybackManager options from the native Jellyfin Web player.
-        await manager.play({ids:[compactId(entry.resumeId)],serverId,
-          startPositionTicks:ticks,enableRemotePlayers:false});
-        return;
-      }catch(error){console.warn('[MisioFlix] Native playback manager refused playback',error);}
-    }
-    const nativeContainer=document.querySelector('.homeTab .itemsContainer') ||
-      document.querySelector('#indexPage .itemsContainer') ||
-      document.querySelector('.homeTab') ||
-      document.querySelector('#indexPage');
-    if(nativeContainer && validId(serverId)){
-      const shell=own('div','itemAction mf-home-native-play-proxy');
-      for(const [key,value] of Object.entries({
-        'data-id':compactId(entry.resumeId),'data-serverid':serverId,
-        'data-type':entry.resumeType==='Episode'||entry.season!=null||entry.episode!=null?'Episode':'Movie',
-        'data-mediatype':'Video','data-isfolder':'false',
-        'data-positionticks':String(ticks)
-      }))shell.setAttribute(key,value);
-      const button=own('button','','Odtwórz');button.type='button';
-      button.setAttribute('data-action',ticks>0?'resume':'play');shell.appendChild(button);
-      nativeContainer.appendChild(shell);
-      try{
-        button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
-        // A cancelled/defaultPrevented click is NOT proof that video started.
-        // This was the v0.4.19 failure mode on Jellyfin 12.4.
-        await pause(950);
-        if(serial!==resumePlaySerial || playingLocally())return;
-      }finally{shell.remove();}
+    if(typeof window.MisioFlixPlayItem==='function') {
+      const started=await window.MisioFlixPlayItem(entry.resumeId);
+      if(started || serial!==resumePlaySerial)return;
     }
     if(serial===resumePlaySerial)await playViaItemDetails(entry,serial);
   }
@@ -688,6 +657,7 @@
     return value!=='Season'||state.includeSeasons.checked;
   }
   function fitsSearch(item,state,withText=true){
+    if(state.unmatchedGenre)return false;
     if(state.libraryStates && !allowGroup(compactId(item.library_id),state.libraryStates))return false;
     if(!searchByType(item,state))return false;
     const terms=termsForFilter(item,state);
@@ -829,6 +799,13 @@
     state.genreNames=new Map(names.map(name=>[normalized(name),name]));
     state.genreCounts=counts;
     state.genreStates=new Map();
+    // Clicking a genre on a Jellyfin detail page opens the correct catalog
+    // with its positive (green) AND filter already selected.
+    if(state.initialGenre) {
+      const key=normalized(state.initialGenre);
+      if(state.genreNames.has(key))state.genreStates.set(key,1);
+      else state.unmatchedGenre=state.initialGenre;
+    }
     drawGenreButtons(state);
   }
   function createSearchModal(kind){
@@ -903,6 +880,7 @@
     reset.addEventListener('click',()=>{
       input.value='';includeSeasons.checked=false;
       state.libraryStates.clear();state.typeStates.clear();state.genreStates.clear();
+      state.unmatchedGenre='';state.initialGenre='';
       renderChoiceGroup(libraryChoices.choices,libraryOptions,state.libraryStates,()=>paintSearchResults(state));
       renderChoiceGroup(typeChoices.choices,typeOptions,state.typeStates,()=>paintSearchResults(state));
       drawGenreButtons(state);paintSearchResults(state);
@@ -929,6 +907,7 @@
       indexAnimeSeasons(state);
       initializeGenres(state,data);
       paintSearchResults(state);
+      if(state.unmatchedGenre)state.status.textContent='Nie znaleziono gatunku „'+state.unmatchedGenre+'” w tej wyszukiwarce.';
     }catch(error){
       if(state===activeSearch && state.overlay.isConnected){
         state.status.textContent='Nie udało się odczytać katalogu. Użyj „Odśwież dane”.';
@@ -936,17 +915,36 @@
       }
     }finally{state.refresh.disabled=false;}
   }
-  function openSearch(kind){
+  function openSearch(kind,initialGenre=''){
     if(!homeRoot?.isConnected)return;
     closeSearch();
     const opener=document.activeElement;
     const state=createSearchModal(kind);
-    state.opener=opener;
+    state.opener=opener;state.initialGenre=initialGenre;state.unmatchedGenre='';
     activeSearch=state;searchModal=state.overlay;
     document.body.appendChild(state.overlay);
     document.body.classList.add('mf-home-search-open');
     state.input.focus();
     void loadSearch(state);
+  }
+  function linkedGenreRequest(){
+    if(!homeRoute())return null;
+    try {
+      const query=new URLSearchParams((window.location.hash||'').split('?')[1]||'');
+      const kind=query.get('mfSearch');
+      const genre=(query.get('mfGenre')||'').trim();
+      if((kind==='anime'||kind==='media')&&genre&&genre.length<=100)return {kind,genre};
+    } catch {}
+    return null;
+  }
+  function maybeOpenLinkedGenre(){
+    const selected=linkedGenreRequest();
+    if(!selected){processedGenreLink='';return;}
+    if(!homeRoot?.isConnected || !librariesCache.length)return;
+    const signature=window.location.hash;
+    if(processedGenreLink===signature)return;
+    processedGenreLink=signature;
+    openSearch(selected.kind,selected.genre);
   }
   function discoverySection(){
     const section=own('nav','mf-home-discovery');
@@ -1026,6 +1024,7 @@
       container.replaceChildren();rows.clear();
       librariesCache = Array.isArray(libs) ? libs : [];
       paintFolderButtons();
+      maybeOpenLinkedGenre();
       if(!Array.isArray(libs)||!libs.length){container.appendChild(own('p','mf-home-empty','Nie znaleziono dostępnych bibliotek.'));return;}
       // Keep the order supplied by Jellyfin, but do not include Collections in this release.
       for(const lib of libs){
@@ -1080,6 +1079,7 @@
     const visible=homeRoute() && Boolean(token);
     const host=visible ? (document.querySelector('#indexPage') || document.querySelector('.homePage') || document.querySelector('main')) : null;
     if(!visible||!host){
+      processedGenreLink='';
       if(homeRoot){closeSearch();homeRoot.remove();homeRoot=null;homeHost=null;discoveryRefs=null;epoch++;rows.clear();}
       document.documentElement.classList.remove('mf-home-custom-active');
       librariesCache=[];catalogCache.clear();
@@ -1090,7 +1090,7 @@
       owner=token;epoch++;
       closeSearch();homeRoot?.remove();homeRoot=null;homeHost=null;discoveryRefs=null;rows.clear();resumeData={items:[],hidden:[]};librariesCache=[];catalogCache.clear();
     }
-    if(homeRoot && homeRoot.isConnected && homeHost===host)return;
+    if(homeRoot && homeRoot.isConnected && homeHost===host){maybeOpenLinkedGenre();return;}
     homeRoot?.remove();mount(host);
   }
   let queued=false;

@@ -22,8 +22,8 @@ class Playback0420(unittest.TestCase):
         self.assertIn('button.click(); // Jellyfin',JS)
         self.assertNotIn('window.location.hash=nativeDetails(entry.resumeId,item.serverId)',JS)
     def test_no_shortcut_false_positive(self):
-        self.assertIn('await pause(950);',JS)
-        self.assertIn('if(serial!==resumePlaySerial || playingLocally())return;',JS)
+        self.assertIn('window.MisioFlixPlayItem(entry.resumeId)',JS)
+        self.assertIn('if(started || serial!==resumePlaySerial)return;',JS)
         self.assertIn('await playViaItemDetails(entry,serial)',JS)
         self.assertNotIn('if(click.defaultPrevented)return',JS)
     def test_do_not_touch_video_isolation(self):

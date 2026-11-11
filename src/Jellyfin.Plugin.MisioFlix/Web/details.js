@@ -1,11 +1,11 @@
-/* MisioFlix 0.4.21 — a compact layout for ORIGINAL Jellyfin item details (Jellyfin 12.4 DOM verified).
+/* MisioFlix 0.4.22 — a compact layout for ORIGINAL Jellyfin item details (Jellyfin 12.4 DOM verified).
  * Reparents Jellyfin's existing nodes; does not change player, URL handling,
  * series/season links, metadata, playback state, or media files.
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_DETAILS_0421__) return;
-  window.__MISIOFLIX_DETAILS_0421__ = true;
+  if (window.__MISIOFLIX_DETAILS_0422__) return;
+  window.__MISIOFLIX_DETAILS_0422__ = true;
 
   const API = '/MisioFlix/api';
   const ID = /^[0-9a-f]{32}$/i;
@@ -15,6 +15,10 @@
   let lastItem = '';
   let lastPage = null;
   let observer;
+  let previousDetailsRoute = '';
+  let lastKnownHash = window.location.hash || '#/home';
+  const kindRequests = new Map();
+
   const create = (tag, cls, value) => {
     const el = document.createElement(tag);
     if (cls) el.className = cls;
@@ -34,7 +38,7 @@
     return typeof value === 'string' ? value : '';
   };
   function headers() {
-    return {Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-details", Version="0.4.21", Token="${token().replace(/["\r\n]/g,'')}"`};
+    return {Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-details", Version="0.4.22", Token="${token().replace(/["\r\n]/g,'')}"`};
   }
   function itemRoute() {
     const hash = window.location.hash || '';
@@ -79,6 +83,65 @@
     const waiting = visible.filter(page => !valid(knownId(page)));
     return waiting.length ? waiting[waiting.length - 1] : null;
   }
+  // Small, authenticated batch endpoint: classify the actual Jellyfin item
+  // by the configured NFO anime root, NOT by overlapping genre names.
+  function itemKind(id) {
+    id = compact(id);
+    if (!valid(id)) return Promise.resolve(null);
+    if (!kindRequests.has(id)) {
+      const promise = fetch(API + '/overlays?ids=' + encodeURIComponent(id), {
+        headers: headers(), cache: 'no-store'
+      }).then(response => {
+        if (!response.ok) throw new Error('Classification HTTP ' + response.status);
+        return response.json();
+      }).then(rows => {
+        const item = Array.isArray(rows) ? rows.find(row => compact(row.id) === id) : null;
+        return item ? (item.anime === true ? 'anime' : 'media') : null;
+      }).catch(error => {
+        kindRequests.delete(id);
+        console.warn('[MisioFlix] Cannot determine source library for genre:', error);
+        return null;
+      });
+      kindRequests.set(id, promise);
+    }
+    return kindRequests.get(id);
+  }
+  // The real Jellyfin 12.4 DOM uses /list?genreId= links underneath
+  // .itemDetailsGroup. Redirect ONLY genre clicks, not tags/person links.
+  async function onGenreClick(event) {
+    const link = event.target.closest?.('.itemDetailsGroup a[href*="genreId="]');
+    if (!link) return;
+    const page = link.closest('#itemDetailPage');
+    const id = itemRoute();
+    if (!id || !page || activeDetailsPage(id) !== page) return;
+    const genre = link.textContent.trim();
+    if (!genre) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    const kind = await itemKind(id);
+    if (!kind || itemRoute() !== id) {
+      console.warn('[MisioFlix] Genre navigation deferred: cannot verify anime/media library.');
+      return;
+    }
+    window.location.hash = '#/home?mfSearch=' + encodeURIComponent(kind) +
+      '&mfGenre=' + encodeURIComponent(genre);
+  }
+  function ensureBackButton(page) {
+    const container = page.querySelector('.detailPagePrimaryContainer');
+    if (!container || container.querySelector(':scope > .mf-detail-back')) return;
+    const back = create('button','mf-detail-back','← Wstecz');
+    back.type='button';
+    back.setAttribute('aria-label','Wróć do poprzedniej strony');
+    back.addEventListener('click',() => {
+      if (previousDetailsRoute && previousDetailsRoute !== window.location.hash) {
+        window.history.back();
+      } else {
+        window.location.hash='#/home';
+      }
+    });
+    container.prepend(back);
+  }
   function nativePlayButton(page, resume = true) {
     const candidates = resume ? ['.btnResume:not(.hide)', '.btnPlay:not(.hide)', '.btnReplay:not(.hide)'] : ['.btnPlay:not(.hide)', '.btnResume:not(.hide)', '.btnReplay:not(.hide)'];
     for (const selector of candidates) {
@@ -100,12 +163,15 @@
       if (Date.now() - start >= 750) {
         const page = activeDetailsPage(target);
         const button = page && nativePlayButton(page, true);
-        if (button) { button.click(); return; }
+        if (button) { button.click(); return true; }
       }
       await new Promise(resolve => window.setTimeout(resolve, 140));
     }
     console.warn('[MisioFlix] Nie znaleziono przycisku odtwarzania w szczegółach odcinka.');
+    return false;
   }
+  // Expose the already verified native-button path to the homepage carousel.
+  window.MisioFlixPlayItem = playEpisode;
   async function getItem(id) {
     const api = client();
     const uid = userId();
@@ -235,6 +301,7 @@
       for(const [element,marker] of moves.slice().reverse())if(marker.isConnected)marker.replaceWith(element);
     }
     savedLocations.delete(page);
+    page.querySelector('.mf-detail-back')?.remove();
     page.querySelector('.mf-detail-cast-button')?.remove();
     page.querySelector('.mf-detail-cast-panel')?.remove();
     page.querySelector(':scope .mf-detail-grid')?.remove();
@@ -327,11 +394,13 @@
     if (!id || !page) return;
     const grid=ensureLayout(page);
     if (!grid) return;
+    ensureBackButton(page);
     clampSimilar(page);
     syncCastButton(page);
     if (id===lastItem && page===lastPage) return;
     lastItem=id;lastPage=page;
     const serial=++generation;
+    void itemKind(id);
     page.dataset.mfDetailId=id;
     page.classList.remove('mf-detail-has-quick-episode');
     page.querySelector('.mf-detail-quick-slot')?.replaceChildren();
@@ -351,7 +420,13 @@
       if(changes.some(change=>change.type==='childList'))schedule();
     });
     observer.observe(document.body,{childList:true,subtree:true});
+    // Capture before the native delegated Jellyfin router handles genre links.
+    document.addEventListener('click',onGenreClick,true);
     for(const name of ['hashchange','pageshow','popstate']) window.addEventListener(name,()=>{
+      const next = window.location.hash || '#/home';
+      if (/^#\/details(?:\?|$)/i.test(next) && next !== lastKnownHash &&
+          /^#\//.test(lastKnownHash)) previousDetailsRoute=lastKnownHash;
+      lastKnownHash=next;
       if(itemRoute()!==lastItem)generation++;
       schedule();
     });

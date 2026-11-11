@@ -998,3 +998,21 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact #similarCollapsible .simil
     padding:14px 15px 28px!important;
   }
 }
+
+/* v0.4.22: actions limited to actual Jellyfin detail views. */
+html.misioflix-skin #itemDetailPage .mainDetailButtons .btnShuffle {
+  display:none!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-back {
+  display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+  min-height:34px;margin:0 0 16px 0;padding:6px 12px;
+  border:1px solid rgba(245,165,208,.43);border-radius:9px;
+  background:rgba(56,29,54,.8);color:#fff1f9;font-size:13px;
+  font-weight:650;line-height:1.2;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-back:hover {
+  background:rgba(98,45,80,.9);border-color:#f4a5ce;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-back:focus-visible {
+  outline:2px solid #ffb3db;outline-offset:3px;
+}
