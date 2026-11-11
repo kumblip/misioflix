@@ -26,6 +26,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_search_0415.py -v
           python3 -m unittest discover -s tests -p test_search_relation_0416.py -v
           python3 -m unittest discover -s tests -p test_fixes_0417.py -v
+          python3 -m unittest discover -s tests -p test_layout_0418.py -v
           node tests/search_relation_0416.cjs
           node tests/ui_v0411.cjs
       - name: Kompilacja DLL (bez kompilowania na NAS)
