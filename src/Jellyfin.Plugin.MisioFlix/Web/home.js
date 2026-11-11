@@ -1,4 +1,4 @@
-/* MisioFlix 0.4.27: user-scoped home and independent BoxSet collection shelf.
+/* MisioFlix 0.4.28: user-scoped home and independent BoxSet collection shelf.
  * No second site, no page/router replacement, no bulk catalog loading.
  * Requires the user to set native home slots to "Brak" in Jellyfin preferences.
  */
@@ -48,8 +48,18 @@
     }catch{return false;}
   }
   const homeRoute = () => homeRouteFor(window.location.hash || '#/');
+  // A dedicated, paged collection directory. It is a distinct home subroute,
+  // not an anchor to the carousel and not Jellyfin's global grouping option.
+  const COLLECTIONS_URL = '#/home?mfCollections=1';
+  function collectionsRoute(){
+    if(!homeRoute())return false;
+    try { return new URLSearchParams((window.location.hash||'').split('?')[1]||'').get('mfCollections')==='1'; }
+    catch { return false; }
+  }
+  let collectionsPage = null;
+  let collectionsLoad = {busy:false,loaded:false,offset:0,hasMore:true,requestId:0};
   const isCurrent = serial => homeRoot?.isConnected && epoch === serial && homeRoute() && currentToken() === owner;
-  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.27", Token="${owner.replace(/["\r\n]/g, '')}"`});
+  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.28", Token="${owner.replace(/["\r\n]/g, '')}"`});
   async function request(path, method='GET', payload, timeoutMs=18000) {
     const control = new AbortController();
     const timeout = window.setTimeout(() => control.abort(), timeoutMs);
@@ -308,7 +318,7 @@
     const section=own('section','mf-home-shelf');
     section.setAttribute('data-mf-library', lib.id);
     const top=own('div','mf-home-shelf-heading');
-    const head=lib.category==='collections' ? own('h2','','Kolekcje') : append(own('h2',''),set(own('a','',lib.name),'href',safeLibraryHref(lib.href,lib.id)));
+    const head=append(own('h2',''),set(own('a','',lib.category==='collections'?'Kolekcje':lib.name),'href',lib.category==='collections'?COLLECTIONS_URL:safeLibraryHref(lib.href,lib.id)));
     const tools=own('div','mf-home-actions');
     const shuffle=own('button','mf-home-button mf-home-shuffle','Losuj ↻');
     shuffle.type='button';
@@ -1098,13 +1108,10 @@
       link.setAttribute('aria-label',`Otwórz bibliotekę ${lib.name}`);
       box.appendChild(link);
     }
-    // Internal shortcut to the dedicated BoxSet shelf, even when /Views has no
-    // separate collections library. Do not enable global movie grouping.
-    const collectionButton=own('button','mf-home-folder-button','Kolekcje');
-    collectionButton.type='button';
-    collectionButton.addEventListener('click',()=>{
-      homeRoot?.querySelector('[data-mf-library="collections"]')?.scrollIntoView({behavior:'smooth',block:'start'});
-    });
+    // Match the five native-style library buttons: an actual addressable
+    // list view, never scrollIntoView on the home carousel.
+    const collectionButton=set(own('a','mf-home-folder-button','Kolekcje'),'href',COLLECTIONS_URL);
+    collectionButton.setAttribute('aria-label','Otwórz listę wszystkich kolekcji');
     box.appendChild(collectionButton);
     for(const [kind,name] of [['anime','Wyszukiwarka anime'],['media','Wyszukiwarka filmów i seriali']]){
       const btn=own('button','mf-home-folder-button mf-home-search-launch',name);
@@ -1112,6 +1119,64 @@
       btn.addEventListener('click',()=>openSearch(kind));
       box.appendChild(btn);
     }
+  }
+  function createCollectionsPage(){
+    const section=own('section','mf-collections-page');
+    section.setAttribute('aria-label','Wszystkie kolekcje');
+    const header=own('div','mf-collections-page-header');
+    const back=set(own('a','mf-collections-page-back','← Strona główna'),'href','#/home');
+    const heading=own('h1','','Kolekcje');
+    const summary=own('p','mf-collections-page-summary','Wszystkie kolekcje filmów i seriali');
+    append(header,back,heading,summary);
+    const grid=own('div','mf-collections-page-grid');
+    const message=own('p','mf-home-empty','Ładowanie kolekcji…');
+    grid.appendChild(message);
+    const next=own('button','mf-home-button mf-collections-page-more','Pokaż kolejne');
+    next.type='button';next.hidden=true;
+    next.addEventListener('click',()=>void loadCollectionsPage(false));
+    append(section,header,grid,next);
+    return {section,grid,next,summary};
+  }
+  async function loadCollectionsPage(reset=false){
+    if(!collectionsPage || !collectionsRoute() || !homeRoot?.isConnected || collectionsLoad.busy)return;
+    if(!reset && (!collectionsLoad.hasMore || collectionsLoad.loaded===false && collectionsLoad.offset>0))return;
+    const serial=epoch;
+    const id=++collectionsLoad.requestId;
+    collectionsLoad.busy=true;
+    const start=reset?0:collectionsLoad.offset;
+    if(reset){collectionsLoad.offset=0;collectionsLoad.hasMore=true;collectionsPage.grid.replaceChildren(own('p','mf-home-empty','Ładowanie kolekcji…'));}
+    collectionsPage.next.disabled=true;
+    try{
+      // The server caps one authorized request at 24 items; paginate instead
+      // of fetching the entire database or relying on a separate BoxSet view.
+      const data=await request('/home/collections?mode=latest&startIndex='+start+'&limit=24');
+      if(!isCurrent(serial)||id!==collectionsLoad.requestId||!collectionsPage?.section.isConnected)return;
+      const items=Array.isArray(data.items)?data.items.filter(item=>item.type==='BoxSet'):[];
+      if(reset || start===0)collectionsPage.grid.replaceChildren();
+      for(const item of items)collectionsPage.grid.appendChild(makeCard(item));
+      collectionsLoad.offset=start+items.length;
+      collectionsLoad.hasMore=Boolean(data.hasMore)&&items.length>0;
+      collectionsLoad.loaded=true;
+      collectionsPage.next.textContent='Pokaż kolejne';
+      collectionsPage.next.hidden=!collectionsLoad.hasMore;
+      collectionsPage.summary.textContent=items.length||start ? 'Pobrano '+collectionsLoad.offset+' kolekcji' : 'Brak kolekcji';
+      if(!collectionsPage.grid.childElementCount)collectionsPage.grid.appendChild(own('p','mf-home-empty','Nie znaleziono kolekcji.'));
+    }catch{
+      if(isCurrent(serial)&&collectionsPage?.section.isConnected){
+        if(reset)collectionsPage.grid.replaceChildren(own('p','mf-home-empty','Nie udało się pobrać kolekcji.'));
+        collectionsPage.next.textContent='Spróbuj ponownie';
+        collectionsPage.next.hidden=false;
+      }
+    }finally{
+      collectionsLoad.busy=false;
+      if(collectionsPage?.next)collectionsPage.next.disabled=false;
+    }
+  }
+  function syncCollectionsPage(){
+    if(!homeRoot?.isConnected || !collectionsPage)return;
+    const isList=collectionsRoute();
+    homeRoot.classList.toggle('mf-collections-page-active',isList);
+    if(isList && !collectionsLoad.loaded && !collectionsLoad.busy)void loadCollectionsPage(true);
   }
   function hero(shortcuts){
     const hero=own('section','mf-home-hero');
@@ -1205,11 +1270,15 @@
       paintFolderButtons();
       showHiddenResume=false;
       homeRoot.appendChild(resumeShelf());
+      collectionsPage=createCollectionsPage();
+      collectionsLoad={busy:false,loaded:false,offset:0,hasMore:true,requestId:0};
+      homeRoot.appendChild(collectionsPage.section);
       const rowsArea=own('div','mf-home-rows');
       rowsArea.appendChild(own('p','mf-home-empty','Ładowanie bibliotek…'));
       homeRoot.appendChild(rowsArea);
       host.prepend(homeRoot);
       document.documentElement.classList.add('mf-home-custom-active');
+      syncCollectionsPage();
       void loadLibraries(serial);
       void loadResume(serial);
     }finally{mounting=false;}
@@ -1217,7 +1286,7 @@
   function unmountHome(){
     if(homeRoot){
       closeSearch();homeRoot.remove();homeRoot=null;homeHost=null;
-      discoveryRefs=null;epoch++;rows.clear();
+      discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;epoch++;rows.clear();
     }
     document.documentElement.classList.remove('mf-home-custom-active');
   }
@@ -1234,9 +1303,9 @@
     }
     if(owner!==token){
       owner=token;epoch++;
-      closeSearch();homeRoot?.remove();homeRoot=null;homeHost=null;discoveryRefs=null;rows.clear();resumeData={items:[],hidden:[]};librariesCache=[];catalogCache.clear();
+      closeSearch();homeRoot?.remove();homeRoot=null;homeHost=null;discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;rows.clear();resumeData={items:[],hidden:[]};librariesCache=[];catalogCache.clear();
     }
-    if(homeRoot && homeRoot.isConnected && homeHost===host){maybeOpenLinkedGenre();return;}
+    if(homeRoot && homeRoot.isConnected && homeHost===host){syncCollectionsPage();maybeOpenLinkedGenre();return;}
     homeRoot?.remove();mount(host);
   }
   let queued=false;

@@ -485,6 +485,7 @@
     button.id='mf-library-back-home';button.type='button';
     button.setAttribute('aria-label','Wróć do strony głównej MisioFlix');
     button.addEventListener('click',()=>{window.location.hash='#/home';});
+    // Float at the lower edge (theme.css), outside native React-owned toolbar and card grid.
     document.body.insertAdjacentElement('beforeend',button); // Outside Jellyfin's React-managed subtree.
   }
   function mfDecorateFolders(){

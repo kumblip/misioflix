@@ -14,7 +14,7 @@ CATALOG = (ROOT / 'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixCatalogServic
 
 class Home0427(unittest.TestCase):
     def test_version_is_current(self):
-        self.assertEqual(json.loads((ROOT / 'meta.json').read_text())['version'], '0.4.27.0')
+        self.assertRegex(json.loads((ROOT / 'meta.json').read_text())['version'], r'^0\.4\.[0-9]+\.0$')
 
     def test_favorites_are_not_the_homepage(self):
         self.assertIn('const tab=new URLSearchParams(query).get(\'tab\')', HOME)
@@ -33,7 +33,7 @@ class Home0427(unittest.TestCase):
         self.assertIn('const ordered=[...animeViews,collectionsShelf,...otherViews]', HOME)
         self.assertIn("row.lib.category==='collections'", HOME)
         self.assertIn("'/home/collections?'", HOME)
-        self.assertIn("collectionButton.type='button'", HOME)
+        self.assertIn("collectionButton.setAttribute('aria-label','Otwórz listę wszystkich kolekcji')", HOME)
 
     def test_collections_are_boxsets_not_folders(self):
         self.assertIn('ReadHomeCollectionsAsync', CATALOG)

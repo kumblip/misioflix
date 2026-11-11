@@ -1057,3 +1057,20 @@ html.misioflix-skin .mf-home-collection-card .mf-home-poster{outline:1px solid r
 html.misioflix-skin .mf-home-collection-count{background:rgba(25,17,29,.8);padding:3px 6px;border-radius:5px;font-size:11px;color:#ffd7eb;font-weight:650}
 html.misioflix-skin .card.mf-physical-folder .mf-collection-label{background:rgba(54,85,115,.92);border-color:rgba(156,207,250,.44)}
 html.misioflix-skin .card.mf-empty-folder .cardImageContainer{opacity:.78}
+
+/* v0.4.28: standalone collections directory, never replace or mutate Jellyfin's React library views. */
+html.misioflix-skin .mf-home-0412:not(.mf-collections-page-active) > .mf-collections-page{display:none!important}
+html.misioflix-skin .mf-home-0412.mf-collections-page-active > :not(.mf-collections-page){display:none!important}
+html.misioflix-skin .mf-collections-page{display:flex;flex-direction:column;gap:18px;min-width:0}
+html.misioflix-skin .mf-collections-page-header{display:flex;align-items:center;gap:15px;flex-wrap:wrap}
+html.misioflix-skin .mf-collections-page-header h1{color:#fff2f9;font-size:clamp(22px,2.6vw,31px);margin:0;font-weight:700}
+html.misioflix-skin .mf-collections-page-summary{color:#ccb7c8;margin:0;font-size:13px}
+html.misioflix-skin .mf-collections-page-back{display:inline-flex;align-items:center;padding:9px 14px;background:#39213a;border:1px solid #915473;border-radius:10px;color:#fff2f8!important;text-decoration:none!important;font-size:13px;font-weight:650}
+html.misioflix-skin .mf-collections-page-back:hover{background:#58304e}
+html.misioflix-skin .mf-collections-page-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:18px;align-items:start;min-width:0}
+html.misioflix-skin .mf-collections-page-grid .mf-home-card{width:100%;min-width:0;flex:none}
+html.misioflix-skin .mf-collections-page-more{align-self:center}
+@media(max-width:600px){html.misioflix-skin .mf-collections-page-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}}
+/* Native library back button: floating lower-left, clear of Foldery, filter and sort controls. */
+html.misioflix-skin #mf-library-back-home{top:auto!important;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:clamp(12px,2.8vw,52px);z-index:1100;padding:10px 14px;background:rgba(48,23,51,.95);box-shadow:0 7px 22px rgba(0,0,0,.5)}
+@media(max-width:700px){html.misioflix-skin #mf-library-back-home{top:auto!important;bottom:calc(12px + env(safe-area-inset-bottom,0px))}}
