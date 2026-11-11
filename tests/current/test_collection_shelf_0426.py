@@ -8,7 +8,7 @@ J=(R/'src/Jellyfin.Plugin.MisioFlix/Web/client.js').read_text()
 CSS=(R/'src/Jellyfin.Plugin.MisioFlix/Web/theme.css').read_text()
 class Collections0426(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((R/'meta.json').read_text())['version'],'0.4.26.0')
+        self.assertRegex(json.loads((R/'meta.json').read_text())['version'],r'^0\.4\.[0-9]+\.0$')
     def test_library_category_boxsets(self):
         self.assertIn('"boxsets" => "collections"',C)
         self.assertIn('"boxsets" => "boxsets"',C)
@@ -29,9 +29,8 @@ class Collections0426(unittest.TestCase):
         self.assertIn('var itemScope = collections',C)
         self.assertIn('ParentId={libraryId:N}&Recursive=false',C)
     def test_collection_row_right_after_anime(self):
-        self.assertIn("lib.category==='collections'?'Kolekcje':lib.name",H)
-        self.assertIn('const collectionViews=valid.filter',H)
-        self.assertIn('[...animeViews,...collectionViews,...otherViews]',H)
+        self.assertIn("const collectionsShelf={id:'collections'",H)
+        self.assertIn("[...animeViews,collectionsShelf,...otherViews]",H)
         self.assertIn("if(lib.category==='collections')continue;",H)
         self.assertIn("['movies','series'].includes(lib.category)",H)
         self.assertIn("item.type==='BoxSet'?'KOLEKCJA'",H)

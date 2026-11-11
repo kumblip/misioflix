@@ -97,6 +97,21 @@ public sealed class MisioFlixController : ControllerBase
         catch (InvalidOperationException) { return StatusCode(503, new { error="Niedostępny katalog NFO" }); }
     }
 
+    [HttpGet("api/home/collections")]
+    [Authorize]
+    public async Task<IActionResult> HomeCollections([FromQuery] string? mode,
+        [FromQuery] int startIndex=0, [FromQuery] int limit=12,
+        CancellationToken cancel=default)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        if (startIndex < 0 || startIndex > 40000 || limit < 1 || limit > 24)
+            return BadRequest(new { error="Nieprawidłowe parametry kolekcji" });
+        Response.Headers.CacheControl = "private, no-store";
+        try { return Ok(await _catalog.ReadHomeCollectionsAsync(Request, mode, startIndex, limit, cancel).ConfigureAwait(false)); }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (HttpRequestException) { return StatusCode(502, new { error="Nie udało się pobrać kolekcji" }); }
+    }
+
     [HttpGet("api/home/resume")]
     [Authorize]
     public async Task<IActionResult> HomeResume(CancellationToken cancel)

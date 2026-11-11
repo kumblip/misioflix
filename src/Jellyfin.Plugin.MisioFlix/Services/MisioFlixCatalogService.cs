@@ -271,6 +271,40 @@ public sealed class MisioFlixCatalogService
         return new HomeShelfResponse(view.id, view.name, random ? "random" : "latest", startIndex, hasMore, list);
     }
 
+    // Collections do not need a separate "BoxSets" user-view/library. Jellyfin
+    // stores BoxSets globally, even when no corresponding view is present in
+    // Users/{id}/Views. Query only user-visible BoxSets; never return folders.
+    public async Task<HomeShelfResponse> ReadHomeCollectionsAsync(HttpRequest caller,
+        string? mode, int startIndex, int limit, CancellationToken cancel)
+    {
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        if (startIndex < 0 || startIndex > 40000) throw new ArgumentOutOfRangeException(nameof(startIndex));
+        if (limit < 1 || limit > 24) throw new ArgumentOutOfRangeException(nameof(limit));
+        var random = string.Equals(mode, "random", StringComparison.OrdinalIgnoreCase);
+        var wanted = random ? 5 : limit;
+        // Crucially: NO ParentId. A collections library need not be present
+        // in /Views, and ParentId+IncludeItemTypes=BoxSet is buggy in Jellyfin 12.
+        var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
+                   "&Recursive=true&IncludeItemTypes=BoxSet&CollapseBoxSetItems=false" +
+                   $"&SortBy={(random ? "Random" : "DateCreated")}&SortOrder=Descending" +
+                   "&EnableUserData=true&Fields=Genres,Overview,DateCreated,ChildCount" +
+                   $"&StartIndex={(random ? 0 : startIndex)}&Limit={(random ? 60 : limit + 1)}";
+        using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
+        var items = Get(doc.RootElement, "Items");
+        var tiles = new List<HomeTile>();
+        if (items.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in items.EnumerateArray())
+            {
+                if (tiles.Count >= wanted) break;
+                var tile = MakeHomeTile(item, "collections");
+                if (tile is not null) tiles.Add(tile);
+            }
+        }
+        var more = !random && items.ValueKind == JsonValueKind.Array && items.GetArrayLength() > limit;
+        return new HomeShelfResponse("collections", "Kolekcje", random ? "random" : "latest", startIndex, more, tiles);
+    }
+
     private HomeTile? MakeHomeTile(JsonElement item, string category)
     {
         var id = Text(Get(item, "Id"));

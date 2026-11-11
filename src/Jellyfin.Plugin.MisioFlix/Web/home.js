@@ -1,4 +1,4 @@
-/* MisioFlix 0.4.24: ONLY custom shelves INSIDE Jellyfin's native home view.
+/* MisioFlix 0.4.27: user-scoped home and independent BoxSet collection shelf.
  * No second site, no page/router replacement, no bulk catalog loading.
  * Requires the user to set native home slots to "Brak" in Jellyfin preferences.
  */
@@ -37,9 +37,19 @@
     const token = api ? (typeof api.accessToken === 'function' ? api.accessToken() : api.accessToken) : '';
     return typeof token === 'string' ? token : '';
   };
-  const homeRoute = () => /^#\/(?:home)?(?:\?|$)/i.test(window.location.hash || '#/');
+  // The actual Jellyfin 12.4 Favorites header is href="#/home?tab=1".
+  // Only tab=0 (or the default home route) may receive our custom shelves.
+  function homeRouteFor(hash){
+    if(!/^#\/(?:home)?(?:\?|$)/i.test(hash || '#/'))return false;
+    try{
+      const query=String(hash||'').split('?')[1]||'';
+      const tab=new URLSearchParams(query).get('tab');
+      return tab===null || tab==='0';
+    }catch{return false;}
+  }
+  const homeRoute = () => homeRouteFor(window.location.hash || '#/');
   const isCurrent = serial => homeRoot?.isConnected && epoch === serial && homeRoute() && currentToken() === owner;
-  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.24", Token="${owner.replace(/["\r\n]/g, '')}"`});
+  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.27", Token="${owner.replace(/["\r\n]/g, '')}"`});
   async function request(path, method='GET', payload, timeoutMs=18000) {
     const control = new AbortController();
     const timeout = window.setTimeout(() => control.abort(), timeoutMs);
@@ -298,7 +308,7 @@
     const section=own('section','mf-home-shelf');
     section.setAttribute('data-mf-library', lib.id);
     const top=own('div','mf-home-shelf-heading');
-    const head=append(own('h2',''),set(own('a','',lib.category==='collections'?'Kolekcje':lib.name),'href',lib.category==='collections'?(libraryListUrl(lib.id,lib.href)||lib.href):safeLibraryHref(lib.href,lib.id)));
+    const head=lib.category==='collections' ? own('h2','','Kolekcje') : append(own('h2',''),set(own('a','',lib.name),'href',safeLibraryHref(lib.href,lib.id)));
     const tools=own('div','mf-home-actions');
     const shuffle=own('button','mf-home-button mf-home-shuffle','Losuj ↻');
     shuffle.type='button';
@@ -337,8 +347,11 @@
     row.shuffle.disabled=true;
     row.reset.disabled=true;
     try{
-      const data=await request(`/home/shelf?libraryId=${encodeURIComponent(row.lib.id)}`+
-        `&mode=${mode}&startIndex=${start}&limit=${mode==='random'?RANDOM_LIMIT:SHELF_LIMIT}`);
+      const endpoint=row.lib.category==='collections'
+        ? '/home/collections?'
+        : `/home/shelf?libraryId=${encodeURIComponent(row.lib.id)}&`;
+      const data=await request(endpoint+
+        `mode=${mode}&startIndex=${start}&limit=${mode==='random'?RANDOM_LIMIT:SHELF_LIMIT}`);
       if(!isCurrent(serial)||!row.section.isConnected)return;
       if(reset)row.scroll.replaceChildren();
       const list=Array.isArray(data.items)?data.items:[];
@@ -1085,13 +1098,14 @@
       link.setAttribute('aria-label',`Otwórz bibliotekę ${lib.name}`);
       box.appendChild(link);
     }
-    // Optional Collections shortcut: reuse Jellyfin's real header URL, never guess a route.
-    const nativeCollections=[...document.querySelectorAll('.skinHeader a[href],header a[href]')]
-      .find(a=>/^(Kolekcje|Collections)$/i.test(a.textContent.trim()) && a.getAttribute('href')?.startsWith('#/'));
-    if(nativeCollections && !librariesCache.some(lib=>/^(Kolekcje|Collections)$/i.test(lib.name))){
-      const collectionLink=set(own('a','mf-home-folder-button','Kolekcje'),'href',nativeCollections.getAttribute('href'));
-      box.appendChild(collectionLink);
-    }
+    // Internal shortcut to the dedicated BoxSet shelf, even when /Views has no
+    // separate collections library. Do not enable global movie grouping.
+    const collectionButton=own('button','mf-home-folder-button','Kolekcje');
+    collectionButton.type='button';
+    collectionButton.addEventListener('click',()=>{
+      homeRoot?.querySelector('[data-mf-library="collections"]')?.scrollIntoView({behavior:'smooth',block:'start'});
+    });
+    box.appendChild(collectionButton);
     for(const [kind,name] of [['anime','Wyszukiwarka anime'],['media','Wyszukiwarka filmów i seriali']]){
       const btn=own('button','mf-home-folder-button mf-home-search-launch',name);
       btn.type='button';btn.setAttribute('aria-haspopup','dialog');
@@ -1147,13 +1161,13 @@
       if(!Array.isArray(libs)||!libs.length){container.appendChild(own('p','mf-home-empty','Nie znaleziono dostępnych bibliotek.'));return;}
       // Collections are a separate home row, never Jellyfin's optional
       // 'group movies into collections' setting. Place directly after AnimePL.
-      const valid=libs.filter(lib=>validId(lib.id) && ['anime','movies','series','collections'].includes(lib.category));
-      const collectionViews=valid.filter(lib=>lib.category==='collections');
+      const valid=libs.filter(lib=>validId(lib.id) && ['anime','movies','series'].includes(lib.category));
+      // A global BoxSet shelf is always available; /Users/Me/Views commonly
+      // omits the Collections library entirely. No made-up parent GUIDs.
+      const collectionsShelf={id:'collections',name:'Kolekcje',category:'collections',href:''};
       const animeViews=valid.filter(lib=>lib.category==='anime');
-      const otherViews=valid.filter(lib=>lib.category!=='anime' && lib.category!=='collections');
-      const ordered=animeViews.length
-        ? [...animeViews,...collectionViews,...otherViews]
-        : [...collectionViews,...otherViews];
+      const otherViews=valid.filter(lib=>lib.category!=='anime');
+      const ordered=[...animeViews,collectionsShelf,...otherViews];
       for(const lib of ordered){
         const row=shelfShell(lib);
         rows.set(lib.id,row);
@@ -1200,14 +1214,20 @@
       void loadResume(serial);
     }finally{mounting=false;}
   }
+  function unmountHome(){
+    if(homeRoot){
+      closeSearch();homeRoot.remove();homeRoot=null;homeHost=null;
+      discoveryRefs=null;epoch++;rows.clear();
+    }
+    document.documentElement.classList.remove('mf-home-custom-active');
+  }
   function reconcile(){
     const token=currentToken();
     const visible=homeRoute() && Boolean(token);
     const host=visible ? (document.querySelector('#indexPage') || document.querySelector('.homePage') || document.querySelector('main')) : null;
     if(!visible||!host){
       processedGenreLink='';
-      if(homeRoot){closeSearch();homeRoot.remove();homeRoot=null;homeHost=null;discoveryRefs=null;epoch++;rows.clear();}
-      document.documentElement.classList.remove('mf-home-custom-active');
+      unmountHome();
       librariesCache=[];catalogCache.clear();
       owner=token;
       return;
@@ -1231,7 +1251,18 @@
       if(event.key==='Escape' && searchModal){event.preventDefault();closeSearch();}
     });
     document.addEventListener('click',interceptLibraryNavigation,true);
-    window.addEventListener('hashchange',()=>{if(!normalizeLibraryRoute())schedule();});
+    // The native header lives OUTSIDE our injected home. Clear our subtree on
+    // pointerdown, before Jellyfin's React click router mounts a different view.
+    // Never remove a clicked card/modal from under its own handler.
+    document.addEventListener('pointerdown',event=>{
+      if(!homeRoot || event.button!==0)return;
+      const link=event.target.closest?.('header a[href],.skinHeader a[href],.MuiAppBar-root a[href],nav a[href]');
+      if(link && !homeRouteFor(link.getAttribute('href')||''))unmountHome();
+    },true);
+    window.addEventListener('hashchange',()=>{
+      if(!homeRoute())unmountHome();
+      if(!normalizeLibraryRoute())schedule();
+    });
     window.addEventListener('pageshow',schedule);
     document.addEventListener('viewshow',schedule);
     const observer=new MutationObserver(mutations=>{
