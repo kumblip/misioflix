@@ -19,12 +19,11 @@ jobs:
       - name: Ustal wersję z meta.json (bez zmian w workflow)
         run: python3 tools/sync_version.py
 
-      - name: Test plików frontendu
+      - name: Testy aktywnego zestawu (bez historycznych asercji wersji)
         run: |
           node --check src/Jellyfin.Plugin.MisioFlix/Web/client.js
           node --check src/Jellyfin.Plugin.MisioFlix/Web/home.js
-          python3 -m unittest discover -s tests -p 'test_*.py' -v
-          find tests -maxdepth 1 -name '*.cjs' -type f -print0 | sort -z | xargs -0 -r -n1 node
+          python3 tools/run_tests.py
       - name: Kompilacja DLL (bez kompilowania na NAS)
         run: dotnet publish src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj --configuration Release --output build/publish
       - name: Pakowanie
