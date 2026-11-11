@@ -1,4 +1,4 @@
-/* MisioFlix v0.4.31: non-repeating MAL item reads and stable detail UI.
+/* MisioFlix v0.4.32: scoped MAL ID lookup and stable detail UI.
  * Home: OAuth connect/disconnect only, never fetch anime list.
  * Item details: lazy one-item MAL read, local display cache and explicit save/refresh.
  * Does not alter Jellyfin playback, NFO or native React-owned DOM children.
@@ -18,7 +18,7 @@
     const a=apiClient();const t=typeof a?.accessToken==='function'?a.accessToken():a?.accessToken;
     return typeof t==='string'?t:'';
   };
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-mal", Version="0.4.31", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-mal", Version="0.4.32", Token="${token().replace(/["\r\n]/g,'')}"`});
   const el=(tag,cls,text)=>{const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=String(text);return x;};
   const params=()=>new URLSearchParams((window.location.hash||'').split('?')[1]||'');
   const homeRoute=()=>/^#\/(?:home)?(?:\?|$)/i.test(location.hash||'#/home') && (params().get('tab')||'0')==='0' && !params().has('mfCollections');
@@ -237,8 +237,10 @@
     try{
       const response=await fetch(url,{headers:headers(),cache:'no-store',signal:controller.signal});
       if(!response.ok){
-        const where=url.includes('/MisioFlix/api/item/')?'katalogu anime/NFO':'szczegółów Jellyfin';
-        throw new Error(`HTTP ${response.status} przy odczycie ${where}`);
+        const where=url.includes('/MisioFlix/api/mal/resolve')?'identyfikatora MAL z NFO':'szczegółów Jellyfin';
+        let message='';
+        try{const failure=await response.json();message=String(failure?.error||'').slice(0,160);}catch{}
+        throw new Error(message||`HTTP ${response.status} przy odczycie ${where}`);
       }
       return await response.json();
     }catch(error){
@@ -300,12 +302,11 @@
         const seasonId=metadata.Type==='Season'?id:'';
         if(!valid(catalogId))throw new Error('Brak identyfikatora nadrzędnej serii w Jellyfin');
         updateSession(session,'loading','Sprawdzanie anime i NFO…');
-        const catalog=await readJson('/MisioFlix/api/item/'+catalogId);
-        if(!catalog?.item?.anime){
+        const target=await readJson(`/MisioFlix/api/mal/resolve?catalogId=${catalogId}${seasonId?'&seasonId='+seasonId:''}`);
+        if(!target?.anime){
           updateSession(session,'irrelevant','');return;
         }
-        const season=seasonId?catalog.seasons?.find(s=>compact(s.id)===seasonId):null;
-        const malId=seasonId?Number(season?.mal_id):Number(catalog.item.mal_id);
+        const malId=Number(target.malId);
         if(!Number.isSafeInteger(malId)||malId<=0){
           updateSession(session,'missing',seasonId?
             'Ten sezon nie ma MAL ID w season.nfo.':'Ten tytuł nie ma MAL ID w NFO.');return;

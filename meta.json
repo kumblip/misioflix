@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix v0.4.31: stabilne dane MAL dla anime/sezonów, brak powtarzania zapytań po odświeżeniu DOM.",
+  "description": "MisioFlix v0.4.32: szybkie dopasowanie MAL ID z NFO po GUID pozycji Jellyfin; naprawa HTTP 404.",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.31.0",
+  "version": "0.4.32.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

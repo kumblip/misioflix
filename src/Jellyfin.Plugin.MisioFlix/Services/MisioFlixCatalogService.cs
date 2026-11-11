@@ -790,15 +790,91 @@ public sealed class MisioFlixCatalogService
         return userId;
     }
 
-    public async Task<int> AuthorizedMalIdAsync(HttpRequest caller,Guid catalogId,Guid? seasonId,CancellationToken cancel)
+    // One authorized media item, not a scan of every anime in the user's library.
+    // Jellyfin returns compact (N) GUIDs from Items, while ASP.NET binds the same
+    // values to canonical (D) Guids. Always compare the parsed value, not strings.
+    private static bool SameGuid(string? value, Guid id) =>
+        Guid.TryParse(value, out var parsed) && parsed == id;
+
+    public async Task<int> AuthorizedMalIdAsync(HttpRequest caller, Guid catalogId,
+        Guid? seasonId, CancellationToken cancel)
     {
-        var catalog=await ReadForAuthenticatedUserAsync(caller,cancel).ConfigureAwait(false);
-        var item=catalog.items.FirstOrDefault(x=>x.id.Equals(catalogId.ToString(),StringComparison.OrdinalIgnoreCase) && x.anime);
-        if(item is null) throw new UnauthorizedAccessException("Anime not accessible");
-        if(!seasonId.HasValue)return item.mal_id ?? throw new ArgumentException("Brak identyfikatora MAL w NFO serii");
-        var seasons=await ReadSeasonsAsync(caller,catalogId,cancel).ConfigureAwait(false);
-        var season=seasons.FirstOrDefault(x=>x.id.Equals(seasonId.Value.ToString(),StringComparison.OrdinalIgnoreCase));
-        return season?.mal_id ?? throw new ArgumentException("Brak identyfikatora MAL w NFO sezonu");
+        if (catalogId == Guid.Empty || seasonId == Guid.Empty)
+            throw new ArgumentException("Nieprawidłowy identyfikator anime/sezonu");
+
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        var itemId = seasonId ?? catalogId;
+
+        // The authenticated Jellyfin Items query applies the current user's
+        // library permissions, and returns at most a single matching item.
+        var route = $"Items?UserId={Uri.EscapeDataString(userId)}" +
+            $"&Ids={itemId:N}&Recursive=true&Limit=2" +
+            "&IncludeItemTypes=Series,Season,Movie&CollapseBoxSetItems=false";
+        using var result = await GetJsonAsync(origin, route, auth, cancel).ConfigureAwait(false);
+        var items = Get(result.RootElement, "Items");
+        if (items.ValueKind != JsonValueKind.Array)
+            throw new UnauthorizedAccessException("Nie znaleziono pozycji użytkownika");
+        JsonElement found = default;
+        foreach (var row in items.EnumerateArray())
+        {
+            if (SameGuid(Text(Get(row, "Id")), itemId)) { found = row; break; }
+        }
+        if (found.ValueKind != JsonValueKind.Object)
+            throw new UnauthorizedAccessException("Pozycja nie jest dostępna dla użytkownika");
+
+        var type = Text(Get(found, "Type"));
+        if (seasonId.HasValue)
+        {
+            if (type != "Season") throw new ArgumentException("Wybrana pozycja nie jest sezonem");
+            // SeriesId must reference the parent, not a sibling season or
+            // another show's NFO. Verify the parent via the user's item API.
+            using var season = await GetJsonAsync(origin,
+                $"Users/{Uri.EscapeDataString(userId)}/Items/{itemId:N}", auth, cancel)
+                .ConfigureAwait(false);
+            if (!SameGuid(Text(Get(season.RootElement, "SeriesId")), catalogId))
+                throw new UnauthorizedAccessException("Sezon nie należy do wybranej serii");
+        }
+        else if (type != "Series" && type != "Movie")
+            throw new ArgumentException("Wybrana pozycja nie jest anime");
+
+        var local = _library.GetItemById(itemId);
+        var rootPath = Plugin.Instance?.Configuration.AnimeRoot;
+        if (string.IsNullOrWhiteSpace(rootPath))
+            throw new InvalidOperationException("Nie skonfigurowano katalogu anime");
+        var root = Path.GetFullPath(rootPath);
+        if (local is null || !IsBelowRoot(local.Path, root))
+            throw new UnauthorizedAccessException("Pozycja jest poza biblioteką anime");
+
+        var malId = ReadNfo(local.Path, type, requireMalId: true)?.MalId;
+        if (malId.HasValue && malId.Value > 0) return malId.Value;
+
+        // On a series page, a root-level MAL ID might be absent while the
+        // first physical season has a valid season.nfo. Use only season 1;
+        // never silently borrow an unrelated season's identifier.
+        if (!seasonId.HasValue && type == "Series")
+        {
+            using var seasons = await GetJsonAsync(origin,
+                $"Shows/{catalogId:N}/Seasons?UserId={Uri.EscapeDataString(userId)}&EnableUserData=false",
+                auth, cancel).ConfigureAwait(false);
+            var rows = Get(seasons.RootElement, "Items");
+            if (rows.ValueKind == JsonValueKind.Array)
+            {
+                var first = rows.EnumerateArray().FirstOrDefault(x => Number(Get(x, "IndexNumber")) == 1);
+                if (first.ValueKind == JsonValueKind.Object &&
+                    Guid.TryParse(Text(Get(first, "Id")), out var firstId))
+                {
+                    var firstLocal = _library.GetItemById(firstId);
+                    if (firstLocal is not null && IsBelowRoot(firstLocal.Path, root))
+                    {
+                        var firstMalId = ReadNfo(firstLocal.Path, "Season", requireMalId: true)?.MalId;
+                        if (firstMalId.HasValue && firstMalId.Value > 0) return firstMalId.Value;
+                    }
+                }
+            }
+        }
+        throw new ArgumentException(seasonId.HasValue
+            ? "Brak MAL ID w season.nfo tego sezonu"
+            : "Brak MAL ID w NFO serii lub jej pierwszego sezonu");
     }
 
     /// <summary>Update per-user numeric rating in Jellyfin; never CommunityRating or NFO.</summary>
@@ -808,7 +884,7 @@ public sealed class MisioFlixCatalogService
             Math.Abs(score.Value * 2 - Math.Round(score.Value * 2)) > 0.00001))
             throw new ArgumentOutOfRangeException(nameof(score), "Ocena: 1–10, skok 0,5");
         var catalog = await ReadForAuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
-        if (!catalog.items.Any(x => x.id.Equals(itemId.ToString(), StringComparison.OrdinalIgnoreCase)))
+        if (!catalog.items.Any(x => SameGuid(x.id, itemId)))
             throw new UnauthorizedAccessException("Item not accessible");
         var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
         return await UpdateRatingForItemAsync(origin, auth, userId, itemId, score, cancel).ConfigureAwait(false);
@@ -821,7 +897,7 @@ public sealed class MisioFlixCatalogService
             Math.Abs(score.Value * 2 - Math.Round(score.Value * 2)) > 0.00001))
             throw new ArgumentOutOfRangeException(nameof(score));
         var catalog = await ReadForAuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
-        if (!catalog.items.Any(x => x.id.Equals(parentId.ToString(), StringComparison.OrdinalIgnoreCase) && x.type == "Series"))
+        if (!catalog.items.Any(x => SameGuid(x.id, parentId) && x.type == "Series"))
             throw new UnauthorizedAccessException("Series not accessible");
         var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
         using var doc = await GetJsonAsync(origin,
@@ -868,7 +944,7 @@ public sealed class MisioFlixCatalogService
     public async Task<List<SeasonInfo>> ReadSeasonsAsync(HttpRequest caller, Guid seriesId, CancellationToken cancel)
     {
         var catalog = await ReadForAuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
-        var series = catalog.items.FirstOrDefault(x => x.id.Equals(seriesId.ToString(), StringComparison.OrdinalIgnoreCase) && x.type == "Series");
+        var series = catalog.items.FirstOrDefault(x => SameGuid(x.id, seriesId) && x.type == "Series");
         if (series is null) throw new UnauthorizedAccessException("Series not accessible");
         var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
         using var doc = await GetJsonAsync(origin,
@@ -977,7 +1053,7 @@ public sealed class MisioFlixCatalogService
         catch { return false; }
     }
 
-    private static LocalNfo? ReadNfo(string? itemPath, string type)
+    private static LocalNfo? ReadNfo(string? itemPath, string type, bool requireMalId = false)
     {
         if (string.IsNullOrWhiteSpace(itemPath)) return null;
         var folder = Directory.Exists(itemPath) ? itemPath : Path.GetDirectoryName(itemPath);
@@ -1011,7 +1087,7 @@ public sealed class MisioFlixCatalogService
                 string V(string name) => nfo.Element(name)?.Value.Trim() ?? string.Empty;
                 var tags = nfo.Elements("tag").Select(e => e.Value.Trim()).ToArray();
                 var kind = tags.FirstOrDefault(t => t.StartsWith("Typ:", StringComparison.OrdinalIgnoreCase));
-                return new LocalNfo(
+                var parsed = new LocalNfo(
                     V("originaltitle"),
                     V("title"),
                     V("year"),
@@ -1024,6 +1100,8 @@ public sealed class MisioFlixCatalogService
                     int.TryParse(nfo.Elements("uniqueid").FirstOrDefault(e =>
                         string.Equals((string?)e.Attribute("type"), "mal", StringComparison.OrdinalIgnoreCase))?.Value,
                         NumberStyles.None, CultureInfo.InvariantCulture, out var malId) && malId > 0 ? malId : null);
+                if (requireMalId && !parsed.MalId.HasValue) continue;
+                return parsed;
             }
             catch (XmlException) { /* Invalid NFO: no guessing */ }
             catch (IOException) { /* File in use: retry next request */ }

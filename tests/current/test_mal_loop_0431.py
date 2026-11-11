@@ -51,8 +51,8 @@ class MALLoop0431(unittest.TestCase):
         self.assertIn('connectionStatus()',block)
 
     def test_selected_season_keeps_own_mal_id(self):
-        self.assertIn('Number(season?.mal_id)', WEB)
-        self.assertIn('Number(catalog.item.mal_id)', WEB)
+        self.assertIn('api/mal/resolve?catalogId=', WEB)
+        self.assertIn('Number(target.malId)', WEB)
         self.assertIn("seasonId?'&seasonId='+seasonId:''",WEB)
 
     def test_timeout_and_local_caching(self):

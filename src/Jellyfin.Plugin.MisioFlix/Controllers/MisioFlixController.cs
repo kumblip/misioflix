@@ -262,6 +262,27 @@ public sealed class MisioFlixController : ControllerBase
         catch (HttpRequestException) { return StatusCode(502, new { error = "Nie można sprawdzić połączenia MAL" }); }
     }
 
+    // Fast user-scoped NFO lookup; does not load a whole Jellyfin catalogue or MAL list.
+    [HttpGet("api/mal/resolve")]
+    [Authorize]
+    public async Task<IActionResult> MalResolve([FromQuery] Guid catalogId,
+        [FromQuery] Guid? seasonId, CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        if (catalogId == Guid.Empty || seasonId == Guid.Empty) return BadRequest();
+        Response.Headers.CacheControl = "private, no-store";
+        try
+        {
+            var malId = await _catalog.AuthorizedMalIdAsync(Request, catalogId, seasonId, cancel)
+                .ConfigureAwait(false);
+            return Ok(new { anime = true, malId });
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (ArgumentException e) { return BadRequest(new { error = e.Message }); }
+        catch (InvalidOperationException e) { return BadRequest(new { error = e.Message }); }
+        catch (HttpRequestException) { return StatusCode(502, new { error = "Nie można pobrać NFO z Jellyfin" }); }
+    }
+
     // MAL entry is tied exclusively to an anime/season ID verified against the
     // authenticated user's Jellyfin library and MAL ID stored in the NFO.
     // Default refresh=false uses the existing MAL service cache. Only the
@@ -385,7 +406,7 @@ public sealed class MisioFlixController : ControllerBase
         try
         {
             var catalog = await _catalog.ReadForAuthenticatedUserAsync(Request, cancellationToken).ConfigureAwait(false);
-            var item = catalog.items.Find(x => x.id.Equals(id.ToString(), StringComparison.OrdinalIgnoreCase));
+            var item = catalog.items.Find(x => Guid.TryParse(x.id, out var foundId) && foundId == id);
             if(item is null)return NotFound();
             var seasons = new System.Collections.Generic.List<SeasonInfo>();
             var episodes = new System.Collections.Generic.List<EpisodeInfo>();

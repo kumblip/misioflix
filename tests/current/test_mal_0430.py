@@ -56,8 +56,9 @@ class MAL0430(unittest.TestCase):
         self.assertNotIn('client_secret',WEB)
 
     def test_season_uses_own_mal_id(self):
-        self.assertIn('Number(season?.mal_id)',WEB)
-        self.assertIn('Number(catalog.item.mal_id)',WEB)
+        self.assertIn('api/mal/resolve?catalogId=',WEB)
+        self.assertIn("seasonId?'&seasonId='+seasonId:''",WEB)
+        self.assertIn('Number(target.malId)',WEB)
         self.assertIn('seasonId:ctx.seasonId||null',WEB)
 
     def test_explicit_write_refresh_only(self):
