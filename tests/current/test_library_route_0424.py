@@ -7,7 +7,7 @@ D=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/details.js').read_text(encoding='utf-
 
 class LibraryRoutes0424(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))['version'],'0.4.24.0')
+        self.assertRegex(json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))['version'], r'^0\.4\.\d+\.0$')
     def test_native_jellyfin_list_has_server_id(self):
         self.assertIn("return '#/list?parentId='+encodeURIComponent(compactId(id))+'&serverId='+encodeURIComponent(server);", H)
         self.assertIn('if(!validId(server))return', H)

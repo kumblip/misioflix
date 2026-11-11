@@ -289,6 +289,10 @@
       }
       card.querySelector('.mf-native-overlay')?.remove();
       card.querySelector('.mf-native-description')?.remove();
+      card.querySelectorAll('.mf-collection-preview,.mf-collection-label').forEach(node=>node.remove());
+      card.classList.remove('mf-collection-card','mf-collection-has-preview');
+      card.removeAttribute('data-mf-collection-type');
+      card.removeAttribute('data-mf-folder-observed');
     }
     card.setAttribute('data-mf-item-id',id);
   }
@@ -408,6 +412,160 @@
     }
   }
 
+
+  // v0.4.25: Folder/BoxSet items in Jellyfin 12's legacy /list are NOT movies.
+  // Preserve real Jellyfin cards and route actual folder identifiers, never
+  // replace their type with Movie or guess a destination from their names.
+  const MF_GUID = /^[0-9a-f]{32}$/i;
+  const mfCompact = value => String(value||'').replace(/-/g,'').toLowerCase();
+  const mfValid = value => MF_GUID.test(mfCompact(value));
+  const folderPreviewCache = new Map();
+  const folderLoading = new Set();
+  let folderIO = null;
+  let folderPreviewUser = '';
+  function mfApi(){return window.ApiClient||window.ConnectionManager?.getApiClient?.();}
+  function mfServerId(){
+    const api=mfApi();
+    const fromApi=typeof api?.serverId==='function'?api.serverId():api?.serverId;
+    if(mfValid(fromApi))return mfCompact(fromApi);
+    const current=window.ConnectionManager?.getCurrentServer?.();
+    if(mfValid(current?.Id))return mfCompact(current.Id);
+    try{
+      const fromHash=new URLSearchParams((window.location?.hash||'').split('?')[1]||'').get('serverId');
+      if(mfValid(fromHash))return mfCompact(fromHash);
+    }catch{}
+    return '';
+  }
+  function mfLibraryRoute(){
+    const hash=window.location?.hash||'';
+    return /^#\/(?:list|mixed|movies|tv)\?/i.test(hash) && /[?&](?:parentId|topParentId)=[0-9a-f-]{32,36}/i.test(hash);
+  }
+  function mfFolderType(card){
+    const type=String(card.getAttribute('data-type')||card.getAttribute('data-itemtype')||
+      card.querySelector('.cardText-first [data-type]')?.getAttribute('data-type')||'').toLowerCase();
+    if(type==='boxset')return 'boxset';
+    if(type==='folder'||type==='collectionfolder')return 'folder';
+    if(type)return '';
+    // Legacy Jellyfin sometimes puts folder information only on its title action.
+    const isfolder=card.getAttribute('data-isfolder')||card.querySelector('.cardText-first [data-isfolder]')?.getAttribute('data-isfolder');
+    return isfolder==='true'?'folder':'';
+  }
+  function mfFolderId(card){
+    const id=card.getAttribute('data-id')||card.querySelector('.cardText-first [data-id]')?.getAttribute('data-id');
+    return mfValid(id)?mfCompact(id):'';
+  }
+  function mfFolderUrl(card){
+    const type=mfFolderType(card),id=mfFolderId(card),server=mfServerId();
+    if(!type||!id||!server)return '';
+    return type==='boxset'
+      ? '#/details?id='+encodeURIComponent(id)+'&serverId='+encodeURIComponent(server)
+      : '#/list?parentId='+encodeURIComponent(id)+'&serverId='+encodeURIComponent(server);
+  }
+  function onMfFolderClick(event){
+    if(!/^#\/list\?/i.test(window.location?.hash||'')||event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
+    const target=event.target;
+    if(!(target instanceof Element))return;
+    const card=target.closest('.card');
+    if(!card||!mfFolderType(card)||card.closest('#mf-home-0412,.dialog,[role="dialog"]'))return;
+    // Preserve native watched/menu/actions; the body, thumbnail and title open folder.
+    if(target.closest('button,input,select,textarea,[role="button"],.cardOverlayButton,.cardOverlayButton-br,.cardOverlayButton-tl,[data-action="menu"],[data-action="played"]'))return;
+    const url=mfFolderUrl(card);
+    if(!url)return;
+    event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
+    if(window.location.hash!==url)window.location.hash=url;
+  }
+  function mfBackButton(){
+    let button=document.querySelector('#mf-library-back-home');
+    if(!mfLibraryRoute()){
+      button?.remove();
+      return;
+    }
+    if(button)return;
+    button=makeEl('button','mf-library-back-home','← Strona główna');
+    button.id='mf-library-back-home';button.type='button';
+    button.setAttribute('aria-label','Wróć do strony głównej MisioFlix');
+    button.addEventListener('click',()=>{window.location.hash='#/home';});
+    document.body.insertAdjacentElement('beforeend',button); // Outside Jellyfin's React-managed subtree.
+  }
+  function mfDecorateFolders(){
+    // Modern /mixed (AnimePL) is already working: do not alter its React cards.
+    if(!/^#\/list\?/i.test(window.location?.hash||''))return;
+    const api=mfApi();
+    const uid=typeof api?.getCurrentUserId==='function'?mfCompact(api.getCurrentUserId()):'';
+    if(folderPreviewUser!==uid){
+      folderPreviewUser=uid;folderPreviewCache.clear();folderLoading.clear();
+      document.querySelectorAll('.card[data-mf-folder-observed]').forEach(card=>card.removeAttribute('data-mf-folder-observed'));
+    }
+    for(const card of document.querySelectorAll('.card[data-id]')){
+      const type=mfFolderType(card);
+      if(!type||!mfFolderId(card)||card.closest('#mf-home-0412'))continue;
+      card.classList.add('mf-collection-card');
+      card.dataset.mfCollectionType=type;
+      card.removeAttribute('data-mf-watch');
+      const surface=card.querySelector('.cardScalable');
+      if(surface && !surface.querySelector(':scope > .mf-collection-label')){
+        const label=makeEl('span','mf-collection-label','KOLEKCJA');
+        label.setAttribute('aria-hidden','true');surface.appendChild(label);
+      }
+      // Keep all native Jellyfin buttons, links, progress and item data intact.
+      if(!uid||!mfValid(uid)||!surface||folderPreviewCache.get(uid+':'+mfFolderId(card))==='no-image')continue;
+      if(!folderIO && typeof IntersectionObserver==='function'){
+        folderIO=new IntersectionObserver(entries=>{
+          for(const entry of entries){
+            if(entry.isIntersecting){folderIO.unobserve(entry.target);void mfLoadFolderPreview(entry.target);}
+          }
+        },{rootMargin:'130px 0px',threshold:0.01});
+      }
+      if(folderIO && card.dataset.mfFolderObserved!==mfFolderId(card)){
+        card.dataset.mfFolderObserved=mfFolderId(card);folderIO.observe(card);
+      }
+    }
+  }
+  async function mfLoadFolderPreview(card){
+    const api=mfApi(),uid=typeof api?.getCurrentUserId==='function'?mfCompact(api.getCurrentUserId()):'';
+    const id=mfFolderId(card),type=mfFolderType(card),key=uid+':'+id;
+    if(!mfValid(uid)||!id||!type)return;
+    const cached=folderPreviewCache.get(key);
+    if(cached){mfPaintFolderPreview(card,cached);return;}
+    if(folderLoading.has(key))return;
+    folderLoading.add(key);
+    try{
+      const token=typeof api?.accessToken==='function'?api.accessToken():api?.accessToken;
+      if(typeof token!=='string'||!token)return;
+      const params=new URLSearchParams({ParentId:id,Recursive:'false',Limit:'12',Fields:'PrimaryImageAspectRatio',ImageTypeLimit:'1'});
+      const response=await fetch('/Users/'+encodeURIComponent(uid)+'/Items?'+params.toString(),{
+        headers:{Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-folders", Version="0.4.25", Token="'+token.replace(/["\r\n]/g,'')+'"'},
+        cache:'no-store'
+      });
+      if(!response.ok)return;
+      const data=await response.json();
+      const ids=(Array.isArray(data.Items)?data.Items:[])
+        .filter(item=>mfValid(item?.Id)&&item?.ImageTags?.Primary)
+        .slice(0,4).map(item=>mfCompact(item.Id));
+      // If no children have posters, retain native folder icon unchanged.
+      folderPreviewCache.set(key,ids.length?ids:'no-image');
+      if(ids.length && card.isConnected && mfFolderId(card)===id)mfPaintFolderPreview(card,ids);
+    }catch{
+      // Visual enhancement must never break opening the original folder.
+    }finally{folderLoading.delete(key);}
+  }
+  function mfPaintFolderPreview(card,ids){
+    if(!Array.isArray(ids)||!ids.length||!card.isConnected)return;
+    const image=card.querySelector('.cardImageContainer');
+    if(!image||image.querySelector(':scope > .mf-collection-preview'))return;
+    // Do not replace existing collection posters with a collage.
+    const background=String(image.style?.backgroundImage||'').trim();
+    if(background && !/^(none|initial|unset|inherit)$/i.test(background))return;
+    const grid=makeEl('div','mf-collection-preview'+(ids.length===1?' mf-collection-preview-single':''));
+    grid.setAttribute('aria-hidden','true');
+    ids.forEach(id=>{
+      const poster=document.createElement('img');poster.loading='lazy';poster.alt='';
+      poster.src='/Items/'+encodeURIComponent(id)+'/Images/Primary?maxHeight=340&quality=82';
+      grid.appendChild(poster);
+    });
+    image.appendChild(grid);card.classList.add('mf-collection-has-preview');
+  }
+
   let pending=false;
   let observer;
   function playerIsVisible(){
@@ -432,6 +590,8 @@
     accountGuard();
     markSections();
     markCards();
+    mfBackButton();
+    mfDecorateFolders();
     observeVisible();
   }
   function schedule(){
@@ -467,6 +627,7 @@
     });
     observer.observe(document.body,{childList:true,subtree:true,attributes:true,
       attributeFilter:['data-played','aria-valuenow','data-id','style']});
+    document.addEventListener('click',onMfFolderClick,true);
     document.addEventListener('click',event=>{
       const button=event.target?.closest?.(WATCH_BTN);
       if(button){
