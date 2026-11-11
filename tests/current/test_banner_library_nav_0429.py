@@ -15,9 +15,14 @@ HOME=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/home.js').read_text(encoding='utf-
 
 class BannerLibraryNavigation0429(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.29.0')
-        project=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text()
-        self.assertIn('<AssemblyVersion>0.4.29.0</AssemblyVersion>',project)
+        # This regression first appeared in 0.4.29; later versions must keep
+        # the behavior without having to rewrite a pinned literal at each release.
+        version = json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))['version']
+        self.assertRegex(version, r'^\d+\.\d+\.\d+\.\d+$')
+        self.assertGreaterEqual(tuple(map(int, version.split('.'))), (0, 4, 29, 0))
+        project = (ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf-8')
+        self.assertIn(f'<AssemblyVersion>{version}</AssemblyVersion>', project)
+        self.assertIn(f'<FileVersion>{version}</FileVersion>', project)
 
     def test_prevent_early_removal_of_banner_links(self):
         self.assertIn("document.addEventListener('pointerdown'",HOME)

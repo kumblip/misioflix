@@ -14,8 +14,15 @@ CS=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixCatalogService.cs').re
 
 class CollectionsDirectory0428(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.29.0')
-        self.assertIn('<AssemblyVersion>0.4.29.0</AssemblyVersion>', (ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        # The collections-directory feature is required from 0.4.28 onward.
+        # Compare the compiled assembly to the authoritative version in meta.json,
+        # rather than pinning the build to an old release number.
+        version = json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))['version']
+        self.assertRegex(version, r'^\d+\.\d+\.\d+\.\d+$')
+        self.assertGreaterEqual(tuple(map(int, version.split('.'))), (0, 4, 28, 0))
+        project = (ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf-8')
+        self.assertIn(f'<AssemblyVersion>{version}</AssemblyVersion>', project)
+        self.assertIn(f'<FileVersion>{version}</FileVersion>', project)
 
     def test_both_collection_links_open_full_directory(self):
         self.assertIn("const COLLECTIONS_URL = '#/home?mfCollections=1'", HOME)

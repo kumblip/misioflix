@@ -13,7 +13,14 @@ INJECT = (SRC/'Services/ScriptInjection.cs').read_text(encoding='utf8')
 
 class MAL0430(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'], '0.4.30.0')
+        # MAL account integration was introduced in 0.4.30; version advances
+        # must not invalidate feature tests as long as sources are in sync.
+        version = json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))['version']
+        self.assertRegex(version, r'^\d+\.\d+\.\d+\.\d+$')
+        self.assertGreaterEqual(tuple(map(int, version.split('.'))), (0, 4, 30, 0))
+        project = (ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf-8')
+        self.assertIn(f'<AssemblyVersion>{version}</AssemblyVersion>', project)
+        self.assertIn(f'<FileVersion>{version}</FileVersion>', project)
 
     def test_connection_is_lightweight(self):
         section = CTRL.split('MalConnection(CancellationToken cancel)',1)[1].split('MalItem(',1)[0]
