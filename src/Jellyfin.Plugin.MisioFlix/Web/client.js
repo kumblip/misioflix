@@ -1,4 +1,4 @@
-/* MisioFlix 0.4.16 - progressive enhancements to ORIGINAL Jellyfin Web.
+/* MisioFlix 0.4.17 - progressive enhancements to ORIGINAL Jellyfin Web.
  * No separate page, no catalog request, no router changes, no player replacement.
  * Native Jellyfin cards are ONLY decorated with small noninteractive ornaments.
  * Netflin is a design/selector reference; this is original MisioFlix code.
@@ -66,7 +66,7 @@
   function markSections(){
     const headings=[...document.body.querySelectorAll(TITLE)].slice(0,110);
     for(const h of headings){
-      // v0.4.16 home shelves live in their own scoped subtree, not native sections.
+      // v0.4.17 home shelves live in their own scoped subtree, not native sections.
       if(h.closest?.('#mf-home-0412'))continue;
       const t=text(h);
       if(!t || t.length>130)continue;
@@ -323,7 +323,7 @@
     const requested=token;
     hydrationBusy=true;
     try{
-      const headers={Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-theme", Version="0.4.16", Token="'+token.replace(/["\r\n]/g,'')+'"'};
+      const headers={Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-theme", Version="0.4.17", Token="'+token.replace(/["\r\n]/g,'')+'"'};
       const q=picked.map(([id])=>id).join(',');
       const controller=new AbortController();
       const timeout=window.setTimeout(()=>controller.abort(),9000);
@@ -410,9 +410,25 @@
 
   let pending=false;
   let observer;
+  function playerIsVisible(){
+    // Let the ORIGINAL Jellyfin video surface and its controls use native
+    // Jellyfin CSS while playing. This avoids theme/player style conflicts;
+    // it does not change codecs, streams or Jellyfin playback code.
+    for(const video of (document.querySelectorAll?.('video') || [])){
+      const shell=video.closest('.videoPlayerContainer,.htmlvideoplayer,.videoPlayer,[data-testid="video-player"]');
+      if(!shell)continue;
+      const rect=video.getBoundingClientRect();
+      if(rect.width>100 && rect.height>80)return true;
+    }
+    return false;
+  }
+  function syncPlayerSkin(){
+    document.documentElement.classList.toggle('misioflix-skin',!playerIsVisible());
+  }
   function decorate(){
     pending=false;
     if(!document.body)return;
+    syncPlayerSkin();
     accountGuard();
     markSections();
     markCards();
@@ -467,6 +483,8 @@
     window.addEventListener('pageshow',schedule);
     window.addEventListener('hashchange',schedule);
     document.addEventListener('viewshow',schedule);
+    for(const evt of ['play','pause','ended','loadedmetadata'])
+      document.addEventListener(evt,schedule,true);
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true});
   else init();

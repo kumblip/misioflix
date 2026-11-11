@@ -1,11 +1,11 @@
-/* MisioFlix 0.4.16: ONLY custom shelves INSIDE Jellyfin's native home view.
+/* MisioFlix 0.4.17: ONLY custom shelves INSIDE Jellyfin's native home view.
  * No second site, no page/router replacement, no bulk catalog loading.
  * Requires the user to set native home slots to "Brak" in Jellyfin preferences.
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_HOME_0416__) return;
-  window.__MISIOFLIX_HOME_0416__ = true;
+  if (window.__MISIOFLIX_HOME_0417__) return;
+  window.__MISIOFLIX_HOME_0417__ = true;
 
   const API = '/MisioFlix/api';
   const SHELF_LIMIT = 12;
@@ -36,7 +36,7 @@
   };
   const homeRoute = () => /^#\/(?:home)?(?:\?|$)/i.test(window.location.hash || '#/');
   const isCurrent = serial => homeRoot?.isConnected && epoch === serial && homeRoute() && currentToken() === owner;
-  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.16", Token="${owner.replace(/["\r\n]/g, '')}"`});
+  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.17", Token="${owner.replace(/["\r\n]/g, '')}"`});
   async function request(path, method='GET', payload, timeoutMs=18000) {
     const control = new AbortController();
     const timeout = window.setTimeout(() => control.abort(), timeoutMs);
@@ -394,6 +394,60 @@
     }
     return await catalogCache.get(key);
   }
+  // Library/type choices are mutually exclusive per title. Multiple green
+  // choices are therefore OR within the group; red choices exclude. Genre
+  // requirements remain AND as in the original KumaSearch.
+  function filterChoice(map, key){
+    return Number(map?.get(key)||0);
+  }
+  function allowGroup(value, map){
+    if(!map || !map.size) return true;
+    const allowed=[...map].filter(([,mode])=>mode===1).map(([key])=>key);
+    const prohibited=[...map].filter(([,mode])=>mode===2).map(([key])=>key);
+    if(prohibited.includes(value)) return false;
+    return !allowed.length || allowed.includes(value);
+  }
+  function makeFilterGroup(title, caption){
+    const wrap=own('div','mf-home-choice-group');
+    wrap.appendChild(own('strong','mf-home-choice-label',title));
+    const choices=own('div','mf-home-choice-options');
+    choices.setAttribute('role','group');
+    choices.setAttribute('aria-label',title);
+    wrap.appendChild(choices);
+    if(caption) wrap.appendChild(own('span','mf-home-choice-hint',caption));
+    return {wrap,choices};
+  }
+  function renderChoiceGroup(container, options, values, onChange){
+    container.replaceChildren();
+    for(const option of options){
+      const mode=filterChoice(values,option.id);
+      const button=own('button',`mf-home-choice ${mode===1?'mf-genre-on':mode===2?'mf-genre-no':''}`,
+        `${mode===1?'✓ ':mode===2?'✕ ':''}${option.label}`);
+      button.type='button';
+      button.setAttribute('data-filter-id',option.id);
+      button.setAttribute('data-filter-state',String(mode));
+      button.setAttribute('aria-pressed',String(mode!==0));
+      button.setAttribute('title','Klikaj: neutralny → wymagaj → wyklucz → neutralny');
+      button.addEventListener('click',()=>{
+        const next=(mode+1)%3;
+        if(next)values.set(option.id,next);else values.delete(option.id);
+        renderChoiceGroup(container,options,values,onChange);
+        onChange(option.id,next);
+      });
+      container.appendChild(button);
+    }
+  }
+  // Scope catalogs by the authenticated user's REAL available Jellyfin views.
+  // This also supplies a trustworthy library GUID to each search result.
+  async function loadScopedCatalog(state){
+    const libraries=state.scopedLibraries;
+    if(!libraries.length)return {items:[]};
+    const all=await Promise.all(libraries.map(async lib=>{
+      const data=await getCatalogForSearch(lib.id);
+      return data.items.map(item=>({...item,library_id:compactId(lib.id),library_name:lib.name}));
+    }));
+    return {items:all.flat()};
+  }
   function closeSearch(){
     if(!searchModal)return;
     const opener=activeSearch?.opener;
@@ -456,12 +510,20 @@
   }
   function searchByType(item,state){
     const value=item.type;
-    if(state.type.value==='series')return value==='Series';
-    if(state.type.value==='movies')return value==='Movie';
-    if(state.type.value==='seasons')return value==='Season';
+    const kind=value==='Series'?'series':value==='Movie'?'movies':value==='Season'?'seasons':'';
+    if(!kind)return false;
+    // Old test fixtures and earlier search views may still supply one select.
+    if(state.typeStates){
+      if(!allowGroup(kind,state.typeStates))return false;
+      return kind!=='seasons' || state.includeSeasons.checked;
+    }
+    if(state.type?.value==='series')return value==='Series';
+    if(state.type?.value==='movies')return value==='Movie';
+    if(state.type?.value==='seasons')return value==='Season';
     return value!=='Season'||state.includeSeasons.checked;
   }
   function fitsSearch(item,state,withText=true){
+    if(state.libraryStates && !allowGroup(compactId(item.library_id),state.libraryStates))return false;
     if(!searchByType(item,state))return false;
     const terms=termsForFilter(item,state);
     for(const [term,mode] of state.genreStates){
@@ -511,8 +573,39 @@
       (state.kind==='anime'&&item.type==='Series'&&
         relatedSeasons(item,state).some(season=>titleMatches(season,q)))).slice(0,8);
     for(const item of titles){
-      const link=own('a','mf-home-suggestion',item.title||'Bez tytułu');
+      const tile=searchTile(item,state);
+      const link=own('a','mf-home-suggestion');
       link.href=nativeDetails(item.id,item.serverId);
+      link.setAttribute('aria-label',`Otwórz w Jellyfin: ${item.title}`);
+      const cover=own('span','mf-home-suggestion-cover');
+      if(tile.hasPrimary){
+        const url=imageFor(tile);
+        if(url){
+          const img=own('img','');
+          img.alt='';img.loading='lazy';img.decoding='async';
+          img.src=url.replace('maxHeight=480','maxHeight=120');
+          cover.appendChild(img);
+        }
+      }
+      const content=own('span','mf-home-suggestion-content');
+      content.appendChild(own('span','mf-home-suggestion-title',item.title||'Bez tytułu'));
+      const facts=own('span','mf-home-suggestion-facts');
+      const year=item.year?String(item.year):'';
+      const counts=[];
+      if(year)counts.push(year);
+      if(item.type==='Series'){
+        if(tile.seasons!=null && Number(tile.seasons)>0)counts.push(`${short(tile.seasons)} sezonów`);
+        if(tile.episodes!=null && Number(tile.episodes)>0)counts.push(`${short(tile.episodes)} odcinków`);
+      }
+      if(item.type==='Season')counts.push('Sezon / Specials');
+      if(item.type==='Movie')counts.push('Film');
+      facts.textContent=counts.join(' · ');
+      content.appendChild(facts);
+      if(state.kind==='anime'&&item.type==='Series'){
+        const child=relatedSeasons(item,state).find(season=>titleMatches(season,q));
+        if(child&&!titleMatches(item,q))content.appendChild(own('span','mf-home-suggestion-match',`Znaleziono po: ${child.title}`));
+      }
+      append(link,cover,content);
       link.addEventListener('click',closeSearch);
       state.suggestions.appendChild(link);
     }
@@ -593,47 +686,48 @@
     input.setAttribute('aria-label','Wyszukaj tytuł');
     const suggestions=own('div','mf-home-suggestions');suggestions.hidden=true;
     append(searchWrap,input,suggestions);
-    const library=own('select','mf-home-search-select');
-    library.setAttribute('aria-label','Wybierz bibliotekę');
-    library.appendChild(optionNode('',kind==='anime'?'Wszystkie biblioteki anime':'Wszystkie biblioteki filmów i seriali'));
     const scopedLibraries=librariesCache.filter(lib=>kind==='anime'?lib.category==='anime':lib.category!=='anime');
-    scopedLibraries.forEach(lib=>library.appendChild(optionNode(lib.id,lib.name)));
-    if(kind==='anime'&&scopedLibraries.length===1)library.value=scopedLibraries[0].id;
-    const type=own('select','mf-home-search-select');
-    type.append(optionNode('all','Wszystkie typy'),optionNode('series','Serie'),optionNode('movies','Filmy / OVA / ONA'));
-    if(kind==='anime')type.appendChild(optionNode('seasons','Sezony / Specials'));
+    const libraryChoices=makeFilterGroup('Biblioteki', 'Zielony: uwzględnij · czerwony: wyklucz · ponownie: obojętne');
+    const libraryOptions=scopedLibraries.map(lib=>({id:compactId(lib.id),label:lib.name}));
+    const typeChoices=makeFilterGroup('Typy produkcji', 'Możesz zaznaczyć kilka typów jednocześnie');
+    const typeOptions=[{id:'series',label:'Serie'},{id:'movies',label:kind==='anime'?'Filmy / OVA / ONA':'Filmy'}];
+    if(kind==='anime')typeOptions.push({id:'seasons',label:'Sezony / Specials'});
     const seasonLabel=own('label','mf-home-search-seasons');
     const includeSeasons=own('input','');includeSeasons.type='checkbox';
     seasonLabel.append(includeSeasons,document.createTextNode(' Pokaż osobne sezony / Specials'));
     if(kind!=='anime')seasonLabel.hidden=true;
     const reset=own('button','mf-home-button','Wyczyść filtry');reset.type='button';
     const refresh=own('button','mf-home-button','Odśwież dane');refresh.type='button';
-    tool.append(searchWrap,library,type,seasonLabel,reset,refresh);
+    tool.append(searchWrap,seasonLabel,reset,refresh);
+    const choicesWrap=own('div','mf-home-choice-groups');
+    append(choicesWrap,libraryChoices.wrap,typeChoices.wrap);
     const genresHead=own('div','mf-home-genres-head');
     const genresTitle=own('h3','',kind==='anime'?'Gatunki anime':'Gatunki filmów i seriali');
     const toggle=own('button','mf-home-button','Pokaż gatunki');toggle.type='button';
     toggle.setAttribute('aria-expanded','false');
     append(genresHead,genresTitle,toggle);
     const summary=own('p','mf-home-search-summary','Brak aktywnych filtrów gatunkowych');
-    const help=own('p','mf-home-search-help','1× zielony = wymagaj · 2× czerwony = wyklucz · 3× neutralny = wyłącz. Filtry łączą się przez AND.');help.hidden=true;
-    const genres=own('div','mf-home-genre-filters');genres.hidden=true;
+    const help=own('p','mf-home-search-help','1× zielony = wymagaj · 2× czerwony = wyklucz · 3× neutralny = wyłącz. Gatunki łączą się przez AND.');
+    const genres=own('div','mf-home-genre-filters');
     const status=own('p','mf-home-search-status','Ładowanie katalogu…');
     status.setAttribute('role','status');
     const grid=own('div','mf-home-search-grid');
     const more=own('button','mf-home-button mf-home-search-more','Pokaż kolejne');more.type='button';more.hidden=true;
-    main.append(tool,genresHead,summary,help,genres,status,grid,more);
+    main.append(tool,choicesWrap,genresHead,summary,help,genres,status,grid,more);
     dialog.append(header,main);overlay.appendChild(dialog);
-    const state={kind, overlay, input, suggestions, type, library, includeSeasons, reset,refresh,
-      genres,genreStates:new Map(),genreNames:new Map(),genreCounts:new Map(),genresExpanded:false,
+    const state={kind, overlay, input, suggestions, includeSeasons, reset, refresh,
+      scopedLibraries, libraryOptions, typeOptions, libraryChoices, typeChoices,
+      libraryStates:new Map(), typeStates:new Map(),
+      genres,genreStates:new Map(),genreNames:new Map(),genreCounts:new Map(),genresExpanded:true,
       toggle,summary,help,status,grid,more,pool:[],matches:[],shown:0,requestId:0};
-    overlay.addEventListener('click',e=>{if(e.target===overlay)closeSearch();});
-    toggle.addEventListener('click',()=>{state.genresExpanded=!state.genresExpanded;updateGenreSummary(state);});
-    type.addEventListener('change',()=>{
-      if(type.value==='seasons')includeSeasons.checked=true;
+    renderChoiceGroup(libraryChoices.choices,libraryOptions,state.libraryStates,()=>paintSearchResults(state));
+    renderChoiceGroup(typeChoices.choices,typeOptions,state.typeStates,(selected,mode)=>{
+      if(selected==='seasons'&&mode===1)includeSeasons.checked=true;
       paintSearchResults(state);
     });
+    overlay.addEventListener('click',e=>{if(e.target===overlay)closeSearch();});
+    toggle.addEventListener('click',()=>{state.genresExpanded=!state.genresExpanded;updateGenreSummary(state);});
     includeSeasons.addEventListener('change',()=>paintSearchResults(state));
-    library.addEventListener('change',()=>{state.genreStates.clear();loadSearch(state);});
     let debounce;
     input.addEventListener('input',()=>{
       window.clearTimeout(debounce);
@@ -642,13 +736,16 @@
     input.addEventListener('keydown',e=>{if(e.key==='Enter')state.suggestions.hidden=true;});
     dialog.addEventListener('click',e=>{if(!searchWrap.contains(e.target))suggestions.hidden=true;});
     reset.addEventListener('click',()=>{
-      input.value='';type.value='all';includeSeasons.checked=false;
-      state.genreStates.clear();drawGenreButtons(state);paintSearchResults(state);
+      input.value='';includeSeasons.checked=false;
+      state.libraryStates.clear();state.typeStates.clear();state.genreStates.clear();
+      renderChoiceGroup(libraryChoices.choices,libraryOptions,state.libraryStates,()=>paintSearchResults(state));
+      renderChoiceGroup(typeChoices.choices,typeOptions,state.typeStates,()=>paintSearchResults(state));
+      drawGenreButtons(state);paintSearchResults(state);
       input.focus();
     });
     more.addEventListener('click',()=>appendMoreResults(state));
     refresh.addEventListener('click',()=>{
-      catalogCache.delete(validId(library.value)?compactId(library.value):'all');
+      for(const lib of state.scopedLibraries)catalogCache.delete(compactId(lib.id));
       loadSearch(state);
     });
     closeWhenNavigate(state);
@@ -659,7 +756,7 @@
     state.status.textContent='Odczytywanie katalogu — bez przeładowania strony Jellyfin…';
     state.refresh.disabled=true;
     try{
-      const data=await getCatalogForSearch(state.library.value);
+      const data=await loadScopedCatalog(state);
       if(state!==activeSearch || !state.overlay.isConnected || job!==state.requestId)return;
       state.pool=sortCatalog(data.items.filter(x=>state.kind==='anime'
         ? x.anime && ['Series','Movie','Season'].includes(x.type)

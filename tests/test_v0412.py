@@ -17,11 +17,11 @@ INJ=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Services/ScriptInjection.cs').read_text
 class MisioNative0411(unittest.TestCase):
   def test_versions(self):
     meta=json.loads((ROOT/'meta.json').read_text())
-    self.assertEqual(meta['version'],'0.4.16.0')
+    self.assertEqual(meta['version'],'0.4.17.0')
     self.assertEqual(meta['targetAbi'],'12.4.0.0')
-    self.assertIn('<Version>0.4.16</Version>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
-    self.assertIn('skin-v0.4.16',INJ)
-    self.assertIn('?v=0.4.16.0',INJ)
+    self.assertIn('<Version>0.4.17</Version>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
+    self.assertIn('skin-v0.4.17',INJ)
+    self.assertIn('?v=0.4.17.0',INJ)
   def test_native_not_second_page(self):
     for banned in ['buildHome(', 'document.body.appendChild(',"fetch('/MisioFlix/api/catalog",'window.history.pushState','window.location.href=', 'document.body.innerHTML=']:
       self.assertNotIn(banned,JS)

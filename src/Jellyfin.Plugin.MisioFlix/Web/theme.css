@@ -706,3 +706,57 @@ html.misioflix-skin .mf-home-empty{padding:12px 6px;color:#c8b5c5;font-size:13px
   html.misioflix-skin .mf-home-search-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
   html.misioflix-skin .mf-home-folder-button{font-size:12px}
 }
+
+/* v0.4.17 — unmistakable native-home watch-state border above artwork.
+   Inset outlines on the link alone could disappear behind its child <img>. */
+html.misioflix-skin .mf-home-poster[data-mf-watch]::before {
+  content:"";position:absolute;inset:0;z-index:6;pointer-events:none;
+  border:2px solid var(--mf-watch-border,#f4a5ce);
+  border-radius:inherit;box-sizing:border-box;
+  box-shadow:inset 0 0 0 1px rgba(20,7,18,.28);
+}
+html.misioflix-skin .mf-home-poster[data-mf-watch="unwatched"]{--mf-watch-border:#f4a5ce}
+html.misioflix-skin .mf-home-poster[data-mf-watch="started"]{--mf-watch-border:#e6a23c}
+html.misioflix-skin .mf-home-poster[data-mf-watch="watched"]{--mf-watch-border:#45b879}
+/* Native cards also get a border on the image wrapper, not merely a faint outline. */
+html.misioflix-skin .card[data-mf-card="1"][data-mf-watch] .cardImageContainer {
+  box-shadow:inset 0 0 0 2px var(--mf-watch-border,#f4a5ce)!important;
+}
+html.misioflix-skin .card[data-mf-watch="unwatched"]{--mf-watch-border:#f4a5ce}
+html.misioflix-skin .card[data-mf-watch="started"]{--mf-watch-border:#e6a23c}
+html.misioflix-skin .card[data-mf-watch="watched"]{--mf-watch-border:#45b879}
+
+/* On-demand modal: library/type tri-state filters and rich title suggestions. */
+html.misioflix-skin .mf-home-choice-groups{
+  display:flex;flex-direction:column;gap:10px;margin:4px 0 8px;
+}
+html.misioflix-skin .mf-home-choice-group{display:flex;flex-direction:column;gap:7px}
+html.misioflix-skin .mf-home-choice-label{font-size:13px;color:#ffeaf7}
+html.misioflix-skin .mf-home-choice-hint{font-size:11px;color:#d0b5c6}
+html.misioflix-skin .mf-home-choice-options{display:flex;flex-wrap:wrap;gap:7px}
+html.misioflix-skin .mf-home-choice{
+  padding:7px 10px;background:rgba(38,19,43,.85);border:1px solid rgba(245,167,207,.29);
+  border-radius:9px;color:#fff1f8;cursor:pointer;font-size:12px;
+}
+html.misioflix-skin .mf-home-choice.mf-genre-on{
+  background:#173b2b;border-color:#58d49a;color:#d9ffed;
+}
+html.misioflix-skin .mf-home-choice.mf-genre-no{
+  background:#4a1d28;border-color:#ff7a91;color:#ffe2e8;
+}
+html.misioflix-skin .mf-home-suggestion{
+  display:flex!important;align-items:center;gap:10px;min-height:65px;
+}
+html.misioflix-skin .mf-home-suggestion-cover{
+  flex:0 0 37px;width:37px;height:54px;overflow:hidden;border-radius:5px;
+  background:#302235;border:1px solid rgba(245,167,207,.3);
+}
+html.misioflix-skin .mf-home-suggestion-cover img{display:block;width:100%;height:100%;object-fit:cover}
+html.misioflix-skin .mf-home-suggestion-content{
+  display:flex;flex-direction:column;gap:5px;min-width:0;flex:1;
+}
+html.misioflix-skin .mf-home-suggestion-title{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650;font-size:13px;
+}
+html.misioflix-skin .mf-home-suggestion-facts{font-size:11px;color:#e3bfcf}
+html.misioflix-skin .mf-home-suggestion-match{font-size:10px;color:#cdb4c2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

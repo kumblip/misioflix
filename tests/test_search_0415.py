@@ -1,4 +1,4 @@
-"""Source-level checks for MisioFlix 0.4.16 modal search.
+"""Source-level checks for MisioFlix 0.4.17 modal search.
 Browser interaction checks are run locally with Playwright; GitHub needs no browser.
 """
 import json
@@ -54,11 +54,11 @@ class TestSearch0415(unittest.TestCase):
         self.assertIn('IncludeItemTypes=Movie,Series,Season',SERVICE)
         self.assertIn('if (type == "Season") continue;',SERVICE)
         self.assertIn('var local = ReadNfo(mediaPath, Text(Get(json, "Type")))',SERVICE)
-        self.assertIn("if(kind==='anime')type.appendChild(optionNode('seasons'",HOME)
-        self.assertIn('Wszystkie typy',HOME)
+        self.assertIn("if(kind==='anime')typeOptions.push({id:'seasons'",HOME)
+        self.assertIn("makeFilterGroup('Typy produkcji'",HOME)
         self.assertIn('GetHomeLibrariesAsync(origin, auth, userId, cancel)',SERVICE)
         self.assertIn('ParentId={libraryId.Value:N}',SERVICE)
-        self.assertIn("library.addEventListener('change'",HOME)
+        self.assertIn('function renderChoiceGroup(',HOME)
 
     def test_dynamic_artifact_name(self):
         self.assertIn('id: pack',WORKFLOW)
@@ -69,6 +69,6 @@ class TestSearch0415(unittest.TestCase):
         for name in ['client.js','home.js']:
             result=subprocess.run(['node','--check',str(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web'/name)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.16.0')
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.17.0')
 
 if __name__ == '__main__': unittest.main()

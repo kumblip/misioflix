@@ -413,6 +413,34 @@ public sealed class MisioFlixCatalogService
                 auth, userId, result, byCatalog, cancel).ConfigureAwait(false);
         }
 
+        // Some Jellyfin builds may return an empty Resume response despite
+        // resumable user-data positions. Query the regular, user-scoped Items API
+        // only in this case; do not double-scan on successful Resume requests.
+        if (result.Count == 0)
+        {
+            try
+            {
+                using var fallback = await GetJsonAsync(origin,
+                    $"Items?UserId={Uri.EscapeDataString(userId)}" +
+                    "&Recursive=true&Filters=IsResumable&IncludeItemTypes=Movie,Episode" +
+                    "&MediaTypes=Video&EnableUserData=true&Limit=100&SortBy=DatePlayed" +
+                    "&SortOrder=Descending", auth, cancel).ConfigureAwait(false);
+                var candidates = Get(fallback.RootElement, "Items");
+                if (candidates.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in candidates.EnumerateArray())
+                    {
+                        var entry = ToResumeItem(item, isNextUp: false);
+                        if (entry is not null && byCatalog.Add(entry.catalog_id)) result.Add(entry);
+                    }
+                }
+            }
+            catch (HttpRequestException e) when (e.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+            {
+                // A server without the fallback route still gets native NextUp.
+            }
+        }
+
         // Shows/NextUp also contains serials between episodes where no specific episode
         // has a resumable position. Resume entries take precedence for each series.
         try
@@ -512,8 +540,11 @@ public sealed class MisioFlixCatalogService
         const int batchSize = 200;
         for (var offset = 0; offset < 3000; offset += batchSize)
         {
+            // Recursive is required when retrieving resumed episodes from nested
+            // television/Anime folders. Return per-user watch state in the DTO.
             var path = $"{route}?UserId={Uri.EscapeDataString(userId)}&MediaTypes=Video" +
-                       $"&IncludeItemTypes=Movie,Episode&StartIndex={offset}&Limit={batchSize}&EnableUserData=true";
+                       $"&Recursive=true&IncludeItemTypes=Movie,Episode" +
+                       $"&StartIndex={offset}&Limit={batchSize}&EnableUserData=true";
             using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
             var items = Get(doc.RootElement, "Items");
             if (items.ValueKind != JsonValueKind.Array) break;
@@ -528,12 +559,22 @@ public sealed class MisioFlixCatalogService
         }
     }
 
-    private static ResumeItem? ToResumeItem(JsonElement item, bool isNextUp)
+    private ResumeItem? ToResumeItem(JsonElement item, bool isNextUp)
     {
         var id = Text(Get(item, "Id"));
         if (!Guid.TryParse(id, out _)) return null;
         var type = Text(Get(item, "Type"));
         var catalogId = type == "Movie" ? id : type == "Episode" ? Text(Get(item, "SeriesId")) : "";
+        if (type == "Episode" && !Guid.TryParse(catalogId, out _))
+        {
+            // A minority of server versions omit SeriesId from an Episode DTO.
+            // Resolve the already-authorized episode via Jellyfin's local item
+            // index (without searching by the anime title or traversing NFO).
+            var local = _library.GetItemById(Guid.Parse(id));
+            var property = local?.GetType().GetProperty("SeriesId");
+            if (property?.GetValue(local) is Guid seriesId && seriesId != Guid.Empty)
+                catalogId = seriesId.ToString("N");
+        }
         if (!Guid.TryParse(catalogId, out _)) return null;
         var data = Get(item, "UserData");
         var percentage = Number(Get(data, "PlayedPercentage"));
@@ -543,6 +584,9 @@ public sealed class MisioFlixCatalogService
             var pos = Number(Get(data, "PlaybackPositionTicks"));
             if (duration > 0) percentage = 100.0 * pos / duration;
         }
+        // Resume has a real saved position even if Jellyfin omitted RunTimeTicks.
+        if (percentage <= 0 && Number(Get(data, "PlaybackPositionTicks")) > 0)
+            percentage = 1;
         if (!isNextUp && (percentage <= 0 || percentage >= 100)) return null;
         return new ResumeItem
         {

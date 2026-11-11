@@ -1,4 +1,4 @@
-"""Source contracts for version 0.4.16 search parent relationships and media genres."""
+"""Source contracts for version 0.4.17 search parent relationships and media genres."""
 from pathlib import Path
 import json
 import subprocess
@@ -30,7 +30,7 @@ class SearchRelation0416(unittest.TestCase):
         self.assertIn(': [...display.values()].sort',CLIENT)
 
     def test_version_and_behavior_js(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.16.0')
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.17.0')
         result = subprocess.run(['node',str(ROOT/'tests/search_relation_0416.cjs')],
                                 capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
