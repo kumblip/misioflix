@@ -1051,3 +1051,9 @@ html.misioflix-skin .card.mf-collection-card .cardOverlayContainer{z-index:8}
 @media(max-width:700px){
   html.misioflix-skin #mf-library-back-home{top:calc(62px + env(safe-area-inset-top, 0px));font-size:12px;padding:5px 9px}
 }
+
+/* v0.4.26: dedicated home Collections shelf is independent of Jellyfin grouping. */
+html.misioflix-skin .mf-home-collection-card .mf-home-poster{outline:1px solid rgba(235,159,202,.48);outline-offset:-1px}
+html.misioflix-skin .mf-home-collection-count{background:rgba(25,17,29,.8);padding:3px 6px;border-radius:5px;font-size:11px;color:#ffd7eb;font-weight:650}
+html.misioflix-skin .card.mf-physical-folder .mf-collection-label{background:rgba(54,85,115,.92);border-color:rgba(156,207,250,.44)}
+html.misioflix-skin .card.mf-empty-folder .cardImageContainer{opacity:.78}

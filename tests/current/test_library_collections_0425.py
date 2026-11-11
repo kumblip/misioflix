@@ -7,7 +7,7 @@ S=(R/'src/Jellyfin.Plugin.MisioFlix/Web/theme.css').read_text()
 H=(R/'src/Jellyfin.Plugin.MisioFlix/Web/home.js').read_text()
 class Collections0425(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((R/'meta.json').read_text())['version'],'0.4.25.0')
+        self.assertRegex(json.loads((R/'meta.json').read_text())['version'],r'^0\.4\.(?:2[5-9]|[3-9][0-9])\.0$')
     def test_home_button_scoped_to_libraries(self):
         self.assertIn('function mfLibraryRoute()',C)
         self.assertIn('function mfBackButton()',C)

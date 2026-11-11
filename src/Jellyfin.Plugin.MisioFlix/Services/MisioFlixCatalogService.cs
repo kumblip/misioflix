@@ -200,6 +200,7 @@ public sealed class MisioFlixCatalogService
             {
                 "movies" => "movies",
                 "tvshows" => "series",
+                "boxsets" => "collections",
                 _ => ""
             };
             if (string.IsNullOrEmpty(category)) continue;
@@ -207,6 +208,7 @@ public sealed class MisioFlixCatalogService
             {
                 "movies" => "movies",
                 "tvshows" => "tv",
+                "boxsets" => "boxsets",
                 _ => "mixed"
             };
             var href = $"#/" + kind + $"?topParentId={guid:N}&collectionType={Uri.EscapeDataString(collection)}";
@@ -228,17 +230,24 @@ public sealed class MisioFlixCatalogService
         var random = string.Equals(mode, "random", StringComparison.OrdinalIgnoreCase);
         const int randomCount = 5;
         var resultLimit = random ? randomCount : limit;
+        var collections = view.category == "collections";
         var types = view.category switch
         {
             "movies" => "Movie",
             "series" => "Series",
             _ => "Series,Movie"
         };
-        // The series filter excludes Season and Episode: Arifureta gets ONE series
-        // parent with all seasons, not an arbitrary recently added season.
-        // Random is executed against the ENTIRE scoped library, not shuffled page one.
+        // Keep individual movies/series in the home rows even if Jellyfin's
+        // per-user collection grouping preference is switched on temporarily.
+        // The Collections shelf is INDEPENDENT of that preference.
+        // Jellyfin's BoxSet-under-collection query has had a known item type
+        // filter bug: do not add IncludeItemTypes=BoxSet with ParentId here;
+        // instead filter the returned items to Type=BoxSet below.
+        var itemScope = collections
+            ? $"&ParentId={libraryId:N}&Recursive=false"
+            : $"&ParentId={libraryId:N}&Recursive=true&IncludeItemTypes={types}&CollapseBoxSetItems=false";
         var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
-                   $"&ParentId={libraryId:N}&Recursive=true&IncludeItemTypes={types}" +
+                   itemScope +
                    $"&SortBy={(random ? "Random" : "DateCreated")}" +
                    "&SortOrder=Descending&EnableUserData=true" +
                    "&EnableTotalRecordCount=false" +
@@ -267,7 +276,8 @@ public sealed class MisioFlixCatalogService
         var id = Text(Get(item, "Id"));
         if (!Guid.TryParse(id, out var guid)) return null;
         var type = Text(Get(item, "Type"));
-        if (type != "Series" && type != "Movie") return null;
+        var collection = category == "collections";
+        if (collection ? type != "BoxSet" : type != "Series" && type != "Movie") return null;
         var isAnime = category == "anime";
         LocalNfo? nfo = null;
         if (isAnime)
@@ -295,6 +305,7 @@ public sealed class MisioFlixCatalogService
             hasPrimary = HasPrimaryImage(item),
             seasons = type == "Series" ? PositiveInt(Get(item, "ChildCount")) : null,
             episodes = type == "Series" ? PositiveInt(Get(item, "RecursiveItemCount")) : null,
+            collectionCount = collection ? PositiveInt(Get(item, "ChildCount")) : null,
             userRating = PersonalRating(item),
             watchStatus = WatchStatus(item)
         };
@@ -1166,6 +1177,7 @@ public sealed class HomeTile
     public bool hasPrimary { get; set; }
     public int? seasons { get; set; }
     public int? episodes { get; set; }
+    public int? collectionCount { get; set; }
     public double? userRating { get; set; }
     public string watchStatus { get; set; } = string.Empty;
 }

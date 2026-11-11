@@ -183,7 +183,7 @@
       link.appendChild(img);
     }else link.classList.add('mf-home-no-cover');
     const left=own('div','mf-home-top-left');
-    badge(left,item.anime?'ANIME':item.type==='Movie'?'FILM':'SERIAL','mf-home-kind');
+    badge(left,item.type==='BoxSet'?'KOLEKCJA':item.anime?'ANIME':item.type==='Movie'?'FILM':'SERIAL','mf-home-kind');
     if(item.year)badge(left,String(item.year).slice(0,14),'mf-home-year');
     link.appendChild(left);
     const count=own('div','mf-home-stats');
@@ -195,21 +195,29 @@
       append(stat,own('span','',val),paw(color));
       count.appendChild(stat);
     };
-    if(item.type!=='Movie'){
-      addStat(item.seasons,'Sezony','#f7b449');
-      addStat(item.episodes,'Odcinki','#6bd1f6');
+    if(item.type==='BoxSet'){
+      const count=short(item.collectionCount);
+      if(count)badge(left,count+' filmów','mf-home-collection-count');
+    }else{
+      if(item.type!=='Movie'){
+        addStat(item.seasons,'Sezony','#f7b449');
+        addStat(item.episodes,'Odcinki','#6bd1f6');
+      }
+      addStat(item.userRating,'Moja ocena','#f49fce',true);
     }
-    addStat(item.userRating,'Moja ocena','#f49fce',true);
     if(count.childElementCount)link.appendChild(count);
     const chips=own('div','mf-home-genres');
     (Array.isArray(item.genres) ? item.genres.slice(0,3) : []).forEach(v=>{if(v)badge(chips,v,'mf-home-genre');});
     if(chips.childElementCount)link.appendChild(chips);
-    const state=['unwatched','started','watched'].includes(item.watchStatus)?item.watchStatus:'unwatched';
-    link.setAttribute('data-mf-watch',state);
+    // A collection has no single watched state: don't show a misleading frame.
+    if(item.type!=='BoxSet'){
+      const state=['unwatched','started','watched'].includes(item.watchStatus)?item.watchStatus:'unwatched';
+      link.setAttribute('data-mf-watch',state);
+    }
     return link;
   }
   function makeCard(item){
-    const card=own('article','mf-home-card');
+    const card=own('article','mf-home-card'+(item.type==='BoxSet'?' mf-home-collection-card':''));
     append(card,makePoster(item));
     const content=own('div','mf-home-card-body');
     const title=set(own('a','mf-home-card-title',item.title||'Brak tytułu'), 'href',nativeDetails(item.id,item.serverId));
@@ -290,7 +298,7 @@
     const section=own('section','mf-home-shelf');
     section.setAttribute('data-mf-library', lib.id);
     const top=own('div','mf-home-shelf-heading');
-    const head=append(own('h2',''),set(own('a','',lib.name),'href',safeLibraryHref(lib.href,lib.id)));
+    const head=append(own('h2',''),set(own('a','',lib.category==='collections'?'Kolekcje':lib.name),'href',lib.category==='collections'?(libraryListUrl(lib.id,lib.href)||lib.href):safeLibraryHref(lib.href,lib.id)));
     const tools=own('div','mf-home-actions');
     const shuffle=own('button','mf-home-button mf-home-shuffle','Losuj ↻');
     shuffle.type='button';
@@ -936,7 +944,7 @@
     input.setAttribute('aria-label','Wyszukaj tytuł');
     const suggestions=own('div','mf-home-suggestions');suggestions.hidden=true;
     append(searchWrap,input,suggestions);
-    const scopedLibraries=librariesCache.filter(lib=>kind==='anime'?lib.category==='anime':lib.category!=='anime');
+    const scopedLibraries=librariesCache.filter(lib=>kind==='anime'?lib.category==='anime':['movies','series'].includes(lib.category));
     const libraryChoices=makeFilterGroup('Biblioteki', 'Zielony: uwzględnij · czerwony: wyklucz · ponownie: obojętne');
     const libraryOptions=scopedLibraries.map(lib=>({id:compactId(lib.id),label:lib.name}));
     const typeChoices=makeFilterGroup('Typy produkcji', 'Możesz zaznaczyć kilka typów jednocześnie');
@@ -1070,6 +1078,9 @@
       box.appendChild(own('p','mf-home-search-helper','Brak dostępnych bibliotek.'));
     }
     for(const lib of librariesCache){
+      // The new Collections view belongs only in its separate shelf, not in
+      // the five established library buttons or the two search pop-outs.
+      if(lib.category==='collections')continue;
       const link=set(own('a','mf-home-folder-button',lib.name),'href',safeLibraryHref(lib.href,lib.id));
       link.setAttribute('aria-label',`Otwórz bibliotekę ${lib.name}`);
       box.appendChild(link);
@@ -1134,9 +1145,16 @@
       paintFolderButtons();
       maybeOpenLinkedGenre();
       if(!Array.isArray(libs)||!libs.length){container.appendChild(own('p','mf-home-empty','Nie znaleziono dostępnych bibliotek.'));return;}
-      // Keep the order supplied by Jellyfin, but do not include Collections in this release.
-      for(const lib of libs){
-        if(!validId(lib.id)||!['anime','movies','series'].includes(lib.category))continue;
+      // Collections are a separate home row, never Jellyfin's optional
+      // 'group movies into collections' setting. Place directly after AnimePL.
+      const valid=libs.filter(lib=>validId(lib.id) && ['anime','movies','series','collections'].includes(lib.category));
+      const collectionViews=valid.filter(lib=>lib.category==='collections');
+      const animeViews=valid.filter(lib=>lib.category==='anime');
+      const otherViews=valid.filter(lib=>lib.category!=='anime' && lib.category!=='collections');
+      const ordered=animeViews.length
+        ? [...animeViews,...collectionViews,...otherViews]
+        : [...collectionViews,...otherViews];
+      for(const lib of ordered){
         const row=shelfShell(lib);
         rows.set(lib.id,row);
         container.appendChild(row.section);

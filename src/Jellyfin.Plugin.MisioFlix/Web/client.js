@@ -290,7 +290,7 @@
       card.querySelector('.mf-native-overlay')?.remove();
       card.querySelector('.mf-native-description')?.remove();
       card.querySelectorAll('.mf-collection-preview,.mf-collection-label').forEach(node=>node.remove());
-      card.classList.remove('mf-collection-card','mf-collection-has-preview');
+      card.classList.remove('mf-collection-card','mf-collection-has-preview','mf-physical-folder','mf-empty-folder');
       card.removeAttribute('data-mf-collection-type');
       card.removeAttribute('data-mf-folder-observed');
     }
@@ -501,10 +501,11 @@
       if(!type||!mfFolderId(card)||card.closest('#mf-home-0412'))continue;
       card.classList.add('mf-collection-card');
       card.dataset.mfCollectionType=type;
+      card.classList.toggle('mf-physical-folder',type==='folder');
       card.removeAttribute('data-mf-watch');
       const surface=card.querySelector('.cardScalable');
       if(surface && !surface.querySelector(':scope > .mf-collection-label')){
-        const label=makeEl('span','mf-collection-label','KOLEKCJA');
+        const label=makeEl('span','mf-collection-label',type==='boxset'?'KOLEKCJA':'FOLDER');
         label.setAttribute('aria-hidden','true');surface.appendChild(label);
       }
       // Keep all native Jellyfin buttons, links, progress and item data intact.
@@ -534,12 +535,18 @@
       if(typeof token!=='string'||!token)return;
       const params=new URLSearchParams({ParentId:id,Recursive:'false',Limit:'12',Fields:'PrimaryImageAspectRatio',ImageTypeLimit:'1'});
       const response=await fetch('/Users/'+encodeURIComponent(uid)+'/Items?'+params.toString(),{
-        headers:{Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-folders", Version="0.4.25", Token="'+token.replace(/["\r\n]/g,'')+'"'},
+        headers:{Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-folders", Version="0.4.26", Token="'+token.replace(/["\r\n]/g,'')+'"'},
         cache:'no-store'
       });
       if(!response.ok)return;
       const data=await response.json();
-      const ids=(Array.isArray(data.Items)?data.Items:[])
+      const children=Array.isArray(data.Items)?data.Items:[];
+      if(type==='folder' && children.length===0 && data.TotalRecordCount===0){
+        card.classList.add('mf-empty-folder');
+        const label=card.querySelector('.mf-collection-label');
+        if(label)label.textContent='PUSTY FOLDER';
+      }
+      const ids=children
         .filter(item=>mfValid(item?.Id)&&item?.ImageTags?.Primary)
         .slice(0,4).map(item=>mfCompact(item.Id));
       // If no children have posters, retain native folder icon unchanged.
