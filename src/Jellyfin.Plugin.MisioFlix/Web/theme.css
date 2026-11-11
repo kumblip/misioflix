@@ -802,3 +802,16 @@ html.misioflix-skin .mf-home-suggestion-title{
 }
 html.misioflix-skin .mf-home-suggestion-facts{font-size:11px;color:#e3bfcf}
 html.misioflix-skin .mf-home-suggestion-match{font-size:10px;color:#cdb4c2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* v0.4.20: playable area is not a details link; only the circled i navigates. */
+html.misioflix-skin .mf-home-resume-poster{
+  padding:0;border:0;appearance:none;-webkit-appearance:none;
+  cursor:pointer;text-align:initial;color:inherit;
+}
+html.misioflix-skin .mf-home-resume-poster:focus-visible{outline:2px solid #f4a5ce;outline-offset:2px}
+html.misioflix-skin .mf-home-resume-title{cursor:pointer}
+html.misioflix-skin .mf-home-play-warning{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  background:#422039;color:white;border:1px solid #d99cbd;
+  border-radius:10px;padding:12px 16px;z-index:99999;max-width:min(600px,90vw)
+}

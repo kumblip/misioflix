@@ -16,9 +16,9 @@ class Navigation0419(unittest.TestCase):
     def test_play_exact_resume_id_with_native_shortcuts(self):
         self.assertIn('async function playResume(entry)',JS)
         self.assertIn("'data-id':compactId(entry.resumeId)",JS)
-        self.assertIn("button.setAttribute('data-action','resume')",JS)
+        self.assertIn("button.setAttribute('data-action',ticks>0?'resume':'play')",JS)
         self.assertIn('data-positionticks',JS)
-        self.assertIn("if(click.defaultPrevented)return",JS)
+        self.assertIn('await playViaItemDetails(entry,serial)',JS)
         self.assertIn('position_ticks = (long)Number(Get(data, "PlaybackPositionTicks"))',SVC)
         self.assertIn('entry.next_up, entry.position_ticks, entry.resume_type',SVC)
     def test_info_targets_root_not_resume_episode(self):

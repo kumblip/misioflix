@@ -1,11 +1,11 @@
-/* MisioFlix 0.4.19: ONLY custom shelves INSIDE Jellyfin's native home view.
+/* MisioFlix 0.4.20: ONLY custom shelves INSIDE Jellyfin's native home view.
  * No second site, no page/router replacement, no bulk catalog loading.
  * Requires the user to set native home slots to "Brak" in Jellyfin preferences.
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_HOME_0419__) return;
-  window.__MISIOFLIX_HOME_0419__ = true;
+  if (window.__MISIOFLIX_HOME_0420__) return;
+  window.__MISIOFLIX_HOME_0420__ = true;
 
   const API = '/MisioFlix/api';
   const SHELF_LIMIT = 12;
@@ -38,7 +38,7 @@
   };
   const homeRoute = () => /^#\/(?:home)?(?:\?|$)/i.test(window.location.hash || '#/');
   const isCurrent = serial => homeRoot?.isConnected && epoch === serial && homeRoute() && currentToken() === owner;
-  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.19", Token="${owner.replace(/["\r\n]/g, '')}"`});
+  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.20", Token="${owner.replace(/["\r\n]/g, '')}"`});
   async function request(path, method='GET', payload, timeoutMs=18000) {
     const control = new AbortController();
     const timeout = window.setTimeout(() => control.abort(), timeoutMs);
@@ -287,50 +287,125 @@
       row.busy=false;row.shuffle.disabled=false;row.reset.disabled=false;
     }
   }
-  // Start the exact movie/episode, not its series or a season-details page.
-  // Jellyfin Web 12's native shortcuts handler owns the actual playback.
-  // We send it a normal "resume" action with the saved playback position.
+  // v0.4.20: playable cards have NO details anchors. Try Jellyfin's player,
+  // then a delegated native action; if neither starts playback, open the exact
+  // movie/episode detail and activate its REAL play/resume control after render.
+  // Never send the user to the series or season on a playable-card click.
+  let resumePlaySerial = 0;
+  const pause = ms => new Promise(resolve => window.setTimeout(resolve,ms));
+  function playingLocally(){
+    if([...document.querySelectorAll('video')].some(v=>!v.paused && !v.ended))return true;
+    if(/^#\/(?:video|playback|player)(?:\?|\/|$)/i.test(window.location.hash))return true;
+    return Boolean(document.querySelector('.videoPlayerContainer:not(.hide) video, .videoOsd:not(.hide) video'));
+  }
+  function nativePlayControl(){
+    // Exclude hidden SPA pages and controls outside the actual details screen.
+    const candidates=[...document.querySelectorAll([
+      '.itemDetailPage:not(.hide) .btnResume',
+      '.itemDetailPage:not(.hide) .btnPlay',
+      '.itemDetailPage:not(.hide) [data-action="resume"]',
+      '.itemDetailPage:not(.hide) [data-action="play"]',
+      '.itemDetailsPage:not(.hide) .btnResume',
+      '.itemDetailsPage:not(.hide) .btnPlay',
+      '[data-testid="item-details"] [data-testid="resume-button"]',
+      '[data-testid="item-details"] [data-testid="play-button"]',
+      '#itemDetailPage:not(.hide) .btnResume',
+      '#itemDetailPage:not(.hide) .btnPlay',
+      '.detailsPage:not(.hide) .btnResume',
+      '.detailsPage:not(.hide) .btnPlay',
+      '[class*="itemDetails"] button',
+      '[class*="ItemDetails"] button',
+      '.itemDetailPage:not(.hide) button',
+      '.itemDetailsPage:not(.hide) button',
+      // React-based Jellyfin details may render accessible play buttons under main.
+      'main button[aria-label="Odtwórz"]',
+      'main button[aria-label="Wznów"]',
+      'main button[aria-label="Play"]',
+      'main button[aria-label="Resume"]'
+    ].join(','))];
+    const eligible=button=>{
+      if(!button.isConnected || button.disabled || button.closest('[hidden],[aria-hidden="true"],.hide'))return false;
+      if(!button.getClientRects().length)return false;
+      const label=(button.getAttribute('aria-label')||button.title||button.textContent||'').trim();
+      if(/zwiastun|trailer|losuj|shuffle|odtwórz wszystkie|play all/i.test(label))return false;
+      return button.matches('.btnResume,.btnPlay,[data-action="play"],[data-action="resume"],[data-testid="resume-button"],[data-testid="play-button"]') ||
+        /^(?:wznów|kontynuuj|odtwórz|odtwarzaj|play|resume|continue)(?:\b|\s|$)/i.test(label);
+    };
+    return candidates.find(eligible)||null;
+  }
+  async function playViaItemDetails(entry,serial){
+    const targetId=compactId(entry.resumeId);
+    const route=nativeDetails(targetId,entry.item.serverId);
+    if(route==='#/home')return;
+    window.location.hash=route; // exact playable movie/episode, NOT item.id (series)
+    const start=Date.now();
+    const maxWait=10000;
+    while(serial===resumePlaySerial && Date.now()-start<maxWait){
+      if(playingLocally())return;
+      const hash=window.location.hash;
+      if(!/^#\/details(?:\?|$)/i.test(hash))return;
+      const actualId=new URLSearchParams(hash.slice(hash.indexOf('?')+1)).get('id');
+      if(compactId(actualId)!==targetId)return;
+      // Wait for the exact detail page to mount rather than clicking a stale
+      // play button left in Jellyfin's cached/hidden SPA views.
+      if(Date.now()-start>=200){
+        const button=nativePlayControl();
+        if(button){
+          button.click(); // Jellyfin's genuine player/resume handler
+          return;
+        }
+      }
+      await pause(130);
+    }
+    if(serial===resumePlaySerial){
+      console.warn('[MisioFlix] Odtwarzanie nie uruchomiło się; nie znaleziono przycisku odtwarzania w Jellyfin.');
+      const warning=own('div','mf-home-play-warning','Nie udało się automatycznie uruchomić filmu. Kliknij Odtwórz na stronie odcinka lub filmu.');
+      warning.setAttribute('role','status');document.body.appendChild(warning);
+      window.setTimeout(()=>warning.remove(),6000);
+    }
+  }
   async function playResume(entry){
     const item=entry.item;
     if(!validId(entry.resumeId))return;
+    const serial=++resumePlaySerial;
     const serverId=validId(item.serverId)?compactId(item.serverId):compactId((()=>{
       const api=window.ApiClient||window.ConnectionManager?.getApiClient?.();
       return typeof api?.serverId==='function'?api.serverId():api?.serverId;
     })());
+    const ticks=Math.max(0,Number(entry.positionTicks)||0);
+    const manager=window.playbackManager||window.Emby?.PlaybackManager;
+    if(typeof manager?.play==='function' && validId(serverId)){
+      try{
+        // Public PlaybackManager options from the native Jellyfin Web player.
+        await manager.play({ids:[compactId(entry.resumeId)],serverId,
+          startPositionTicks:ticks,enableRemotePlayers:false});
+        return;
+      }catch(error){console.warn('[MisioFlix] Native playback manager refused playback',error);}
+    }
     const nativeContainer=document.querySelector('.homeTab .itemsContainer') ||
       document.querySelector('#indexPage .itemsContainer') ||
-      document.querySelector('.itemsContainer') ||
-      document.querySelector('.homeTab');
+      document.querySelector('.homeTab') ||
+      document.querySelector('#indexPage');
     if(nativeContainer && validId(serverId)){
       const shell=own('div','itemAction mf-home-native-play-proxy');
       for(const [key,value] of Object.entries({
         'data-id':compactId(entry.resumeId),'data-serverid':serverId,
         'data-type':entry.resumeType==='Episode'||entry.season!=null||entry.episode!=null?'Episode':'Movie',
         'data-mediatype':'Video','data-isfolder':'false',
-        'data-positionticks':String(Math.max(0,Number(entry.positionTicks)||0))
+        'data-positionticks':String(ticks)
       }))shell.setAttribute(key,value);
-      const button=own('button','', 'Odtwórz');button.type='button';
-      button.setAttribute('data-action','resume');shell.appendChild(button);
+      const button=own('button','','Odtwórz');button.type='button';
+      button.setAttribute('data-action',ticks>0?'resume':'play');shell.appendChild(button);
       nativeContainer.appendChild(shell);
       try{
-        // Jellyfin shortcuts.onClick prevents the click's default when handled.
-        const click=new MouseEvent('click',{bubbles:true,cancelable:true,view:window});
-        button.dispatchEvent(click);
-        if(click.defaultPrevented)return;
+        button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
+        // A cancelled/defaultPrevented click is NOT proof that video started.
+        // This was the v0.4.19 failure mode on Jellyfin 12.4.
+        await pause(950);
+        if(serial!==resumePlaySerial || playingLocally())return;
       }finally{shell.remove();}
     }
-    // Limited legacy fallback; Jellyfin owns all playback decisions.
-    const manager=window.playbackManager||window.Emby?.PlaybackManager;
-    if(typeof manager?.play==='function'){
-      try{
-        await manager.play({ids:[compactId(entry.resumeId)],serverId,
-          startPositionTicks:Math.max(0,Number(entry.positionTicks)||0)});
-        return;
-      }catch(error){console.warn('[MisioFlix] Native playback action failed',error);}
-    }
-    // If a Jellyfin build has no reachable native player action, we must not
-    // fabricate an unsupported video URL or risk playing the wrong episode.
-    window.location.hash=nativeDetails(entry.resumeId,item.serverId);
+    if(serial===resumePlaySerial)await playViaItemDetails(entry,serial);
   }
   function resumeTile(entry,hidden=false){
     const item=entry.item;
@@ -338,12 +413,12 @@
     card.setAttribute('tabindex','0');
     card.setAttribute('aria-label',`Odtwarzaj: ${item.title||''}`);
     const details=nativeDetails(item.id,item.serverId); // series root, or movie root
-    const link=set(own('a','mf-home-resume-poster'),'href',nativeDetails(entry.resumeId,item.serverId));
+    const link=own('button','mf-home-resume-poster');link.type='button';
     link.setAttribute('aria-label','Odtwarzaj: '+(item.title||''));
     const image=imageFor(item);
     if(image){const img=own('img','');img.src=image;img.loading='lazy';img.alt='';link.appendChild(img);}
     const body=own('div','mf-home-resume-content');
-    append(body,set(own('a','mf-home-resume-title',item.title||''),'href',nativeDetails(entry.resumeId,item.serverId)));
+    append(body,own('span','mf-home-resume-title',item.title||''));
     const label=entry.season!=null&&entry.episode!=null?`S${entry.season}:E${entry.episode}`:entry.nextUp?'Następny odcinek':'Film';
     body.appendChild(own('div','mf-home-resume-subtitle',label));
     if(Number(entry.progress)>0){
@@ -393,6 +468,7 @@
     card.addEventListener('click',event=>{
       if(event.target.closest('.mf-home-resume-info,.mf-home-resume-card-actions'))return;
       event.preventDefault();
+      event.stopPropagation();
       void playResume(entry);
     });
     card.addEventListener('keydown',event=>{
