@@ -34,21 +34,15 @@ jobs:
       - name: Instalacja parsera CSS do testow
         run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund postcss@8
 
+      - name: Ustal wersję z meta.json (bez zmian w workflow)
+        run: python3 tools/sync_version.py
+
       - name: Testy źródeł
         run: |
           node --check src/Jellyfin.Plugin.MisioFlix/Web/client.js
           node --check src/Jellyfin.Plugin.MisioFlix/Web/home.js
-          python3 -m unittest discover -s tests -p test_v0412.py -v
-          python3 -m unittest discover -s tests -p test_home_0412.py -v
-          python3 -m unittest discover -s tests -p test_drag_0413.py -v
-          python3 -m unittest discover -s tests -p test_search_0415.py -v
-          python3 -m unittest discover -s tests -p test_release_tools.py -v
-          python3 -m unittest discover -s tests -p test_search_relation_0416.py -v
-          python3 -m unittest discover -s tests -p test_fixes_0417.py -v
-          python3 -m unittest discover -s tests -p test_layout_0418.py -v
-          node tests/search_relation_0416.cjs
-          node tests/ui_v0411.cjs
-
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          find tests -maxdepth 1 -name '*.cjs' -type f -print0 | sort -z | xargs -0 -r -n1 node
       - name: Kompilacja wtyczki
         run: dotnet publish src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj --configuration Release --output build/publish
 
