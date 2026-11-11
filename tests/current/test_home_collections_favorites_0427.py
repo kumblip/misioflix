@@ -23,7 +23,10 @@ class Home0427(unittest.TestCase):
         self.assertIn('if(!homeRoute())unmountHome()', HOME)
 
     def test_anime_route_keeps_native_react_tree(self):
-        self.assertIn("link && !homeRouteFor(link.getAttribute('href')||'')", HOME)
+        # Regression v0.4.29: custom banner lives in <nav>; do not remove
+        # its link before browser click. Genuine Jellyfin header is outside.
+        self.assertIn("if(!link || homeRoot.contains(link))return;", HOME)
+        self.assertIn("if(!homeRouteFor(link.getAttribute('href')||''))unmountHome();", HOME)
         self.assertIn("document.addEventListener('pointerdown'", HOME)
         self.assertIn("const LIBRARY_ROUTE = /^#\\/(?:movies|tv)", HOME)
         self.assertNotIn("(?:movies|tv|mixed)", HOME)

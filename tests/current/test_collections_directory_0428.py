@@ -14,8 +14,8 @@ CS=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixCatalogService.cs').re
 
 class CollectionsDirectory0428(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.28.0')
-        self.assertIn('<AssemblyVersion>0.4.28.0</AssemblyVersion>', (ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.29.0')
+        self.assertIn('<AssemblyVersion>0.4.29.0</AssemblyVersion>', (ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
     def test_both_collection_links_open_full_directory(self):
         self.assertIn("const COLLECTIONS_URL = '#/home?mfCollections=1'", HOME)

@@ -1,4 +1,4 @@
-/* MisioFlix 0.4.28: user-scoped home and independent BoxSet collection shelf.
+/* MisioFlix 0.4.29: user-scoped home and independent BoxSet collection shelf.
  * No second site, no page/router replacement, no bulk catalog loading.
  * Requires the user to set native home slots to "Brak" in Jellyfin preferences.
  */
@@ -59,7 +59,7 @@
   let collectionsPage = null;
   let collectionsLoad = {busy:false,loaded:false,offset:0,hasMore:true,requestId:0};
   const isCurrent = serial => homeRoot?.isConnected && epoch === serial && homeRoute() && currentToken() === owner;
-  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.28", Token="${owner.replace(/["\r\n]/g, '')}"`});
+  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.29", Token="${owner.replace(/["\r\n]/g, '')}"`});
   async function request(path, method='GET', payload, timeoutMs=18000) {
     const control = new AbortController();
     const timeout = window.setTimeout(() => control.abort(), timeoutMs);
@@ -1326,7 +1326,14 @@
     document.addEventListener('pointerdown',event=>{
       if(!homeRoot || event.button!==0)return;
       const link=event.target.closest?.('header a[href],.skinHeader a[href],.MuiAppBar-root a[href],nav a[href]');
-      if(link && !homeRouteFor(link.getAttribute('href')||''))unmountHome();
+      // The hero's library shortcuts are inside our OWN <nav>. Removing
+      // homeRoot on pointerdown destroys the <a> BEFORE the browser's click
+      // event and default navigation. Collection links were unaffected because
+      // they target a home subroute; AnimePL / other libraries ended at blank
+      // #/home. Let our links navigate first; hashchange handles unmounting.
+      if(!link || homeRoot.contains(link))return;
+      // A genuine Jellyfin header link lives outside MisioFlix's subtree.
+      if(!homeRouteFor(link.getAttribute('href')||''))unmountHome();
     },true);
     window.addEventListener('hashchange',()=>{
       if(!homeRoute())unmountHome();
