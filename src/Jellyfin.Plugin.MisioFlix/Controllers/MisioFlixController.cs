@@ -25,7 +25,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.23", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.30", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
@@ -37,6 +37,7 @@ public sealed class MisioFlixController : ControllerBase
             "client.js" => ("Web.client.js", "text/javascript; charset=utf-8"),
             "home.js" => ("Web.home.js", "text/javascript; charset=utf-8"),
             "details.js" => ("Web.details.js", "text/javascript; charset=utf-8"),
+            "mal.js" => ("Web.mal.js", "text/javascript; charset=utf-8"),
             "theme.css" => ("Web.theme.css", "text/css; charset=utf-8"),
             "logo.png" => ("Web.assets.logo.png", "image/png"),
             "mark.png" => ("Web.assets.mark.png", "image/png"),
@@ -241,6 +242,53 @@ public sealed class MisioFlixController : ControllerBase
         catch(UnauthorizedAccessException){return Unauthorized();}
         catch(HttpRequestException){return StatusCode(502,new{error="Nie można pobrać listy MAL"});}
         catch(InvalidOperationException e){return BadRequest(new{error=e.Message});}
+    }
+
+    // Lightweight connection check for the home banner: never loads the MAL list.
+    [HttpGet("api/mal/connection")]
+    [Authorize]
+    public async Task<IActionResult> MalConnection(CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        try
+        {
+            var user = await _catalog.GetAuthenticatedUserIdAsync(Request, cancel).ConfigureAwait(false);
+            var connection = await _mal.GetConnectionAsync(user, cancel, refreshProfile:false).ConfigureAwait(false);
+            return Ok(new { connected = connection.Connected, username = connection.Connected ? connection.Username : null });
+        }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (InvalidOperationException e) { return BadRequest(new { error = e.Message }); }
+        catch (HttpRequestException) { return StatusCode(502, new { error = "Nie można sprawdzić połączenia MAL" }); }
+    }
+
+    // MAL entry is tied exclusively to an anime/season ID verified against the
+    // authenticated user's Jellyfin library and MAL ID stored in the NFO.
+    // Default refresh=false uses the existing MAL service cache. Only the
+    // explicit Refresh action may force a network refresh of MAL data.
+    [HttpGet("api/mal/item")]
+    [Authorize]
+    public async Task<IActionResult> MalItem([FromQuery] Guid catalogId,
+        [FromQuery] Guid? seasonId, [FromQuery] bool refresh=false,
+        CancellationToken cancel=default)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        if (catalogId == Guid.Empty || seasonId == Guid.Empty) return BadRequest();
+        Response.Headers.CacheControl = "private, no-store";
+        try
+        {
+            var malId = await _catalog.AuthorizedMalIdAsync(Request, catalogId, seasonId, cancel).ConfigureAwait(false);
+            var user = await _catalog.GetAuthenticatedUserIdAsync(Request, cancel).ConfigureAwait(false);
+            var connection = await _mal.GetConnectionAsync(user, cancel, refreshProfile:false).ConfigureAwait(false);
+            if (!connection.Connected) return Ok(new { connected = false, malId, entry = (MalEntry?)null });
+            var entries = await _mal.ReadAllAsync(user, refresh, cancel).ConfigureAwait(false);
+            entries.TryGetValue(malId, out var entry);
+            return Ok(new { connected = true, malId, entry });
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (ArgumentException e) { return BadRequest(new { error = e.Message }); }
+        catch (InvalidOperationException e) { return BadRequest(new { error = e.Message }); }
+        catch (HttpRequestException) { return StatusCode(502, new { error = "Nie udało się odczytać danych MAL" }); }
     }
 
     [HttpGet("api/mal/connect")]

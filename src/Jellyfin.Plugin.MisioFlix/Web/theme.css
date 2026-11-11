@@ -1074,3 +1074,31 @@ html.misioflix-skin .mf-collections-page-more{align-self:center}
 /* Native library back button: floating lower-left, clear of Foldery, filter and sort controls. */
 html.misioflix-skin #mf-library-back-home{top:auto!important;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:clamp(12px,2.8vw,52px);z-index:1100;padding:10px 14px;background:rgba(48,23,51,.95);box-shadow:0 7px 22px rgba(0,0,0,.5)}
 @media(max-width:700px){html.misioflix-skin #mf-library-back-home{top:auto!important;bottom:calc(12px + env(safe-area-inset-bottom,0px))}}
+
+/* MisioFlix 0.4.30 — per-user MyAnimeList, no changes to Jellyfin player. */
+html.misioflix-skin .mf-home-mal-button {border-color:rgba(255,135,189,.65)!important;color:#ffe6f4!important}
+html.misioflix-skin .mf-mal-modal-overlay {position:fixed;inset:0;z-index:99990;display:grid;place-items:center;background:rgba(10,3,13,.82);padding:18px}
+html.misioflix-skin .mf-mal-modal {width:min(520px,100%);max-height:90vh;overflow-y:auto;box-sizing:border-box;padding:24px;border:1px solid rgba(247,161,208,.48);border-radius:18px;background:#29152d;box-shadow:0 20px 70px #0008;color:#ffedf7}
+html.misioflix-skin .mf-mal-modal-head {display:flex;align-items:center;justify-content:space-between;gap:14px}
+html.misioflix-skin .mf-mal-modal-head h2 {font-size:23px;margin:0}
+html.misioflix-skin .mf-mal-modal-head button {font-size:28px;line-height:1;color:white;background:none;border:0;cursor:pointer}
+html.misioflix-skin .mf-mal-modal-body {display:flex;flex-direction:column;gap:12px}
+html.misioflix-skin .mf-mal-manual {display:flex;flex-direction:column;gap:9px}
+html.misioflix-skin .mf-mal-manual[hidden] {display:none!important}
+html.misioflix-skin .mf-mal-manual label {display:flex;flex-direction:column;gap:8px;font-size:13px}
+html.misioflix-skin .mf-mal-manual input {width:100%;box-sizing:border-box}
+html.misioflix-skin .mf-mal-action,html.misioflix-skin .mf-mal-action-secondary {appearance:none;min-height:38px;padding:8px 13px;border-radius:9px;border:1px solid #b75f91;color:#fff3fa;background:#663151;cursor:pointer;font:inherit;font-size:13px;font-weight:650}
+html.misioflix-skin .mf-mal-action-secondary {background:transparent}
+html.misioflix-skin .mf-mal-action:disabled,html.misioflix-skin .mf-mal-action-secondary:disabled {opacity:.55;cursor:wait}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-mal-detail-panel {margin:15px 0 20px;padding:15px 17px;border:1px solid #915174;border-radius:13px;background:rgba(43,16,42,.65);color:#fbedf7}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-mal-detail-panel h3 {margin:0 0 5px;font-size:20px}
+html.misioflix-skin .mf-mal-detail-caption,html.misioflix-skin .mf-mal-summary,html.misioflix-skin .mf-mal-message {font-size:13px;color:#dcc3d3;margin:8px 0}
+html.misioflix-skin .mf-mal-form {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin-top:11px}
+html.misioflix-skin .mf-mal-field {min-width:0;display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600}
+html.misioflix-skin .mf-mal-field small {font-size:11px;font-weight:400;color:#d9c5d4}
+html.misioflix-skin .mf-mal-field select,html.misioflix-skin .mf-mal-field input,html.misioflix-skin .mf-mal-manual input {color:#fff;background:#2e1c30;border:1px solid #98617d;border-radius:8px;padding:9px;font:inherit}
+html.misioflix-skin .mf-mal-field select option {background:#2e1c30;color:#fff}
+html.misioflix-skin .mf-mal-detail-actions {grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+html.misioflix-skin .mf-mal-save-message {color:#ffdaee;font-size:12px}
+html.misioflix-skin .mf-mal-link {display:inline-block;color:#ffd0eb;text-decoration:underline}
+@media(max-width:700px){html.misioflix-skin .mf-mal-form{grid-template-columns:minmax(0,1fr)}}
