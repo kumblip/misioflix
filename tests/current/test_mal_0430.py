@@ -56,10 +56,13 @@ class MAL0430(unittest.TestCase):
         self.assertNotIn('client_secret',WEB)
 
     def test_season_uses_own_mal_id(self):
+        # The active resolver verifies the requested season against its parent
+        # and reads the season's own season.nfo, rather than selecting an ID in JS.
+        self.assertIn("metadata.Type==='Season'?compact(metadata.SeriesId):id",WEB)
+        self.assertIn("metadata.Type==='Season'?id:''",WEB)
         self.assertIn('api/mal/resolve?catalogId=',WEB)
-        self.assertIn("seasonId?'&seasonId='+seasonId:''",WEB)
-        self.assertIn('Number(target.malId)',WEB)
         self.assertIn('seasonId:ctx.seasonId||null',WEB)
+        self.assertIn('AuthorizedMalIdAsync',CTRL)
 
     def test_explicit_write_refresh_only(self):
         self.assertIn("'/update','POST'",WEB)

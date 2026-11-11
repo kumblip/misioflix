@@ -1,4 +1,4 @@
-/* MisioFlix v0.4.32: scoped MAL ID lookup and stable detail UI.
+/* MisioFlix v0.4.33: scoped MAL ID lookup and stable detail UI.
  * Home: OAuth connect/disconnect only, never fetch anime list.
  * Item details: lazy one-item MAL read, local display cache and explicit save/refresh.
  * Does not alter Jellyfin playback, NFO or native React-owned DOM children.
@@ -18,7 +18,7 @@
     const a=apiClient();const t=typeof a?.accessToken==='function'?a.accessToken():a?.accessToken;
     return typeof t==='string'?t:'';
   };
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-mal", Version="0.4.32", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-mal", Version="0.4.33", Token="${token().replace(/["\r\n]/g,'')}"`});
   const el=(tag,cls,text)=>{const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=String(text);return x;};
   const params=()=>new URLSearchParams((window.location.hash||'').split('?')[1]||'');
   const homeRoute=()=>/^#\/(?:home)?(?:\?|$)/i.test(location.hash||'#/home') && (params().get('tab')||'0')==='0' && !params().has('mfCollections');
@@ -29,8 +29,79 @@
     catch{return null;}
   };
   const saveCache=(uid,malId,entry)=>{try{localStorage.setItem(cacheKey(uid,malId),JSON.stringify({at:Date.now(),entry}));}catch{}};
+
+  // The home page NEVER contacts MAL. It uses the last user-scoped list snapshot
+  // from an anime-detail visit; missing information stays unknown, not Jellyfin-owned.
+  const indexKey=uid=>`misioflix-mal-index-v1:${compact(uid)}`;
+  const mappingKey=uid=>`misioflix-mal-bindings-v1:${compact(uid)}`;
+  function indexState(uid){try{const x=JSON.parse(localStorage.getItem(indexKey(uid))||'null');return x&&x.entries&&typeof x.entries==='object'?x:{entries:{},full:false};}catch{return {entries:{},full:false};}}
+  function loadIndex(uid){return indexState(uid).entries;}
+  function storeIndex(uid,entries,full=false){try{localStorage.setItem(indexKey(uid),JSON.stringify({at:Date.now(),entries,full}));}catch{}}
+  function loadBindings(uid){try{return JSON.parse(localStorage.getItem(mappingKey(uid))||'{}')||{};}catch{return {};}}
+  function rememberBinding(uid,id,malId){
+    if(!valid(id)||!Number.isSafeInteger(Number(malId))||Number(malId)<=0)return;
+    const bindings=loadBindings(uid);bindings[compact(id)]=Number(malId);
+    try{localStorage.setItem(mappingKey(uid),JSON.stringify(bindings));}catch{}
+  }
+  const statusState=entry=>{
+    if(!entry)return 'unknown';
+    const x=entryFields(entry);
+    if(x.status==='completed')return 'watched';
+    if(x.status==='watching'||x.status==='on_hold')return 'started';
+    if(x.status==='plan_to_watch'||x.status==='dropped')return 'unwatched';
+    return 'unknown';
+  };
+  const statusLabel=status=>Object.fromEntries(statuses)[status]||'Nieznany';
+  function saveIndexEntry(uid,malId,entry){
+    const state=indexState(uid),data=state.entries;if(entry)data[malId]=entry;else delete data[malId];storeIndex(uid,data,state.full);
+    window.dispatchEvent(new Event('misioflix-mal-cache-changed'));
+  }
+  let indexRequest=null,indexRequestedUser='';
+  // Called after opening an anime, never during Home initialization.
+  function ensureIndexFromSelectedAnime(uid){
+    if(!valid(uid)||!connection?.connected||indexState(uid).full||indexRequestedUser===uid)return;
+    indexRequestedUser=uid;
+    indexRequest=request('/status?refresh=false').then(data=>{
+      if(data.connected&&currentUser===uid&&data.entries&&typeof data.entries==='object'){
+        storeIndex(uid,{...data.entries,...loadIndex(uid)},true);window.dispatchEvent(new Event('misioflix-mal-cache-changed'));
+      }
+    }).catch(()=>{ /* one detail lookup still works if whole-list snapshot is unavailable */ })
+      .finally(()=>{indexRequest=null;});
+  }
+  function decorateMalCards(){
+    const uid=currentUser;if(!valid(uid))return;
+    const entries=loadIndex(uid),bindings=loadBindings(uid);
+    let overlayChanged=false;
+    for(const card of document.querySelectorAll('.mf-home-poster[data-mf-item-id], .card[data-mf-card="1"][data-mf-anime="1"]')){
+      const isHome=card.classList.contains('mf-home-poster');
+      const mediaId=compact(isHome?card.dataset.mfItemId:card.getAttribute('data-id'));
+      const malId=Number((isHome?card.dataset.mfMalId:card.dataset.mfMalId)||bindings[mediaId]||0);
+      const entry=malId>0?entries[malId]||loadCache(uid,malId)?.entry:null;
+      const state=statusState(entry);
+      if(card.getAttribute('data-mf-watch')!==state){card.setAttribute('data-mf-watch',state);overlayChanged=true;}
+      if(!isHome){
+        const rating=entry?entryFields(entry).score:0;
+        const displayed=rating>0?String(rating):'';
+        if(card.getAttribute('data-mf-user-rating')!==displayed){card.setAttribute('data-mf-user-rating',displayed);overlayChanged=true;}
+      }else{
+        const existing=card.querySelector('.mf-home-mal-score');
+        const score=entry?entryFields(entry).score:0;
+        const text=score>0?`${score}/10`:'';
+        if(!text){existing?.remove();continue;}
+        if(existing?.textContent===text)continue;
+        const holder=card.querySelector('.mf-home-stats')||el('div','mf-home-stats');
+        if(!holder.isConnected)card.append(holder);
+        let label=existing;
+        if(!label){label=el('span','mf-home-mal-score');label.title='Moja ocena MyAnimeList';holder.append(label);}
+        label.textContent=text;
+      }
+    }
+    if(overlayChanged)window.dispatchEvent(new Event('misioflix-mal-cards-updated'));
+  }
+
   const clearCache=uid=>{
-    try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k?.startsWith(`misioflix-mal-v1:${compact(uid)}:`))localStorage.removeItem(k);}}catch{}
+    try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k?.startsWith(`misioflix-mal-v1:${compact(uid)}:`)||k===indexKey(uid)||k===mappingKey(uid))localStorage.removeItem(k);}}catch{}
+    window.dispatchEvent(new Event('misioflix-mal-cache-changed'));
   };
   async function request(path,method='GET',body){
     const r=await fetch(API+path,{method,cache:'no-store',credentials:'same-origin',headers:{...headers(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -59,8 +130,8 @@
     const uid=compact(userId());
     if(uid===currentUser)return;
     currentUser=uid;connection=null;connectionPromise=null;homeButton=null;
-    sessionValidated.clear();detailSessions.clear();detailGeneration++;
-    detailPanel?.remove();detailPanel=null;currentDetail='';currentDetailKey='';
+    sessionValidated.clear();detailSessions.clear();detailGeneration++;indexRequestedUser='';
+    detailPanel?.remove();clearHeaderForPreviousDetail();detailPanel=null;currentDetail='';currentDetailKey='';
     closeDialog();
   }
   async function connectionStatus(force=false){
@@ -158,37 +229,65 @@
     const arr=[...document.querySelectorAll('#itemDetailPage.mf-detail-compact')];
     return arr.reverse().find(p=>p.isConnected&&p.dataset.mfDetailId===id&&p.getClientRects().length>0)||null;
   }
-  function storeVisible(uid,malId,entry){saveCache(uid,malId,entry);sessionValidated.add(`${uid}:${malId}`);}
-  function renderEntry(panel,entry,ctx,fromCache=false){
+  function storeVisible(uid,malId,entry){saveCache(uid,malId,entry);saveIndexEntry(uid,malId,entry);sessionValidated.add(`${uid}:${malId}`);}
+  function showDetailMalRating(panel,entry){
+    const page=panel.closest('#itemDetailPage');if(!page)return;
+    // Only MAL-backed anime detail pages. Do not overwrite Jellyfin's stored rating.
+    page.classList.add('mf-detail-mal-rating');
+    let label=page.querySelector('.mf-detail-mal-badge');
+    if(!label){
+      label=el('span','mf-detail-mal-badge');
+      const anchor=page.querySelector('.detailRibbon .itemMiscInfo,.detailRibbon .infoWrapper,.detailRibbon');
+      anchor?.appendChild(label);
+    }
+    if(!label)return;
+    const fields=entry?entryFields(entry):null;
+    label.textContent=fields&&fields.score>0?`★ ${fields.score}/10 · MAL`:'★ Bez oceny · MAL';
+    label.title='Osobista ocena zalogowanego użytkownika MyAnimeList';
+    // The original community score is only visually suppressed for this anime,
+    // never deleted or changed in Jellyfin or its React component state.
+  }
+  function renderEntry(panel,entry,ctx,fromCache=false,editorOpen=false,notice=''){
     if(!panel.isConnected||ctx.generation!==detailGeneration||detailId()!==ctx.pageId)return;
     const main=panel.querySelector('.mf-mal-content');main.replaceChildren();
-    const summary=el('p','mf-mal-summary',fromCache?'Dane zapisane lokalnie. Odśwież, aby sprawdzić zmiany w MAL.':'Dane MyAnimeList dla tego tytułu.');main.append(summary);
-    const parsed=entryFields(entry);
-    const status=makeSelect(statuses,parsed.status);if(!statuses.some(([s])=>s===parsed.status))status.value='plan_to_watch';
+    const data=entry?entryFields(entry):null;
+    showDetailMalRating(panel,entry);
+    const view=el('div','mf-mal-readonly');view.setAttribute('aria-label','Moje dane MAL');
+    const watched=Boolean(data&&(data.status==='completed'||data.timesRewatched>0));
+    const watchCount=watched?1+Math.max(0,data.timesRewatched):0;
+    const cells=[
+      ['Moja ocena',data?.score>0?`${data.score}/10`:'Bez oceny'],
+      ['Status',data?statusLabel(data.status):'Nie dodano do MAL'],
+      ['Obejrzane',watched?'Tak':'Nie'],
+      ['Pełne obejrzenia',data?String(watchCount):'Brak danych'],
+      ['Obejrzane odcinki',data?String(data.episodesWatched):'Brak danych']
+    ];
+    for(const [name,value] of cells){
+      const cell=el('div','mf-mal-readonly-cell');cell.append(el('span','mf-mal-readonly-label',name),el('strong','mf-mal-readonly-value',value));view.append(cell);
+    }
+    main.append(view);
+    const note=el('p','mf-mal-summary',fromCache?'Dane z pamięci lokalnej. Możesz je odświeżyć z MAL.':'Dane zalogowanego użytkownika MyAnimeList.');main.append(note);
+    const actionsOutside=el('div','mf-mal-view-actions');
+    const refresh=el('button','mf-mal-action-secondary','Odśwież z MAL');refresh.type='button';
+    const liveMessage=el('span','mf-mal-save-message',notice);liveMessage.setAttribute('role','status');
+    actionsOutside.append(refresh,liveMessage);main.append(actionsOutside);
+    const editor=el('details','mf-mal-editor');editor.open=Boolean(editorOpen);
+    const toggle=el('summary','mf-mal-editor-toggle','Edytuj MAL');editor.append(toggle);
+    const status=makeSelect(statuses,data?.status||'plan_to_watch');
     const scores=[['0','Bez oceny'],...Array.from({length:10},(_,i)=>[String(i+1),`${i+1}/10`])];
-    const score=makeSelect(scores,parsed.score);
-    const episodes=el('input');episodes.type='number';episodes.min='0';episodes.max='9999';episodes.step='1';episodes.value=String(Math.max(0,parsed.episodesWatched));
-    const rewatches=el('input');rewatches.type='number';rewatches.min='0';rewatches.max='9999';rewatches.step='1';rewatches.value=String(Math.max(0,parsed.timesRewatched));
+    const score=makeSelect(scores,data?.score||0);
+    const episodes=el('input');episodes.type='number';episodes.min='0';episodes.max='9999';episodes.step='1';episodes.value=String(Math.max(0,data?.episodesWatched||0));
+    const rewatches=el('input');rewatches.type='number';rewatches.min='0';rewatches.max='9999';rewatches.step='1';rewatches.value=String(Math.max(0,data?.timesRewatched||0));
     const form=el('form','mf-mal-form');form.append(
       inputRow('Status',status),inputRow('Ocena',score),
       inputRow('Obejrzane odcinki',episodes,'Liczba odcinków oznaczonych w MAL jako obejrzane.'),
       inputRow('Ponowne pełne obejrzenia',rewatches,'MAL liczy tylko powtórki, nie pierwsze obejrzenie.')
     );
-    const fullView=el('p','mf-mal-summary');
-    const updateFullView=()=>{
-      const repeats=Number(rewatches.value)||0;
-      fullView.textContent='Pełne obejrzenia łącznie: '+(status.value==='completed'?String(repeats+1):'nieustalone')+
-        ' (w MAL liczba powtórek: '+repeats+').';
-    };
-    status.addEventListener('change',updateFullView);
-    rewatches.addEventListener('input',updateFullView);
-    updateFullView();
-    form.appendChild(fullView);
-    const actions=el('div','mf-mal-detail-actions');
+    const saveArea=el('div','mf-mal-detail-actions');
     const save=el('button','mf-mal-action','Zapisz w MAL');save.type='submit';
-    const refresh=el('button','mf-mal-action-secondary','Odśwież z MAL');refresh.type='button';
     const message=el('span','mf-mal-save-message');message.setAttribute('role','status');
-    actions.append(save,refresh,message);form.append(actions);main.append(form);
+    saveArea.append(save,message);form.append(saveArea);editor.append(form);main.append(editor);
+    const isSame=()=>ctx.generation===detailGeneration&&currentUser===ctx.userId&&panel.isConnected;
     form.addEventListener('submit',async event=>{
       event.preventDefault();if(!form.isConnected)return;
       const fields=[Number(score.value),Number(episodes.value),Number(rewatches.value)];
@@ -197,25 +296,27 @@
       try{
         const answer=await request('/update','POST',{catalogId:ctx.catalogId,seasonId:ctx.seasonId||null,status:status.value,score:fields[0],episodesWatched:fields[1],timesRewatched:fields[2]});
         const result=answer&&typeof answer==='object'?answer:{status:status.value,score:fields[0],episodesWatched:fields[1],timesRewatched:fields[2]};
-        if(ctx.generation===detailGeneration&&currentUser===ctx.userId){
+        if(isSame()){
           storeVisible(ctx.userId,ctx.malId,result);
           const session=detailSessions.get(ctx.sessionKey);
           if(session){session.entry=result;session.fromCache=false;session.phase='ready';session.at=Date.now();}
-          message.textContent='Zapisano w MyAnimeList.';
+          renderEntry(panel,result,ctx,false,true,'Zapisano w MyAnimeList.');
         }
       }catch(e){message.textContent=e.message||'Błąd zapisu w MAL';}
       finally{save.disabled=false;refresh.disabled=false;}
     });
     refresh.addEventListener('click',async()=>{
-      refresh.disabled=true;message.textContent='Sprawdzanie MAL…';
+      refresh.disabled=true;liveMessage.textContent='Sprawdzanie MAL…';
       try{
-        const data=await request(`/item?catalogId=${ctx.catalogId}${ctx.seasonId?'&seasonId='+ctx.seasonId:''}&refresh=true`);
-        if(data.connected&&ctx.generation===detailGeneration&&currentUser===ctx.userId&&panel.isConnected){storeVisible(ctx.userId,ctx.malId,data.entry);
+        const result=await request(`/item?catalogId=${ctx.catalogId}${ctx.seasonId?'&seasonId='+ctx.seasonId:''}&refresh=true`);
+        if(result.connected&&isSame()){
+          storeVisible(ctx.userId,ctx.malId,result.entry);
           const session=detailSessions.get(ctx.sessionKey);
-          if(session){session.entry=data.entry;session.fromCache=false;session.phase='ready';session.at=Date.now();}
-          renderEntry(panel,data.entry,ctx,false);}
-        else message.textContent='MAL nie jest połączony.';
-      }catch(e){message.textContent=e.message;}finally{refresh.disabled=false;}
+          if(session){session.entry=result.entry;session.fromCache=false;session.phase='ready';session.at=Date.now();}
+          renderEntry(panel,result.entry,ctx,false,editor.open,'Odświeżono z MyAnimeList.');
+        }else liveMessage.textContent='MAL nie jest połączony.';
+      }catch(e){liveMessage.textContent=e.message;}
+      finally{refresh.disabled=false;}
     });
   }
   // Stable lookup state, keyed by the authenticated Jellyfin user AND media item.
@@ -312,6 +413,7 @@
             'Ten sezon nie ma MAL ID w season.nfo.':'Ten tytuł nie ma MAL ID w NFO.');return;
         }
         Object.assign(session,{catalogId,seasonId,malId});
+        rememberBinding(uid,seasonId||catalogId,malId);
         updateSession(session,'loading',`MAL ID: ${malId} · Sprawdzanie połączenia MAL…`);
         const c=await connectionStatus();
         if(!c.connected){
@@ -319,7 +421,8 @@
         }
         const cached=loadCache(uid,malId);
         if(cached&&Date.now()-cached.at<cacheTime){
-          updateSession(session,'ready','',{entry:cached.entry,fromCache:true});return;
+          updateSession(session,'ready','',{entry:cached.entry,fromCache:true});
+          ensureIndexFromSelectedAnime(uid);return;
         }
         updateSession(session,'loading','Wczytywanie danych tego anime z MyAnimeList…');
         const data=await request(`/item?catalogId=${catalogId}${seasonId?'&seasonId='+seasonId:''}&refresh=false`);
@@ -328,6 +431,7 @@
         }
         storeVisible(uid,malId,data.entry);
         updateSession(session,'ready','',{entry:data.entry,fromCache:false});
+        ensureIndexFromSelectedAnime(uid);
       }catch(error){
         updateSession(session,'error','Nie udało się sprawdzić tego anime: '+
           (error?.message||'nieznany błąd')+'. Ponowienie następuje tylko po naciśnięciu przycisku.');
@@ -353,20 +457,27 @@
     paintSession(session);
     void startDetailRead(session);
   }
+  function clearHeaderForPreviousDetail(){
+    document.querySelectorAll('#itemDetailPage.mf-detail-mal-rating').forEach(p=>{
+      p.classList.remove('mf-detail-mal-rating');p.querySelector('.mf-detail-mal-badge')?.remove();
+    });
+  }
   function syncDetails(){
     const id=detailId();const page=id?detailPage(id):null;
     if(!id||!page){
-      if(currentDetail){detailGeneration++;currentDetail='';currentDetailKey='';detailPanel=null;}
+      if(currentDetail){detailGeneration++;currentDetail='';currentDetailKey='';detailPanel=null;clearHeaderForPreviousDetail();}
       return;
     }
     if(currentDetail===id&&detailPanel?.isConnected&&detailPanel.closest('#itemDetailPage')===page)return;
     if(detailPanel?.isConnected)detailPanel.remove();
+    clearHeaderForPreviousDetail();
     mountDetails(page,id);
   }
   function tick(){
     timer=0;onUserSwitch();
     mountHomeButton();
     syncDetails();
+    decorateMalCards();
   }
   function schedule(){if(timer)return;timer=window.setTimeout(tick,180);}
   function init(){
@@ -378,8 +489,9 @@
     });
     mo.observe(document.body,{childList:true,subtree:true});
     ['hashchange','pageshow','popstate'].forEach(e=>window.addEventListener(e,schedule));
+    window.addEventListener('misioflix-mal-cache-changed',schedule);
     window.addEventListener('misioflix-mal-updated',()=>{
-      connection=null;detailSessions.clear();detailGeneration++;detailPanel?.remove();
+      connection=null;detailSessions.clear();detailGeneration++;indexRequestedUser='';detailPanel?.remove();
       detailPanel=null;currentDetail='';currentDetailKey='';schedule();
     });
     schedule();

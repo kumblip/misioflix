@@ -191,6 +191,7 @@
   }
   function makePoster(item){
     const link=set(own('a','mf-home-poster'), 'href', nativeDetails(item.id,item.serverId));
+    if(item.anime){link.dataset.mfItemId=compactId(item.id);if(Number(item.malId)>0)link.dataset.mfMalId=String(item.malId);}
     link.setAttribute('aria-label',`Szczegóły: ${item.title || 'Pozycja'}`);
     const imgUrl=imageFor(item);
     if(imgUrl){
@@ -223,7 +224,7 @@
         addStat(item.seasons,'Sezony','#f7b449');
         addStat(item.episodes,'Odcinki','#6bd1f6');
       }
-      addStat(item.userRating,'Moja ocena','#f49fce',true);
+      if(!item.anime)addStat(item.userRating,'Moja ocena','#f49fce',true);
     }
     if(count.childElementCount)link.appendChild(count);
     const chips=own('div','mf-home-genres');
@@ -232,7 +233,7 @@
     // A collection has no single watched state: don't show a misleading frame.
     if(item.type!=='BoxSet'){
       const state=['unwatched','started','watched'].includes(item.watchStatus)?item.watchStatus:'unwatched';
-      link.setAttribute('data-mf-watch',state);
+      link.setAttribute('data-mf-watch',item.anime?'unknown':state);
     }
     return link;
   }
@@ -650,7 +651,8 @@
       seasons:item.seasons??item.season_count??null,
       episodes:item.episodes??item.episode_count??null,
       userRating:item.userRating??item.rating??null,
-      watchStatus:item.watchStatus||item.watch_status||'unwatched'
+      watchStatus:item.watchStatus||item.watch_status||'unwatched',
+      malId:item.malId??item.mal_id??null
     };
   }
   // CATALOG LOADS ONLY AFTER THE USER OPENS SEARCH. Never on initial Home.

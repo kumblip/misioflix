@@ -1102,3 +1102,20 @@ html.misioflix-skin .mf-mal-detail-actions {grid-column:1/-1;display:flex;flex-w
 html.misioflix-skin .mf-mal-save-message {color:#ffdaee;font-size:12px}
 html.misioflix-skin .mf-mal-link {display:inline-block;color:#ffd0eb;text-decoration:underline}
 @media(max-width:700px){html.misioflix-skin .mf-mal-form{grid-template-columns:minmax(0,1fr)}}
+
+/* v0.4.33 — read-only MyAnimeList status, explicit collapsible editing and MAL-only anime frames. */
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-mal-readonly{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin:12px 0}
+html.misioflix-skin .mf-mal-readonly-cell{padding:9px 11px;border:1px solid rgba(244,158,206,.26);background:rgba(30,12,30,.48);border-radius:10px;display:flex;flex-direction:column;gap:5px}
+html.misioflix-skin .mf-mal-readonly-label{font-size:12px;color:#d7bbd0}
+html.misioflix-skin .mf-mal-readonly-value{font-size:17px;color:#fff2f9}
+html.misioflix-skin .mf-mal-view-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+html.misioflix-skin .mf-mal-editor{border-top:1px solid rgba(244,158,206,.24);padding-top:12px}
+html.misioflix-skin .mf-mal-editor-toggle{display:inline-flex;align-items:center;min-height:35px;padding:8px 13px;cursor:pointer;border:1px solid #b75f91;border-radius:9px;background:rgba(99,39,78,.65);font-size:13px;font-weight:650;color:#fff}
+html.misioflix-skin .mf-mal-editor-toggle::marker{color:#ffb9dc}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-mal-badge{display:inline-flex;align-items:center;gap:4px;color:#ffbedb;border:1px solid rgba(245,153,200,.35);padding:3px 8px;border-radius:9px;margin:2px 7px;font-weight:650;font-size:14px}
+/* Hide only the unrelated community score on a MAL-linked anime details page. */
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating :is(.starRatingContainer,.itemCommunityRating,.communityRating,.itemCommunityRatingContainer){display:none!important}
+html.misioflix-skin .mf-home-poster[data-mf-watch="unknown"] .mf-home-cover,html.misioflix-skin .mf-home-poster[data-mf-watch="unknown"]{outline:none!important;box-shadow:none!important}
+html.misioflix-skin .mf-home-mal-score{display:inline-block;margin-left:4px;padding:4px 6px;border-radius:7px;background:rgba(35,17,40,.85);border:1px solid #d985b5;color:#ffdaef;font-size:11px;font-weight:700}
+html.misioflix-skin .card[data-mf-anime="1"][data-mf-watch="unknown"] .cardImageContainer{outline:0!important;box-shadow:none!important;border-color:transparent!important}
+@media(max-width:650px){html.misioflix-skin .mf-mal-readonly{grid-template-columns:repeat(2,minmax(0,1fr))}}

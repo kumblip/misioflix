@@ -341,7 +341,8 @@ public sealed class MisioFlixCatalogService
             episodes = type == "Series" ? PositiveInt(Get(item, "RecursiveItemCount")) : null,
             collectionCount = collection ? PositiveInt(Get(item, "ChildCount")) : null,
             userRating = PersonalRating(item),
-            watchStatus = WatchStatus(item)
+            watchStatus = WatchStatus(item),
+            malId = isAnime ? nfo?.MalId ?? FirstSeasonMalId(_library.GetItemById(guid)?.Path) : null
         };
     }
 
@@ -431,6 +432,7 @@ public sealed class MisioFlixCatalogService
                 seasons = type == "Series" ? PositiveInt(Get(item,"ChildCount")) : null,
                 episodes = type == "Series" ? PositiveInt(Get(item,"RecursiveItemCount")) : null,
                 userRating = PersonalRating(item),
+                malId = anime ? nfo?.MalId ?? (type=="Series" ? FirstSeasonMalId(libItem.Path) : null) : null,
                 watchStatus = type == "Series" && Get(Get(item,"UserData"),"UnplayedItemCount").ValueKind != JsonValueKind.Number
                     && Get(Get(item,"UserData"),"Played").ValueKind != JsonValueKind.True
                     ? string.Empty : WatchStatus(item)
@@ -795,6 +797,31 @@ public sealed class MisioFlixCatalogService
     // values to canonical (D) Guids. Always compare the parsed value, not strings.
     private static bool SameGuid(string? value, Guid id) =>
         Guid.TryParse(value, out var parsed) && parsed == id;
+
+    // At most 24 immediate child folders, checked only for a Season 1 NFO.
+    // No Jellyfin API request or MAL request is needed for home-card MAL mapping.
+    private static int? FirstSeasonMalId(string? seriesPath)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(seriesPath)) return null;
+            var root = Directory.Exists(seriesPath) ? seriesPath : Path.GetDirectoryName(seriesPath);
+            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) return null;
+            foreach (var folder in Directory.EnumerateDirectories(root).Take(24))
+            {
+                var path = Path.Combine(folder, "season.nfo");
+                if (!File.Exists(path) || new FileInfo(path).Length > 3_000_000) continue;
+                var settings = new XmlReaderSettings { DtdProcessing= DtdProcessing.Prohibit,
+                    XmlResolver=null, MaxCharactersInDocument=3_000_000 };
+                using var reader=XmlReader.Create(path,settings);
+                var xml=XDocument.Load(reader);
+                if (xml.Root?.Element("seasonnumber")?.Value.Trim() != "1") continue;
+                return ReadNfo(folder,"Season",requireMalId:true)?.MalId;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or XmlException) { }
+        return null;
+    }
 
     public async Task<int> AuthorizedMalIdAsync(HttpRequest caller, Guid catalogId,
         Guid? seasonId, CancellationToken cancel)
@@ -1269,6 +1296,7 @@ public sealed class OverlayInfo
     public int? episodes { get; set; }
     public double? userRating { get; set; }
     public string watchStatus { get; set; } = string.Empty;
+    public int? malId { get; set; }
 }
 
 // Personal home rows; every instance is derived from an allowed user-scoped Jellyfin item.
@@ -1292,6 +1320,7 @@ public sealed class HomeTile
     public int? collectionCount { get; set; }
     public double? userRating { get; set; }
     public string watchStatus { get; set; } = string.Empty;
+    public int? malId { get; set; }
 }
 public sealed record HomeResumeTile(HomeTile item, string resumeId, double progress,
     int? season, int? episode, bool nextUp, long positionTicks, string resumeType);

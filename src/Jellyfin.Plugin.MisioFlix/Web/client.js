@@ -139,7 +139,7 @@
     }
     // Ratings are PERSONAL: do not use CommunityRating or the like button.
     const rating=shortNumber(card.getAttribute('data-mf-user-rating'),true);
-    if(rating)result.push({value:rating,label:'Moja ocena',cls:'rating',color:'#ee9fc9'});
+    if(rating)result.push({value:rating,label:kind==='anime'?'Moja ocena MAL':'Moja ocena',cls:'rating',color:'#ee9fc9'});
     return result;
   }
   function genres(card){
@@ -228,7 +228,8 @@
       else card.removeAttribute('data-mf-redundant-year');
       if(card.getAttribute('data-mf-overlay-ready')!=='1'){
         const state=watchState(card);
-        if(state)card.dataset.mfWatch=state;
+        if(cardKind(card)==='anime')card.dataset.mfWatch='unknown';
+        else if(state)card.dataset.mfWatch=state;
         else card.removeAttribute('data-mf-watch');
       }
       // Very small DOM ornament inside Jellyfin's native image wrapper: noninteractive.
@@ -283,7 +284,7 @@
       for(const cards of overlayQueue.values())cards.delete(card);
       for(const attr of ['data-mf-year','data-mf-format','data-mf-genres',
         'data-mf-seasons','data-mf-episodes','data-mf-user-rating','data-mf-anime',
-        'data-mf-overlay-ready','data-mf-watch','data-mf-primary-image',
+        'data-mf-overlay-ready','data-mf-watch','data-mf-mal-id','data-mf-primary-image',
         'data-mf-has-summary','data-mf-anime-poster','data-mf-redundant-year']){
         card.removeAttribute(attr);
       }
@@ -308,13 +309,15 @@
     set('data-mf-format',data.format);
     set('data-mf-seasons',data.seasons);
     set('data-mf-episodes',data.episodes);
-    set('data-mf-user-rating',data.userRating);
+    set('data-mf-user-rating',data.anime?null:data.userRating);
+    set('data-mf-mal-id',data.anime?data.malId:null);
     set('data-mf-genres',Array.isArray(data.genres)?data.genres.slice(0,3).join('|'):'');
     attachDescription(card,data.description);
     if(cardIsAnimePoster(card))card.setAttribute('data-mf-anime-poster','1');
     syncPrimaryPoster(card,data);
     const status=data.watchStatus;
-    if(['unwatched','started','watched'].includes(status))card.setAttribute('data-mf-watch',status);
+    if(data.anime)card.setAttribute('data-mf-watch','unknown');
+    else if(['unwatched','started','watched'].includes(status))card.setAttribute('data-mf-watch',status);
     attachOverlay(card);
   }
   async function flushMetadata(){
@@ -649,6 +652,11 @@
       }
       schedule();
     },{passive:true});
+    // MAL JS updates only the personal anime attributes; rebuild their decorative
+    // overlay after those attributes change. Other libraries remain untouched.
+    window.addEventListener('misioflix-mal-cards-updated',()=>{
+      for(const card of document.querySelectorAll('.card[data-mf-card="1"][data-mf-anime="1"]'))attachOverlay(card);
+    });
     window.addEventListener('pageshow',schedule);
     window.addEventListener('hashchange',schedule);
     document.addEventListener('viewshow',schedule);
