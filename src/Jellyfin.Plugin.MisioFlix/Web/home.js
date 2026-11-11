@@ -1,11 +1,11 @@
-/* MisioFlix 0.4.23: ONLY custom shelves INSIDE Jellyfin's native home view.
+/* MisioFlix 0.4.24: ONLY custom shelves INSIDE Jellyfin's native home view.
  * No second site, no page/router replacement, no bulk catalog loading.
  * Requires the user to set native home slots to "Brak" in Jellyfin preferences.
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_HOME_0423__) return;
-  window.__MISIOFLIX_HOME_0423__ = true;
+  if (window.__MISIOFLIX_HOME_0424__) return;
+  window.__MISIOFLIX_HOME_0424__ = true;
 
   const API = '/MisioFlix/api';
   const SHELF_LIMIT = 12;
@@ -39,7 +39,7 @@
   };
   const homeRoute = () => /^#\/(?:home)?(?:\?|$)/i.test(window.location.hash || '#/');
   const isCurrent = serial => homeRoot?.isConnected && epoch === serial && homeRoute() && currentToken() === owner;
-  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.23", Token="${owner.replace(/["\r\n]/g, '')}"`});
+  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.24", Token="${owner.replace(/["\r\n]/g, '')}"`});
   async function request(path, method='GET', payload, timeoutMs=18000) {
     const control = new AbortController();
     const timeout = window.setTimeout(() => control.abort(), timeoutMs);
@@ -93,17 +93,41 @@
     return '#/details?id='+encodeURIComponent(compactId(id))+
       (validId(server)?'&serverId='+encodeURIComponent(compactId(server)):'');
   }
-  // Jellyfin 12 native Modern /movies and /tv routes may hit a React #130
-  // render error in this installation. The supported legacy list route keeps
-  // EXACT library scoping, without creating a second media catalog.
+  // Jellyfin 12.4: Modern /movies and /tv currently fail with React #130 in
+  // this user's installation. Native appRouter.getRouteUrl() uses BOTH parentId
+  // and serverId for the fallback /list route. v0.4.23 omitted serverId, leaving
+  // the list spinning forever. Keep working /mixed (AnimePL) untouched.
   const LIBRARY_ROUTE = /^#\/(?:movies|tv)\?(?:[^#]*&)?topParentId=[0-9a-f-]{32,36}/i;
-  function libraryListUrl(id){
+  function libraryServerId(href=''){
+    const api=window.ApiClient||window.ConnectionManager?.getApiClient?.();
+    const apiId=typeof api?.serverId==='function'?api.serverId():api?.serverId;
+    if(validId(apiId))return compactId(apiId);
+    const current=window.ConnectionManager?.getCurrentServer?.();
+    if(validId(current?.Id))return compactId(current.Id);
+    try{
+      const fromLink=new URLSearchParams(String(href).split('?')[1]||'').get('serverId');
+      if(validId(fromLink))return compactId(fromLink);
+    }catch{}
+    const native=document.querySelector('a[href*="serverId="]');
+    if(native){
+      try{
+        const found=new URLSearchParams((native.getAttribute('href')||'').split('?')[1]||'').get('serverId');
+        if(validId(found))return compactId(found);
+      }catch{}
+    }
+    return '';
+  }
+  function libraryListUrl(id, href=''){
     if(!validId(id))return '';
-    return '#/list?parentId='+encodeURIComponent(compactId(id));
+    const server=libraryServerId(href);
+    // Fail closed. A /list URL without serverId was the cause of the endless
+    // spinner; never replace a working native URL with an incomplete fallback.
+    if(!validId(server))return '';
+    return '#/list?parentId='+encodeURIComponent(compactId(id))+'&serverId='+encodeURIComponent(server);
   }
   function safeLibraryHref(href,id){
     if(!LIBRARY_ROUTE.test(href||''))return href;
-    return libraryListUrl(id)||href;
+    return libraryListUrl(id,href)||href;
   }
   function interceptLibraryNavigation(event){
     const link=event.target.closest?.('a[href]');
@@ -112,7 +136,7 @@
     if(!LIBRARY_ROUTE.test(href))return;
     let id='';
     try{id=new URLSearchParams(href.split('?')[1]).get('topParentId')||'';}catch{}
-    const target=libraryListUrl(id);
+    const target=libraryListUrl(id,href);
     if(!target)return;
     // Native header shortcuts and our shelf buttons must use the same safe
     // destination. Never rewrite details, plugin pages, or arbitrary routes.
@@ -121,12 +145,17 @@
   }
   function normalizeLibraryRoute(){
     const route=window.location.hash||'';
-    if(!LIBRARY_ROUTE.test(route))return false;
-    let id='';
-    try{id=new URLSearchParams(route.split('?')[1]).get('topParentId')||'';}catch{}
-    const target=libraryListUrl(id);
-    if(!target)return false;
-    // Replace the crashing Modern route rather than polluting Back history.
+    let id='',target='';
+    if(LIBRARY_ROUTE.test(route)){
+      try{id=new URLSearchParams(route.split('?')[1]).get('topParentId')||'';}catch{}
+      target=libraryListUrl(id,route);
+    }else if(/^#\/list\?parentId=[0-9a-f-]{32,36}$/i.test(route)){
+      // Repair incomplete v0.4.23 deep links/bookmarks, but no other /list
+      // links (genres, folders, people, etc.).
+      try{id=new URLSearchParams(route.split('?')[1]).get('parentId')||'';}catch{}
+      target=libraryListUrl(id,route);
+    }
+    if(!target || target===route)return false;
     window.location.replace(window.location.pathname+window.location.search+target);
     return true;
   }

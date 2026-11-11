@@ -8,7 +8,7 @@ H=(WEB/'home.js').read_text(encoding='utf-8')
 D=(WEB/'details.js').read_text(encoding='utf-8')
 class Hotfix0423(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.23.0')
+        self.assertRegex(json.loads((ROOT/'meta.json').read_text())['version'],r'^0\.4\.\d+\.0$')
     def test_library_routes_use_original_legacy_jellyfin_view(self):
         self.assertIn("'#/list?parentId='",H)
         self.assertIn('safeLibraryHref(lib.href,lib.id)',H)
