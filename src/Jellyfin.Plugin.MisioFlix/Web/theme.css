@@ -815,3 +815,186 @@ html.misioflix-skin .mf-home-play-warning{
   background:#422039;color:white;border:1px solid #d99cbd;
   border-radius:10px;padding:12px 16px;z-index:99999;max-width:min(600px,90vw)
 }
+
+/* v0.4.21: compact movie / series / season / episode details, native Jellyfin nodes.
+   This block is strictly scoped to the active item detail view and only while
+   the MisioFlix skin is enabled. It NEVER styles the video player. */
+html.misioflix-skin #itemDetailPage.mf-detail-compact {
+  --mf-detail-poster: clamp(205px,19vw,280px);
+  --mf-detail-gap: clamp(19px,2.4vw,40px);
+  color:#ffeff8;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact > #itemBackdrop,
+html.misioflix-skin #itemDetailPage.mf-detail-compact > .detailLogo {
+  display:none!important;height:0!important;min-height:0!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer {
+  padding:clamp(16px,2vw,32px) var(--mf-gutter) 38px!important;
+  margin:0!important;max-width:1900px;width:100%;box-sizing:border-box;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContainer {
+  position:relative!important;display:block!important;padding:0!important;
+  margin:0!important;min-height:0!important;width:100%!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-grid {
+  display:grid;grid-template-columns:var(--mf-detail-poster) minmax(0,1fr);
+  column-gap:var(--mf-detail-gap);align-items:start;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail {
+  min-width:0;display:flex;flex-direction:column;gap:14px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail > .detailImageContainer {
+  position:static!important;display:block!important;width:100%!important;max-width:100%!important;
+  min-width:0!important;margin:0!important;padding:0!important;float:none!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .card {
+  position:static!important;top:auto!important;left:auto!important;right:auto!important;
+  display:block!important;width:100%!important;height:auto!important;max-width:100%!important;
+  float:none!important;margin:0!important;border-radius:14px!important;
+  overflow:hidden!important;box-shadow:0 8px 32px rgba(0,0,0,.20)!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .cardImageContainer,
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .cardPadder {
+  max-width:100%!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-main {
+  min-width:0;display:flex;flex-direction:column;gap:15px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-main > .detailRibbon {
+  position:relative!important;top:auto!important;left:auto!important;right:auto!important;
+  width:100%!important;min-height:0!important;height:auto!important;margin:0!important;
+  padding:0!important;float:none!important;display:flex!important;flex-wrap:wrap!important;
+  justify-content:space-between!important;align-items:center!important;gap:10px!important;
+  background:transparent!important;box-shadow:none!important;border:0!important;
+  backdrop-filter:none!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon::before,
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon::after {display:none!important}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .infoWrapper {
+  padding:0!important;margin:0!important;min-width:0;flex:1 1 340px;
+  text-align:left!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .infoWrapper > .detailImageContainer {
+  display:none!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .nameContainer h1,
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .itemName {
+  font-size:clamp(1.35rem,2vw,2.15rem);line-height:1.18!important;
+  margin:0 0 8px!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .mainDetailButtons {
+  display:flex!important;align-items:center!important;flex-wrap:wrap!important;
+  gap:6px!important;margin:0!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-main > .detailPagePrimaryContent {
+  width:100%!important;max-width:100%!important;min-width:0!important;
+  padding:0!important;margin:0!important;float:none!important;
+  position:relative!important;top:auto!important;left:auto!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContent .detailSectionContent,
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContent .itemDetailsGroup {
+  width:100%!important;max-width:100%!important;min-width:0!important;
+  padding:0!important;margin:0!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContent .overview {
+  line-height:1.55!important;margin-block:8px 12px!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageSecondaryContainer {
+  padding:0!important;margin:22px 0 0!important;width:100%!important;
+  background:transparent!important;box-shadow:none!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-series-sections {
+  display:flex;flex-direction:column;gap:16px;min-width:0;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-series-sections > :not(.hide) {
+  background:rgba(49,25,49,.46);border:1px solid rgba(245,165,208,.15);
+  border-radius:14px;padding:14px!important;margin:0!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-series-sections .sectionTitle {
+  margin:0 0 12px!important;font-size:1.08rem;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-cast-button {
+  margin:12px 0 6px;padding:9px 16px;border-radius:10px;
+  border:1px solid rgba(245,165,208,.55);
+  color:#ffeaf7;background:rgba(80,34,65,.7);
+  font-size:13px;font-weight:700;cursor:pointer;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-cast-button[hidden] {display:none!important}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-cast-button::after {
+  content:' ▾';margin-left:5px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-cast-button[aria-expanded="true"]::after {content:' ▴'}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-cast-panel[hidden] {display:none!important}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-cast-panel {
+  margin:9px 0;padding:12px;border:1px solid rgba(245,165,208,.19);
+  border-radius:13px;background:rgba(43,20,43,.55);min-width:0;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-cast-panel > :not(.hide) {
+  width:100%;max-width:100%;margin:0 0 12px!important;padding:0!important;
+  background:transparent!important;overflow:hidden;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-cast-panel .scrollSlider {
+  display:flex;overflow-x:auto!important;gap:9px;max-height:385px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-cast-panel .card {
+  flex:0 0 145px!important;max-width:145px!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-quick-slot {width:100%;min-height:36px}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-loading {
+  display:block;padding:10px;color:var(--mf-muted);font-size:12px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-quick-card {
+  appearance:none;width:100%;display:flex;align-items:center;gap:9px;
+  border-radius:13px;border:1px solid rgba(247,169,208,.45);
+  background:linear-gradient(120deg,rgba(70,31,65,.91),rgba(48,25,53,.98));
+  padding:9px;color:#fff3fa;text-align:left;cursor:pointer;min-height:68px;
+  box-shadow:0 4px 15px rgba(0,0,0,.18);
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-quick-card:hover {
+  border-color:#f4a5ce;background:rgba(95,40,75,.95);
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-quick-thumb {
+  width:69px;height:59px;object-fit:cover;flex:0 0 69px;border-radius:7px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-quick-text {
+  display:flex;flex:1;min-width:0;flex-direction:column;gap:6px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-quick-label {
+  font-size:12px;font-weight:750;line-height:1.25;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-quick-subtitle {
+  font-size:11px;color:#dec6d5;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-quick-icon {
+  font-size:19px;color:#ffb3dc;flex:0 0 auto;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-quick-progress {
+  display:block;width:100%;height:4px;background:rgba(255,255,255,.16);border-radius:2px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-quick-progress-fill {
+  display:block;height:100%;background:linear-gradient(90deg,#ffaf69,#e25da6);border-radius:2px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-has-quick-episode .nextUpSection {display:none!important}
+html.misioflix-skin #itemDetailPage.mf-detail-compact #similarCollapsible .similarContent > :nth-child(n+6),
+html.misioflix-skin #itemDetailPage.mf-detail-compact #similarCollapsible .similarContent > .mf-detail-similar-extra {
+  display:none!important;
+}
+/* Mobile and narrow browser windows retain all native controls, but stack content. */
+@media (max-width:850px) {
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-grid {
+    grid-template-columns:minmax(0,1fr);gap:18px;
+  }
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail {
+    max-width:min(100%,270px);margin-inline:auto;width:100%;
+  }
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon,
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .infoWrapper {
+    width:100%!important;flex:1 1 100%!important;
+  }
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .mainDetailButtons {
+    justify-content:flex-start!important;
+  }
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer {
+    padding:14px 15px 28px!important;
+  }
+}

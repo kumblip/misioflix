@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.20: bezpośrednie odtwarzanie Oglądaj dalej przez natywny odtwarzacz Jellyfin 12.4; obsługa awaryjnego automatycznego startu.",
+  "description": "MisioFlix 0.4.21: kompaktowe szczegóły filmów, seriali, sezonów i odcinków; szybkie wznawianie pod plakatem, zwijana obsada i pięć podobnych pozycji.",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.20.0",
+  "version": "0.4.21.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

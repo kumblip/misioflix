@@ -25,7 +25,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.19", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.21", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
@@ -36,6 +36,7 @@ public sealed class MisioFlixController : ControllerBase
         {
             "client.js" => ("Web.client.js", "text/javascript; charset=utf-8"),
             "home.js" => ("Web.home.js", "text/javascript; charset=utf-8"),
+            "details.js" => ("Web.details.js", "text/javascript; charset=utf-8"),
             "theme.css" => ("Web.theme.css", "text/css; charset=utf-8"),
             "logo.png" => ("Web.assets.logo.png", "image/png"),
             "mark.png" => ("Web.assets.mark.png", "image/png"),
