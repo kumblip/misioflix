@@ -483,7 +483,7 @@ html.misioflix-skin .mf-home-logo{max-width:94px;max-height:58px;width:auto;heig
 html.misioflix-skin .mf-home-intro h1{font-size:clamp(21px,2vw,32px);line-height:1.16;margin:0;font-weight:700;color:#fff1f8;letter-spacing:-.02em}
 html.misioflix-skin .mf-home-intro p{font-size:13px;margin:0;color:#d9bdd0}
 html.misioflix-skin .mf-home-resume{min-width:0;display:flex;flex-direction:column;gap:11px}
-/* v0.4.18: full-width continue-watching carousel beneath the compact hero. */
+/* v0.4.19: full-width continue-watching carousel beneath the compact hero. */
 html.misioflix-skin .mf-home-resume-shelf{width:100%;min-width:0}
 html.misioflix-skin .mf-home-hero .mf-home-discovery{
   display:flex;align-items:center;justify-content:flex-start;min-width:0;
@@ -528,11 +528,33 @@ html.misioflix-skin .mf-home-resume-subtitle{font-size:11px;color:#e1cada}
 html.misioflix-skin .mf-home-progress{height:4px;background:#7b6574;border-radius:3px;margin-top:4px;overflow:hidden}
 html.misioflix-skin .mf-home-progress-bar{height:100%;background:linear-gradient(90deg,#ffa05e,#f04196)}
 html.misioflix-skin .mf-home-resume-remove{
-  position:absolute;right:6px;top:5px;border:1px solid rgba(255,255,255,.17);
+  border:1px solid rgba(255,255,255,.17);
   background:rgba(37,17,33,.75);border-radius:7px;padding:1px 6px;min-height:23px;
   color:#fff;font-size:13px;cursor:pointer;
 }
 html.misioflix-skin .mf-home-resume-remove:hover{background:#74334f}
+/* v0.4.19 — movie/episode is the main click; circled i opens series/movie info. */
+html.misioflix-skin .mf-home-resume-card{cursor:pointer;padding-top:30px}
+html.misioflix-skin .mf-home-resume-card:focus-visible{outline:2px solid #f4a5ce;outline-offset:3px}
+html.misioflix-skin .mf-home-resume-info{
+  position:absolute;top:5px;left:8px;display:grid;place-items:center;
+  width:22px;height:22px;border:1.5px solid #edd9e9;border-radius:50%;
+  background:#382336;color:#fff;text-decoration:none;font-size:14px;font-weight:750;
+  font-family:serif;font-style:italic;line-height:1;z-index:3;
+}
+html.misioflix-skin .mf-home-resume-info:hover{background:#884268}
+html.misioflix-skin .mf-home-resume-card-actions{
+  position:absolute;top:5px;right:6px;display:flex;gap:5px;z-index:3;
+}
+html.misioflix-skin .mf-home-resume-card-actions button{
+  cursor:pointer;color:#fff;border-radius:7px;font-size:12px;
+  padding:2px 7px;min-height:23px;background:rgba(37,17,33,.83);
+}
+html.misioflix-skin .mf-home-resume-card-actions button:hover{background:#74334f}
+html.misioflix-skin .mf-home-resume-card-actions button:disabled{opacity:.45;cursor:wait}
+html.misioflix-skin .mf-home-resume-permanent-remove{border:1px solid #c45f73}
+html.misioflix-skin .mf-home-native-play-proxy{display:none!important}
+
 /* Search controls are two launch buttons IN the library shortcuts row;
    search results exist only in an on-demand modal, not on the homepage. */
 html.misioflix-skin .mf-home-discovery{display:block;min-width:0}

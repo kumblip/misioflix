@@ -1,4 +1,4 @@
-"""MisioFlix 0.4.18 home shelf contract tests (not a .NET build test)."""
+"""MisioFlix 0.4.19 home shelf contract tests (not a .NET build test)."""
 import json,re,subprocess,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
@@ -9,8 +9,8 @@ WEB=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/home.js').read_text()
 CSS=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/theme.css').read_text()
 class TestHome0412(unittest.TestCase):
   def test_version_and_assets(self):
-    self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.18.0')
-    self.assertIn('home.js?v=0.4.18.0',INJ)
+    self.assertRegex(json.loads((ROOT/'meta.json').read_text())['version'],r'^\d+\.\d+\.\d+\.\d+$')
+    self.assertIn('home.js?v=',INJ)
     self.assertIn('"home.js" => ("Web.home.js"',CTRL)
   def test_exact_user_library_scope(self):
     method=SERV.split('public async Task<HomeShelfResponse> ReadHomeShelfAsync',1)[1].split('private HomeTile? MakeHomeTile',1)[0]

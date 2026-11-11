@@ -66,13 +66,14 @@ public sealed class MisioFlixStartupFilter : IStartupFilter
                     return;
                 }
 
-                // Idempotent across restarts and multiple middleware instances.
-                const string marker = "data-misioflix=\"skin-v0.4.18\"";
+                // Stable marker; actual DLL assembly version controls browser cache-busting.
+                const string marker = "data-misioflix=\"skin\"";
                 if (!input.Contains(marker, StringComparison.Ordinal))
                 {
-                    const string inject = "<link data-misioflix=\"skin-v0.4.18\" rel=\"stylesheet\" href=\"../MisioFlix/assets/theme.css?v=0.4.18.0\">" +
-                        "<script data-misioflix=\"skin-v0.4.18\" defer src=\"../MisioFlix/assets/client.js?v=0.4.18.0\"></script>" +
-                        "<script data-misioflix=\"home-v0.4.18\" defer src=\"../MisioFlix/assets/home.js?v=0.4.18.0\"></script>";
+                    var version = typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "0.0.0.0";
+                    var inject = "<link data-misioflix=\"skin\" rel=\"stylesheet\" href=\"../MisioFlix/assets/theme.css?v=" + version + "\">" +
+                        "<script data-misioflix=\"skin\" defer src=\"../MisioFlix/assets/client.js?v=" + version + "\"></script>" +
+                        "<script data-misioflix=\"home\" defer src=\"../MisioFlix/assets/home.js?v=" + version + "\"></script>";
                     var at = input.LastIndexOf("</head>", StringComparison.OrdinalIgnoreCase);
                     input = input.Insert(at, inject);
                 }

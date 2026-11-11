@@ -1,11 +1,11 @@
-/* MisioFlix 0.4.18: ONLY custom shelves INSIDE Jellyfin's native home view.
+/* MisioFlix 0.4.19: ONLY custom shelves INSIDE Jellyfin's native home view.
  * No second site, no page/router replacement, no bulk catalog loading.
  * Requires the user to set native home slots to "Brak" in Jellyfin preferences.
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_HOME_0418__) return;
-  window.__MISIOFLIX_HOME_0418__ = true;
+  if (window.__MISIOFLIX_HOME_0419__) return;
+  window.__MISIOFLIX_HOME_0419__ = true;
 
   const API = '/MisioFlix/api';
   const SHELF_LIMIT = 12;
@@ -38,7 +38,7 @@
   };
   const homeRoute = () => /^#\/(?:home)?(?:\?|$)/i.test(window.location.hash || '#/');
   const isCurrent = serial => homeRoot?.isConnected && epoch === serial && homeRoute() && currentToken() === owner;
-  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.18", Token="${owner.replace(/["\r\n]/g, '')}"`});
+  const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.19", Token="${owner.replace(/["\r\n]/g, '')}"`});
   async function request(path, method='GET', payload, timeoutMs=18000) {
     const control = new AbortController();
     const timeout = window.setTimeout(() => control.abort(), timeoutMs);
@@ -287,16 +287,64 @@
       row.busy=false;row.shuffle.disabled=false;row.reset.disabled=false;
     }
   }
+  // Start the exact movie/episode, not its series or a season-details page.
+  // Jellyfin Web 12's native shortcuts handler owns the actual playback.
+  // We send it a normal "resume" action with the saved playback position.
+  async function playResume(entry){
+    const item=entry.item;
+    if(!validId(entry.resumeId))return;
+    const serverId=validId(item.serverId)?compactId(item.serverId):compactId((()=>{
+      const api=window.ApiClient||window.ConnectionManager?.getApiClient?.();
+      return typeof api?.serverId==='function'?api.serverId():api?.serverId;
+    })());
+    const nativeContainer=document.querySelector('.homeTab .itemsContainer') ||
+      document.querySelector('#indexPage .itemsContainer') ||
+      document.querySelector('.itemsContainer') ||
+      document.querySelector('.homeTab');
+    if(nativeContainer && validId(serverId)){
+      const shell=own('div','itemAction mf-home-native-play-proxy');
+      for(const [key,value] of Object.entries({
+        'data-id':compactId(entry.resumeId),'data-serverid':serverId,
+        'data-type':entry.resumeType==='Episode'||entry.season!=null||entry.episode!=null?'Episode':'Movie',
+        'data-mediatype':'Video','data-isfolder':'false',
+        'data-positionticks':String(Math.max(0,Number(entry.positionTicks)||0))
+      }))shell.setAttribute(key,value);
+      const button=own('button','', 'Odtwórz');button.type='button';
+      button.setAttribute('data-action','resume');shell.appendChild(button);
+      nativeContainer.appendChild(shell);
+      try{
+        // Jellyfin shortcuts.onClick prevents the click's default when handled.
+        const click=new MouseEvent('click',{bubbles:true,cancelable:true,view:window});
+        button.dispatchEvent(click);
+        if(click.defaultPrevented)return;
+      }finally{shell.remove();}
+    }
+    // Limited legacy fallback; Jellyfin owns all playback decisions.
+    const manager=window.playbackManager||window.Emby?.PlaybackManager;
+    if(typeof manager?.play==='function'){
+      try{
+        await manager.play({ids:[compactId(entry.resumeId)],serverId,
+          startPositionTicks:Math.max(0,Number(entry.positionTicks)||0)});
+        return;
+      }catch(error){console.warn('[MisioFlix] Native playback action failed',error);}
+    }
+    // If a Jellyfin build has no reachable native player action, we must not
+    // fabricate an unsupported video URL or risk playing the wrong episode.
+    window.location.hash=nativeDetails(entry.resumeId,item.serverId);
+  }
   function resumeTile(entry,hidden=false){
     const item=entry.item;
     const card=own('article',hidden?'mf-home-resume-card mf-home-resume-card-hidden':'mf-home-resume-card');
-    const link=set(own('a','mf-home-resume-poster'), 'href',nativeDetails(entry.resumeId,item.serverId));
-    link.setAttribute('aria-label','Przejdź do odtwarzania: '+(item.title||''));
+    card.setAttribute('tabindex','0');
+    card.setAttribute('aria-label',`Odtwarzaj: ${item.title||''}`);
+    const details=nativeDetails(item.id,item.serverId); // series root, or movie root
+    const link=set(own('a','mf-home-resume-poster'),'href',nativeDetails(entry.resumeId,item.serverId));
+    link.setAttribute('aria-label','Odtwarzaj: '+(item.title||''));
     const image=imageFor(item);
     if(image){const img=own('img','');img.src=image;img.loading='lazy';img.alt='';link.appendChild(img);}
     const body=own('div','mf-home-resume-content');
     append(body,set(own('a','mf-home-resume-title',item.title||''),'href',nativeDetails(entry.resumeId,item.serverId)));
-    const label=entry.season && entry.episode?`S${entry.season}:E${entry.episode}`:entry.nextUp?'Następny odcinek':'Film';
+    const label=entry.season!=null&&entry.episode!=null?`S${entry.season}:E${entry.episode}`:entry.nextUp?'Następny odcinek':'Film';
     body.appendChild(own('div','mf-home-resume-subtitle',label));
     if(Number(entry.progress)>0){
       const p=own('div','mf-home-progress');
@@ -304,12 +352,16 @@
       bar.style.width=`${Math.max(0,Math.min(100,Number(entry.progress)))}%`;
       p.appendChild(bar);body.appendChild(p);
     }
-    const x=own('button','mf-home-resume-remove',hidden?'Przywróć':'×');
-    x.type='button';
-    x.setAttribute('aria-label',hidden?'Przywróć z ukrytych':'Ukryj z Oglądaj dalej (bez usuwania historii Jellyfin)');
-    x.setAttribute('title',hidden?'Przywróć do Oglądaj dalej':'Ukryj kartę; historia Jellyfin pozostaje bez zmian');
-    x.addEventListener('click',async()=>{
-      x.disabled=true;
+    const info=set(own('a','mf-home-resume-info','i'),'href',details);
+    info.setAttribute('aria-label','Informacje o: '+(item.title||''));
+    info.setAttribute('title','Otwórz stronę główną filmu lub serialu');
+    const actions=own('div','mf-home-resume-card-actions');
+    const toggle=own('button','mf-home-resume-remove',hidden?'Przywróć':'×');
+    toggle.type='button';
+    toggle.setAttribute('aria-label',hidden?'Przywróć z ukrytych':'Ukryj z Oglądaj dalej (bez usuwania historii Jellyfin)');
+    toggle.setAttribute('title',hidden?'Przywróć do Oglądaj dalej':'Ukryj kartę; historia Jellyfin pozostaje bez zmian');
+    toggle.addEventListener('click',async()=>{
+      toggle.disabled=true;
       try{
         await request(`/resume/${hidden?'restore':'hide'}`,'POST',{CatalogId:item.id});
         const from=hidden?resumeData.hidden:resumeData.items;
@@ -317,9 +369,36 @@
         const index=from.findIndex(i=>i.item?.id===item.id);
         if(index>=0)to.push(...from.splice(index,1));
         paintResume();
-      }catch(e){x.disabled=false;x.setAttribute('title','Nie udało się zapisać zmiany');}
+      }catch(error){toggle.disabled=false;toggle.setAttribute('title','Nie udało się zapisać zmiany');}
     });
-    append(card,link,body,x);
+    actions.appendChild(toggle);
+    if(hidden){
+      const remove=own('button','mf-home-resume-permanent-remove','Usuń');
+      remove.type='button';
+      remove.setAttribute('title','Usuń z Oglądaj dalej i wyczyść zapisany punkt wznowienia; nie usuwa pliku wideo');
+      remove.setAttribute('aria-label',`Usuń ${item.title||'pozycję'} z Oglądaj dalej`);
+      remove.addEventListener('click',async()=>{
+        if(!window.confirm('Usunąć tę pozycję z Oglądaj dalej? Zapisany punkt wznowienia zostanie wyczyszczony, ale plik wideo i status obejrzenia pozostaną bez zmian.'))return;
+        remove.disabled=true;toggle.disabled=true;
+        try{
+          await request('/resume/remove','POST',{CatalogId:item.id,ResumeId:entry.resumeId});
+          resumeData.hidden=resumeData.hidden.filter(i=>i.item?.id!==item.id);
+          resumeData.items=resumeData.items.filter(i=>i.item?.id!==item.id);
+          paintResume();
+        }catch(error){remove.disabled=false;toggle.disabled=false;remove.setAttribute('title','Nie udało się usunąć pozycji');}
+      });
+      actions.appendChild(remove);
+    }
+    append(card,link,body,info,actions);
+    card.addEventListener('click',event=>{
+      if(event.target.closest('.mf-home-resume-info,.mf-home-resume-card-actions'))return;
+      event.preventDefault();
+      void playResume(entry);
+    });
+    card.addEventListener('keydown',event=>{
+      if(event.target!==card)return;
+      if(event.key==='Enter'||event.key===' '){event.preventDefault();void playResume(entry);}
+    });
     return card;
   }
   function paintResume(){

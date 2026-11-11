@@ -27,6 +27,7 @@ public sealed class MisioFlixCatalogService
     private readonly HttpClient _client;
     private readonly ILibraryManager _library;
     private readonly string _hiddenResumePath;
+    private readonly string _removedResumePath;
     private static readonly SemaphoreSlim HiddenGate = new(1, 1);
 
     public MisioFlixCatalogService(HttpClient client, ILibraryManager library, IApplicationPaths applicationPaths)
@@ -35,6 +36,7 @@ public sealed class MisioFlixCatalogService
         _library = library;
         // Separate JSON state, never the Jellyfin database, media or NFO files.
         _hiddenResumePath = Path.Combine(applicationPaths.DataPath, "misioflix", "hidden-resume.json");
+        _removedResumePath = Path.Combine(applicationPaths.DataPath, "misioflix", "removed-resume.json");
     }
 
     public async Task<CatalogResponse> ReadForAuthenticatedUserAsync(HttpRequest caller, CancellationToken cancel, Guid? libraryId = null)
@@ -331,7 +333,7 @@ public sealed class MisioFlixCatalogService
         {
             if (!cards.TryGetValue(entry.catalog_id, out var tile)) return null;
             return new HomeResumeTile(tile, entry.id, entry.progress_percent,
-                entry.season, entry.episode, entry.next_up);
+                entry.season, entry.episode, entry.next_up, entry.position_ticks, entry.resume_type);
         }
         return new HomeResumeResponse(
             entries.items.Select(Project).Where(e => e is not null).Cast<HomeResumeTile>().ToList(),
@@ -473,8 +475,17 @@ public sealed class MisioFlixCatalogService
         }
 
         var hidden = await ReadHiddenForUserAsync(userId, cancel).ConfigureAwait(false);
-        return new ResumeResponse(result.Where(x => !hidden.Contains(x.catalog_id)).ToList(),
-            result.Where(x => hidden.Contains(x.catalog_id)).ToList());
+        var removed = await ReadRemovedForUserAsync(userId, cancel).ConfigureAwait(false);
+        // A removed series stays out even when other unfinished episodes exist.
+        // A genuinely NEW playback later than the removal date can re-add it.
+        static string NormalizedId(string value) => Guid.TryParse(value, out var parsed)
+            ? parsed.ToString("N") : value;
+        var hiddenKeys = new HashSet<string>(hidden.Select(NormalizedId), StringComparer.OrdinalIgnoreCase);
+        result = result.Where(x => !removed.TryGetValue(NormalizedId(x.catalog_id), out var state)
+            || (DateTimeOffset.TryParse(x.last_played, out var latest)
+                && latest.ToUniversalTime() > state.removedAtUtc)).ToList();
+        return new ResumeResponse(result.Where(x => !hiddenKeys.Contains(NormalizedId(x.catalog_id))).ToList(),
+            result.Where(x => hiddenKeys.Contains(NormalizedId(x.catalog_id))).ToList());
     }
 
     public async Task HideResumeForAuthenticatedUserAsync(HttpRequest caller, Guid catalogId,
@@ -512,6 +523,128 @@ public sealed class MisioFlixCatalogService
             finally { if (File.Exists(temp)) File.Delete(temp); }
         }
         finally { HiddenGate.Release(); }
+    }
+
+    // Remove from the logged-in user's CONTINUE WATCHING, not from the media library.
+    // Reset the exact episode/movie resume position; preserve its watch status,
+    // play count, favourites, last-played time and personal rating. A separate
+    // per-user exclusion handles Jellyfin's NextUp rows with position=0.
+    public async Task RemoveResumeForAuthenticatedUserAsync(HttpRequest caller, Guid catalogId,
+        Guid resumeId, CancellationToken cancel)
+    {
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        using var verified = await GetJsonAsync(origin,
+            $"Items?UserId={Uri.EscapeDataString(userId)}&Ids={resumeId:N}&EnableUserData=true&Limit=1",
+            auth, cancel).ConfigureAwait(false);
+        var allowed = Get(verified.RootElement, "Items");
+        if (allowed.ValueKind != JsonValueKind.Array)
+            throw new UnauthorizedAccessException("No authorized media item");
+        var item = allowed.EnumerateArray().FirstOrDefault();
+        if (item.ValueKind != JsonValueKind.Object ||
+            !Guid.TryParse(Text(Get(item, "Id")), out var realId) || realId != resumeId)
+            throw new UnauthorizedAccessException("Item not accessible");
+        var kind = Text(Get(item, "Type"));
+        var validParent = Guid.TryParse(Text(Get(item, "SeriesId")), out var seriesGuid) && seriesGuid == catalogId;
+        if (!validParent && kind == "Episode")
+        {
+            var local = _library.GetItemById(resumeId);
+            validParent = local?.GetType().GetProperty("SeriesId")?.GetValue(local) is Guid parent
+                && parent == catalogId;
+        }
+        if (!(kind == "Movie" && catalogId == resumeId) && !(kind == "Episode" && validParent))
+            throw new UnauthorizedAccessException("Resume target does not match the requested title");
+
+        var route = $"UserItems/{resumeId:N}/UserData?userId={Uri.EscapeDataString(userId)}";
+        using (var current = await GetJsonAsync(origin, route, auth, cancel).ConfigureAwait(false))
+        {
+            var userData = current.RootElement;
+            var currentTicks = (long)Number(Get(userData, "PlaybackPositionTicks"));
+            var last = Text(Get(userData, "LastPlayedDate"));
+            if (currentTicks > 0)
+            {
+                var props = new Dictionary<string, object?>
+                {
+                    ["ItemId"] = resumeId,
+                    ["Key"] = Text(Get(userData,"Key")),
+                    ["Played"] = Get(userData,"Played").ValueKind == JsonValueKind.True,
+                    ["PlayCount"] = (int)Number(Get(userData,"PlayCount")),
+                    ["PlaybackPositionTicks"] = 0L,
+                    ["IsFavorite"] = Get(userData,"IsFavorite").ValueKind == JsonValueKind.True,
+                    ["Rating"] = Get(userData,"Rating").ValueKind == JsonValueKind.Number
+                        ? Number(Get(userData,"Rating")) : null,
+                };
+                if (!string.IsNullOrEmpty(last)) props["LastPlayedDate"] = last;
+                using var update = new HttpRequestMessage(HttpMethod.Post, new Uri(origin, route));
+                update.Headers.TryAddWithoutValidation("Authorization", auth);
+                update.Content = new System.Net.Http.StringContent(JsonSerializer.Serialize(props),
+                    System.Text.Encoding.UTF8, "application/json");
+                using var response = await _client.SendAsync(update, cancel).ConfigureAwait(false);
+                if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
+                    throw new UnauthorizedAccessException("Jellyfin refused user data update");
+                response.EnsureSuccessStatusCode();
+            }
+        }
+        // Persist after the successful Jellyfin update. Keep state separate from
+        // hidden cards: a removed item is not recoverable via "Pokaż ukryte".
+        await HiddenGate.WaitAsync(cancel).ConfigureAwait(false);
+        try
+        {
+            var removed = await ReadRemovedDocumentAsync(cancel).ConfigureAwait(false);
+            if (!removed.TryGetValue(userId, out var userRemoved))
+                removed[userId] = userRemoved = new Dictionary<string, RemovedResume>(StringComparer.OrdinalIgnoreCase);
+            userRemoved[catalogId.ToString("N")] = new RemovedResume(resumeId.ToString(), DateTimeOffset.UtcNow);
+            var dir = Path.GetDirectoryName(_removedResumePath)!;
+            Directory.CreateDirectory(dir);
+            var temp = _removedResumePath + ".tmp";
+            try
+            {
+                await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(removed), cancel).ConfigureAwait(false);
+                File.Move(temp, _removedResumePath, overwrite:true);
+            }
+            finally { if (File.Exists(temp)) File.Delete(temp); }
+            var hidden = await ReadHiddenDocumentAsync(cancel).ConfigureAwait(false);
+            if (hidden.TryGetValue(userId, out var hiddenIds) && hiddenIds.Remove(catalogId.ToString()))
+            {
+                var tmp = _hiddenResumePath + ".tmp";
+                try
+                {
+                    await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(hidden), cancel).ConfigureAwait(false);
+                    File.Move(tmp, _hiddenResumePath, overwrite:true);
+                }
+                finally { if (File.Exists(tmp)) File.Delete(tmp); }
+            }
+        }
+        finally { HiddenGate.Release(); }
+    }
+
+    public sealed record RemovedResume(string resumeId, DateTimeOffset removedAtUtc);
+
+    private async Task<Dictionary<string, RemovedResume>> ReadRemovedForUserAsync(string userId,
+        CancellationToken cancel)
+    {
+        await HiddenGate.WaitAsync(cancel).ConfigureAwait(false);
+        try
+        {
+            var doc = await ReadRemovedDocumentAsync(cancel).ConfigureAwait(false);
+            return doc.TryGetValue(userId, out var items) ? items
+                : new Dictionary<string, RemovedResume>(StringComparer.OrdinalIgnoreCase);
+        }
+        finally { HiddenGate.Release(); }
+    }
+
+    private async Task<Dictionary<string, Dictionary<string, RemovedResume>>> ReadRemovedDocumentAsync(
+        CancellationToken cancel)
+    {
+        if (!File.Exists(_removedResumePath))
+            return new Dictionary<string, Dictionary<string, RemovedResume>>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var json = await File.ReadAllTextAsync(_removedResumePath, cancel).ConfigureAwait(false);
+            return JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, RemovedResume>>>(json)
+                ?? new Dictionary<string, Dictionary<string, RemovedResume>>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (JsonException) { return new(StringComparer.OrdinalIgnoreCase); }
+        catch (IOException) { return new(StringComparer.OrdinalIgnoreCase); }
     }
 
     private async Task<HashSet<string>> ReadHiddenForUserAsync(string userId, CancellationToken cancel)
@@ -599,7 +732,10 @@ public sealed class MisioFlixCatalogService
             progress_percent = Math.Round(Math.Clamp(percentage, 0, 100), 1),
             season = PositiveInt(Get(item, "ParentIndexNumber")),
             episode = PositiveInt(Get(item, "IndexNumber")),
-            next_up = isNextUp
+            next_up = isNextUp,
+            resume_type = type,
+            position_ticks = (long)Number(Get(data, "PlaybackPositionTicks")),
+            last_played = Text(Get(data, "LastPlayedDate"))
         };
     }
 
@@ -987,6 +1123,9 @@ public sealed class ResumeItem
     public int? season { get; set; }
     public int? episode { get; set; }
     public bool next_up { get; set; }
+    public long position_ticks { get; set; }
+    public string resume_type { get; set; } = string.Empty;
+    public string last_played { get; set; } = string.Empty;
 }
 
 public sealed record SeasonInfo(string id, string name, int? number, double? rating, int? mal_id, string watch_status);
@@ -1031,5 +1170,5 @@ public sealed class HomeTile
     public string watchStatus { get; set; } = string.Empty;
 }
 public sealed record HomeResumeTile(HomeTile item, string resumeId, double progress,
-    int? season, int? episode, bool nextUp);
+    int? season, int? episode, bool nextUp, long positionTicks, string resumeType);
 public sealed record HomeResumeResponse(List<HomeResumeTile> items, List<HomeResumeTile> hidden);

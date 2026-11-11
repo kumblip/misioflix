@@ -13,7 +13,7 @@ CLIENT=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/client.js').read_text()
 
 class Layout0418(unittest.TestCase):
     def test_version_and_existing_video_fix(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.18.0')
+        self.assertRegex(json.loads((ROOT/'meta.json').read_text())['version'],r'^\d+\.\d+\.\d+\.\d+$')
         self.assertIn('function syncPlayerSkin()',CLIENT)
         self.assertIn("classList.toggle('misioflix-skin',!playerIsVisible())",CLIENT)
     def test_shortcuts_in_hero_not_below(self):

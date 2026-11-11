@@ -25,7 +25,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/health")]
-    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.18", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
+    public IActionResult Health() => Ok(new { plugin = "MisioFlix", version = "0.4.19", enabled = Plugin.Instance?.Configuration.Enabled ?? false });
 
     [HttpGet("assets/{filename}")]
     [AllowAnonymous]
@@ -157,6 +157,26 @@ public sealed class MisioFlixController : ControllerBase
     [Authorize]
     public async Task<IActionResult> RestoreResume([FromBody] ResumeVisibilityRequest request, CancellationToken cancellationToken)
         => await SetResumeVisibility(request.CatalogId, false, cancellationToken).ConfigureAwait(false);
+
+    // Removes only the current user's "Continue Watching" entry/resume point,
+    // never a media file, library item or another user's history.
+    public sealed record ResumeRemoveRequest(Guid CatalogId, Guid ResumeId);
+    [HttpPost("api/resume/remove")]
+    [Authorize]
+    public async Task<IActionResult> RemoveResume([FromBody] ResumeRemoveRequest request, CancellationToken cancellationToken)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        if (request.CatalogId == Guid.Empty || request.ResumeId == Guid.Empty) return BadRequest();
+        try
+        {
+            await _catalog.RemoveResumeForAuthenticatedUserAsync(Request,
+                request.CatalogId, request.ResumeId, cancellationToken).ConfigureAwait(false);
+            return Ok(new { success = true });
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (HttpRequestException) { return StatusCode(502, new { error="Nie można zaktualizować postępu Jellyfin" }); }
+        catch (IOException) { return StatusCode(500, new { error="Nie można zapisać listy usuniętych" }); }
+    }
 
     private async Task<IActionResult> SetResumeVisibility(Guid catalogId, bool hide, CancellationToken cancellationToken)
     {
