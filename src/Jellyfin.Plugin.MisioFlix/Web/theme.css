@@ -1171,3 +1171,9 @@ html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime=
   html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"] .cardScalable[data-mf-mixed-stats]::after{font-size:9px;padding:3px 4px}
   html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"] .cardImageContainer[data-mf-mixed-genres]::after{font-size:9px}
 }
+
+/* Explicit, read-only diagnostics for one MAL anime. Never run automatically. */
+html.misioflix-skin .mf-mal-diagnostics{margin:10px 0;padding:10px 0;border-top:1px solid rgba(244,158,206,.25)}
+html.misioflix-skin .mf-mal-diagnostics>summary{display:list-item;cursor:pointer;font-weight:650;color:#f5d5eb;padding:8px 2px}
+html.misioflix-skin .mf-mal-debug-output{display:block;box-sizing:border-box;width:100%;margin:10px 0;min-height:150px;padding:12px;border-radius:9px;border:1px solid rgba(244,158,206,.4);background:#1d1020;color:#ffeaf6;resize:vertical;font:12px/1.5 ui-monospace,Consolas,monospace}
+html.misioflix-skin .mf-mal-diagnostics .mf-mal-action-secondary{margin-right:8px}

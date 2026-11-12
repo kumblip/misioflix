@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -47,6 +48,10 @@ public sealed class MisioFlixMalService
     // Never share a user's personal list data with another Jellyfin user.
     private sealed record CachedItem(DateTimeOffset Expires, MalEntry? Entry);
     private static readonly ConcurrentDictionary<string, CachedItem> ItemCache = new();
+    // Opt-in, user-scoped, short-lived diagnostic data. Never contains credentials,
+    // OAuth codes, MAL profile identifiers, notes or raw JSON.
+    private sealed record CachedDiagnostic(DateTimeOffset Expires, object Result);
+    private static readonly ConcurrentDictionary<string, CachedDiagnostic> Diagnostics = new();
     public sealed record MalConnection(bool Connected, int? MalUserId, string? Username);
 
     public MisioFlixMalService(HttpClient client, IApplicationPaths app)
@@ -478,6 +483,104 @@ public sealed class MisioFlixMalService
             return result;
         }
         finally { gate.Release(); }
+    }
+
+    /// <summary>
+    /// On-demand read-only MAL diagnostics for ONE authorized anime. Called only by
+    /// an explicit click in the detail UI; max two GET requests and one result per
+    /// user/title per 45 seconds. No token, user ID, full response or notes leave
+    /// the server. The normal cached read path is not mutated by these probes.
+    /// </summary>
+    public async Task<object> DiagnoseItemAsync(string userId, int malId, CancellationToken cancel)
+    {
+        var user = UserId(userId);
+        if (malId <= 0) throw new ArgumentOutOfRangeException(nameof(malId));
+        var key = ItemCacheKey(user, malId);
+        if (Diagnostics.TryGetValue(key, out var old) && old.Expires > DateTimeOffset.UtcNow)
+            return old.Result;
+        var gate = ListLock(user);
+        await gate.WaitAsync(cancel).ConfigureAwait(false);
+        try
+        {
+            if (Diagnostics.TryGetValue(key, out old) && old.Expires > DateTimeOffset.UtcNow)
+                return old.Result;
+            var access = await AccessAsync(user, cancel).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("MAL nie jest połączony");
+            var hasItemCache = ItemCache.TryGetValue(key, out var itemHit);
+            var item = hasItemCache ? itemHit!.Entry : null;
+            var itemCache = new
+            {
+                present = hasItemCache,
+                valid = hasItemCache && itemHit!.Expires > DateTimeOffset.UtcNow,
+                watchedEpisodes = item?.episodes_watched,
+                timesRewatched = item?.times_rewatched
+            };
+            var probes = new List<object>();
+            probes.Add(await ProbeItemStatusAsync(access, malId,
+                "standard", $"anime/{malId}?fields=my_list_status", cancel).ConfigureAwait(false));
+            // Nested field selector is an independent probe: if MAL rejects it,
+            // display HTTP status without disrupting the working standard reader.
+            var requested = Uri.EscapeDataString(
+                "my_list_status{status,score,num_episodes_watched,num_times_rewatched,is_rewatching}");
+            probes.Add(await ProbeItemStatusAsync(access, malId,
+                "explicit_fields", $"anime/{malId}?fields={requested}", cancel).ConfigureAwait(false));
+            object result = new
+            {
+                malId,
+                generatedUtc = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+                itemCache,
+                probes,
+                note = "GET tylko dla wskazanego anime. Brak pola nie oznacza zera. Nie ujawnia tokenów ani surowego JSON."
+            };
+            Diagnostics[key] = new CachedDiagnostic(DateTimeOffset.UtcNow.AddSeconds(45), result);
+            return result;
+        }
+        finally { gate.Release(); }
+    }
+
+    private async Task<object> ProbeItemStatusAsync(string access, int malId, string stage,
+        string path, CancellationToken cancel)
+    {
+        var watch = Stopwatch.StartNew();
+        try
+        {
+            using var doc = await SendJsonAsync(HttpMethod.Get, path, access, null, cancel)
+                .ConfigureAwait(false);
+            watch.Stop();
+            var root = doc.RootElement;
+            var exists = root.TryGetProperty("my_list_status", out var value)
+                && value.ValueKind == JsonValueKind.Object;
+            if (!exists)
+                return new { stage, httpStatus = 200, elapsedMs = watch.ElapsedMilliseconds,
+                    listStatusPresent = false, fieldNames = Array.Empty<string>(),
+                    episodes = (int?)null, rewatches = (int?)null,
+                    episodesFieldPresent = false, rewatchesFieldPresent = false,
+                    status = (string?)null, score = (int?)null, error = (string?)null };
+            var allowed = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "status", "score", "num_episodes_watched", "num_times_rewatched",
+                "is_rewatching", "updated_at", "rewatch_value", "priority"
+            };
+            var names = value.EnumerateObject().Select(p => p.Name)
+                .Where(allowed.Contains).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+            var parsed = ReadEntry(malId, value);
+            return new { stage, httpStatus = 200, elapsedMs = watch.ElapsedMilliseconds,
+                listStatusPresent = true, fieldNames = names,
+                episodes = parsed.episodes_watched, rewatches = parsed.times_rewatched,
+                episodesFieldPresent = value.TryGetProperty("num_episodes_watched", out _),
+                rewatchesFieldPresent = value.TryGetProperty("num_times_rewatched", out _),
+                status = (string?)parsed.status, score = (int?)parsed.score, error = (string?)null };
+        }
+        catch (HttpRequestException ex)
+        {
+            watch.Stop();
+            return new { stage, httpStatus = (int?)ex.StatusCode, elapsedMs = watch.ElapsedMilliseconds,
+                listStatusPresent = false, fieldNames = Array.Empty<string>(),
+                episodes = (int?)null, rewatches = (int?)null,
+                episodesFieldPresent = false, rewatchesFieldPresent = false,
+                status = (string?)null, score = (int?)null,
+                error = "MAL odrzucił żądanie GET (bez treści odpowiedzi)" };
+        }
     }
 
     public async Task<MalEntry> UpdateAsync(string userId, int malId, MalUpdate value, CancellationToken cancel)

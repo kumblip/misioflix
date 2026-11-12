@@ -313,6 +313,34 @@ public sealed class MisioFlixController : ControllerBase
         catch (HttpRequestException) { return StatusCode(502, new { error = "Nie udało się odczytać danych MAL" }); }
     }
 
+    // Strictly on-demand debug endpoint: requires the same user-scoped NFO
+    // authorization as /item and never exposes MAL credentials or raw JSON.
+    [HttpGet("api/mal/diagnostics")]
+    [Authorize]
+    public async Task<IActionResult> MalDiagnostics([FromQuery] Guid catalogId,
+        [FromQuery] Guid? seasonId, CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        if (catalogId == Guid.Empty || seasonId == Guid.Empty) return BadRequest();
+        Response.Headers.CacheControl = "private, no-store";
+        try
+        {
+            var malId = await _catalog.AuthorizedMalIdAsync(Request, catalogId, seasonId, cancel)
+                .ConfigureAwait(false);
+            if (malId <= 0) return BadRequest(new { error = "Nie znaleziono MAL ID w NFO" });
+            var user = await _catalog.GetAuthenticatedUserIdAsync(Request, cancel)
+                .ConfigureAwait(false);
+            var connection = await _mal.GetConnectionAsync(user, cancel, refreshProfile:false)
+                .ConfigureAwait(false);
+            if (!connection.Connected) return BadRequest(new { error = "MAL nie jest połączony" });
+            return Ok(await _mal.DiagnoseItemAsync(user, malId, cancel).ConfigureAwait(false));
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (ArgumentException e) { return BadRequest(new { error = e.Message }); }
+        catch (InvalidOperationException e) { return BadRequest(new { error = e.Message }); }
+        catch (HttpRequestException) { return StatusCode(502, new { error = "Błąd pobierania diagnostyki MAL" }); }
+    }
+
     [HttpGet("api/mal/connect")]
     [Authorize]
     public async Task<IActionResult> MalConnect(CancellationToken cancel)

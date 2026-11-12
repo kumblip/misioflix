@@ -290,6 +290,51 @@
     const refresh=el('button','mf-mal-action-secondary','Odśwież z MAL');refresh.type='button';
     const liveMessage=el('span','mf-mal-save-message',notice);liveMessage.setAttribute('role','status');
     actionsOutside.append(refresh,liveMessage);main.append(actionsOutside);
+    // Optional diagnostics. Nothing runs until the user clicks the button.
+    // The report contains numeric MAL fields and presence/HTTP status only,
+    // never access tokens, OAuth codes, profile IDs or the raw API response.
+    const diagnostic=el('details','mf-mal-diagnostics');
+    diagnostic.append(el('summary','','Diagnostyka MAL'));
+    const diagHelp=el('p','mf-mal-summary',
+      'Sprawdź każdy etap odczytu wybranego anime. Wykonuje maksymalnie dwa GET do MAL po naciśnięciu przycisku (wynik na serwerze jest pamiętany przez 45 s).');
+    const diagRun=el('button','mf-mal-action-secondary','Uruchom diagnostykę');diagRun.type='button';
+    const diagReport=el('textarea','mf-mal-debug-output');diagReport.readOnly=true;
+    diagReport.rows=12;diagReport.spellcheck=false;
+    diagReport.placeholder='Tutaj pojawi się raport do skopiowania.';
+    const diagCopy=el('button','mf-mal-action-secondary','Zaznacz raport');diagCopy.type='button';
+    diagCopy.addEventListener('click',()=>{diagReport.focus();diagReport.select();});
+    diagRun.addEventListener('click',async()=>{
+      if(!isSame())return;
+      diagRun.disabled=true;diagReport.value='Trwa odczyt MAL ID ' + ctx.malId + '…';
+      try{
+        const observed=entry?entryFields(entry):null;
+        const local=loadCache(ctx.userId,ctx.malId);
+        const start=performance.now();
+        const data=await request(`/diagnostics?catalogId=${ctx.catalogId}${ctx.seasonId?'&seasonId='+ctx.seasonId:''}`);
+        if(!isSame())return;
+        const lines=[
+          'MisioFlix MAL — raport bez danych logowania',
+          'Godzina: '+String(data.generatedUtc||''),
+          'MAL ID (NFO): '+String(data.malId||ctx.malId),
+          'Czas zapytania przez przeglądarkę: '+Math.round(performance.now()-start)+' ms',
+          'Wartości widoczne w panelu: odcinki='+String(observed?.episodesWatched??'brak')+', rewatch='+String(observed?.timesRewatched??'brak'),
+          'Pamięć przeglądarki: '+(local?'obecna':'brak')+', odcinki='+String(local?.entry?entryFields(local.entry).episodesWatched??'brak':'brak')+', rewatch='+String(local?.entry?entryFields(local.entry).timesRewatched??'brak':'brak'),
+          'Pamięć serwera: '+(data.itemCache?.present?'obecna':'brak')+', ważna='+(data.itemCache?.valid?'tak':'nie')+', odcinki='+String(data.itemCache?.watchedEpisodes??'brak')+', rewatch='+String(data.itemCache?.timesRewatched??'brak'),
+        ];
+        for(const p of data.probes||[]){
+          lines.push('--- '+(p.stage==='standard'?'MAL GET standard':'MAL GET jawne pola')+' ---');
+          lines.push('HTTP: '+String(p.httpStatus??'brak')+'; czas: '+String(p.elapsedMs??'?')+' ms; list_status: '+(p.listStatusPresent?'jest':'brak'));
+          lines.push('Pola: '+(Array.isArray(p.fieldNames)?p.fieldNames.join(', '):'brak'));
+          lines.push('num_episodes_watched: '+(p.episodesFieldPresent?String(p.episodes??'nieprawidłowa wartość'):'NIE ZWRÓCONO'));
+          lines.push('num_times_rewatched: '+(p.rewatchesFieldPresent?String(p.rewatches??'nieprawidłowa wartość'):'NIE ZWRÓCONO'));
+          if(p.error)lines.push('Błąd: '+String(p.error));
+        }
+        lines.push('Raport nie zawiera OAuth, tokenów, nagłówków ani pełnego JSON.');
+        diagReport.value=lines.join('\n');
+      }catch(e){diagReport.value='Błąd diagnostyki: '+String(e.message||e);}
+      finally{diagRun.disabled=false;}
+    });
+    diagnostic.append(diagHelp,diagRun,diagReport,diagCopy);main.append(diagnostic);
     const editor=el('details','mf-mal-editor');editor.open=Boolean(editorOpen);
     const toggle=el('summary','mf-mal-editor-toggle','Edytuj MAL');editor.append(toggle);
     const status=makeSelect(statuses,data?.status||'plan_to_watch');

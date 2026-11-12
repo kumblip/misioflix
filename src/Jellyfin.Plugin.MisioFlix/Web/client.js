@@ -227,14 +227,15 @@
     if(!image || !scalable)return;
     const year=card.getAttribute('data-mf-year')||cardYear(card);
     const format=String(card.getAttribute('data-mf-format')||'').trim();
-    scalable.setAttribute('data-mf-mixed-heading','ANIME'+(year?'\n'+year+(format?' · '+format:''):''));
+    scalable.setAttribute('data-mf-mixed-heading','ANIME'+(year?'\n'+year:''));
+    if(format)scalable.setAttribute('data-mf-mixed-format',format);
     const seasons=shortNumber(card.getAttribute('data-mf-seasons'));
     const episodes=shortNumber(card.getAttribute('data-mf-episodes'));
     const rating=shortNumber(card.getAttribute('data-mf-user-rating'),false);
     const lines=[];
-    if(seasons)lines.push('Sez. '+seasons);
-    if(episodes)lines.push('Odc. '+episodes);
-    if(rating)lines.push('★ '+rating+'/10');
+    if(seasons)lines.push(seasons+' 🐾');
+    if(episodes)lines.push(episodes+' 🐾');
+    if(rating)lines.push(rating+'/10');
     if(lines.length)scalable.setAttribute('data-mf-mixed-stats',lines.join('\n'));
     else scalable.removeAttribute('data-mf-mixed-stats');
     const chips=genres(card);
@@ -248,6 +249,7 @@
   }
   function clearMixedCard(card){
     card.querySelector('.cardScalable')?.removeAttribute('data-mf-mixed-heading');
+    card.querySelector('.cardScalable')?.removeAttribute('data-mf-mixed-format');
     card.querySelector('.cardScalable')?.removeAttribute('data-mf-mixed-stats');
     card.querySelector('.cardImageContainer')?.removeAttribute('data-mf-mixed-genres');
     card.querySelector('.cardBox')?.removeAttribute('data-mf-mixed-description');
