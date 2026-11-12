@@ -10,7 +10,7 @@ MAL=(WEB/'mal.js').read_text()
 CSS=(WEB/'theme.css').read_text()
 class MALRewatch0439(unittest.TestCase):
  def test_version(self):
-  v=json.loads((ROOT/'meta.json').read_text())['version'];self.assertEqual(v,'0.4.39.0')
+  v=json.loads((ROOT/'meta.json').read_text())['version'];self.assertGreaterEqual(tuple(map(int,v.split('.'))),(0,4,39,0))
   self.assertIn(f'<AssemblyVersion>{v}</AssemblyVersion>',(BASE/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
  def test_detail_get_requests_exact_advanced_fields(self):
   reader=SERVICE.split('public async Task<MalEntry?> ReadItemAsync(',1)[1].split('public async Task<object> DiagnoseItemAsync',1)[0]

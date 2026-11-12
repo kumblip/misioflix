@@ -1,4 +1,4 @@
-/* MisioFlix v0.4.39: exact per-anime MAL counters and stable detail UI.
+/* MisioFlix v0.4.40: compact MAL details, mobile drawer, stable counters and save confirmation.
  * Home: OAuth connect/disconnect only, never fetch anime list.
  * Item details: lazy one-item MAL read, local display cache and explicit save/refresh.
  * Does not alter Jellyfin playback, NFO or native React-owned DOM children.
@@ -18,7 +18,7 @@
     const a=apiClient();const t=typeof a?.accessToken==='function'?a.accessToken():a?.accessToken;
     return typeof t==='string'?t:'';
   };
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-mal", Version="0.4.39", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-mal", Version="0.4.40", Token="${token().replace(/["\r\n]/g,'')}"`});
   const el=(tag,cls,text)=>{const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=String(text);return x;};
   const params=()=>new URLSearchParams((window.location.hash||'').split('?')[1]||'');
   const homeRoute=()=>/^#\/(?:home)?(?:\?|$)/i.test(location.hash||'#/home') && (params().get('tab')||'0')==='0' && !params().has('mfCollections');
@@ -68,6 +68,23 @@
     }).catch(()=>{ /* one detail lookup still works if whole-list snapshot is unavailable */ })
       .finally(()=>{indexRequest=null;});
   }
+  function malRatingPaw(){
+    const ns='http://www.w3.org/2000/svg';
+    const svg=document.createElementNS(ns,'svg');
+    svg.setAttribute('viewBox','0 0 24 24');
+    svg.setAttribute('aria-hidden','true');
+    svg.classList.add('mf-home-paw','mf-mal-rating-paw');
+    svg.style.color='#ee9fc9';
+    for(const [cx,cy] of [[5,8.7],[9.5,5.8],[14.5,5.8],[19,8.7]]){
+      const toe=document.createElementNS(ns,'ellipse');
+      for(const [key,value] of [['cx',cx],['cy',cy],['rx',1.9],['ry',2.55],['fill','currentColor']])toe.setAttribute(key,String(value));
+      svg.appendChild(toe);
+    }
+    const foot=document.createElementNS(ns,'path');
+    foot.setAttribute('d','M12.2 10.6c-2.2 0-3.5 1.9-5.2 4-.9 1.1-1.8 2.3-1.8 3.6 0 1.6 1.3 2.7 2.8 2.7 1.4 0 2.5-.9 4-.9s2.6.9 4 .9c1.5 0 2.8-1.1 2.8-2.7 0-1.3-.9-2.5-1.8-3.6-1.7-2.1-3-4.8-4Z');
+    foot.setAttribute('fill','currentColor');svg.appendChild(foot);
+    return svg;
+  }
   function decorateMalCards(){
     const uid=currentUser;if(!valid(uid))return;
     const entries=loadIndex(uid),bindings=loadBindings(uid);
@@ -86,14 +103,14 @@
       }else{
         const existing=card.querySelector('.mf-home-mal-score');
         const score=entry?entryFields(entry).score:0;
-        const text=score>0?`${score}/10`:'';
+        const text=score>0?String(score):'';
         if(!text){existing?.remove();continue;}
-        if(existing?.textContent===text)continue;
+        if(existing?.textContent===text&&existing.querySelector('.mf-mal-rating-paw'))continue;
         const holder=card.querySelector('.mf-home-stats')||el('div','mf-home-stats');
         if(!holder.isConnected)card.append(holder);
         let label=existing;
-        if(!label){label=el('span','mf-home-mal-score');label.title='Moja ocena MyAnimeList';holder.append(label);}
-        label.textContent=text;
+        if(!label){label=el('span','mf-home-stat mf-home-mal-score');label.title='Moja ocena MyAnimeList';holder.append(label);}
+        label.replaceChildren(el('span','mf-mal-score-number',text),malRatingPaw());
       }
     }
     if(overlayChanged)window.dispatchEvent(new Event('misioflix-mal-cards-updated'));
@@ -245,6 +262,7 @@
     const page=panel.closest('#itemDetailPage');if(!page)return;
     // Only MAL-backed anime detail pages. Do not overwrite Jellyfin's stored rating.
     page.classList.add('mf-detail-mal-rating');
+    page.setAttribute('data-mf-mal-watch',statusState(entry));
     let label=page.querySelector('.mf-detail-mal-badge');
     if(!label){
       label=el('span','mf-detail-mal-badge');
@@ -257,6 +275,14 @@
     label.title='Osobista ocena zalogowanego użytkownika MyAnimeList';
     // The original community score is only visually suppressed for this anime,
     // never deleted or changed in Jellyfin or its React component state.
+  }
+  function showMalSaveToast(message){
+    document.querySelector('.mf-mal-toast')?.remove();
+    const toast=el('div','mf-mal-toast',message);
+    toast.setAttribute('role','status');
+    toast.setAttribute('aria-live','polite');
+    document.body.append(toast);
+    window.setTimeout(()=>toast.remove(),4500);
   }
   function renderEntry(panel,entry,ctx,fromCache=false,editorOpen=false,notice=''){
     if(!panel.isConnected||ctx.generation!==detailGeneration||detailId()!==ctx.pageId)return;
@@ -277,7 +303,8 @@
       const cell=el('div','mf-mal-readonly-cell');cell.append(el('span','mf-mal-readonly-label',name),el('strong','mf-mal-readonly-value',value));view.append(cell);
     }
     main.append(view);
-    const note=el('p','mf-mal-summary',fromCache?'Dane z pamięci lokalnej. Możesz je odświeżyć z MAL.':'Dane zalogowanego użytkownika MyAnimeList.');main.append(note);
+    // The user's own MAL data are already identified by the panel title.
+    // Avoid repeating the data-source sentence in the compact poster rail.
     if(data&&(data.episodesWatched===null||data.timesRewatched===null||
       (data.status==='completed'&&data.episodesWatched===0))){
       const warning=el('p','mf-mal-summary mf-mal-counter-warning',
@@ -288,51 +315,7 @@
     const refresh=el('button','mf-mal-action-secondary','Odśwież z MAL');refresh.type='button';
     const liveMessage=el('span','mf-mal-save-message',notice);liveMessage.setAttribute('role','status');
     actionsOutside.append(refresh,liveMessage);main.append(actionsOutside);
-    // Optional diagnostics. Nothing runs until the user clicks the button.
-    // The report contains numeric MAL fields and presence/HTTP status only,
-    // never access tokens, OAuth codes, profile IDs or the raw API response.
-    const diagnostic=el('details','mf-mal-diagnostics');
-    diagnostic.append(el('summary','','Diagnostyka MAL'));
-    const diagHelp=el('p','mf-mal-summary',
-      'Sprawdź każdy etap odczytu wybranego anime. Wykonuje maksymalnie dwa GET do MAL po naciśnięciu przycisku (wynik na serwerze jest pamiętany przez 45 s).');
-    const diagRun=el('button','mf-mal-action-secondary','Uruchom diagnostykę');diagRun.type='button';
-    const diagReport=el('textarea','mf-mal-debug-output');diagReport.readOnly=true;
-    diagReport.rows=12;diagReport.spellcheck=false;
-    diagReport.placeholder='Tutaj pojawi się raport do skopiowania.';
-    const diagCopy=el('button','mf-mal-action-secondary','Zaznacz raport');diagCopy.type='button';
-    diagCopy.addEventListener('click',()=>{diagReport.focus();diagReport.select();});
-    diagRun.addEventListener('click',async()=>{
-      if(!isSame())return;
-      diagRun.disabled=true;diagReport.value='Trwa odczyt MAL ID ' + ctx.malId + '…';
-      try{
-        const observed=entry?entryFields(entry):null;
-        const local=loadCache(ctx.userId,ctx.malId);
-        const start=performance.now();
-        const data=await request(`/diagnostics?catalogId=${ctx.catalogId}${ctx.seasonId?'&seasonId='+ctx.seasonId:''}`);
-        if(!isSame())return;
-        const lines=[
-          'MisioFlix MAL — raport bez danych logowania',
-          'Godzina: '+String(data.generatedUtc||''),
-          'MAL ID (NFO): '+String(data.malId||ctx.malId),
-          'Czas zapytania przez przeglądarkę: '+Math.round(performance.now()-start)+' ms',
-          'Wartości widoczne w panelu: odcinki='+String(observed?.episodesWatched??'brak')+', rewatch='+String(observed?.timesRewatched??'brak'),
-          'Pamięć przeglądarki: '+(local?'obecna':'brak')+', odcinki='+String(local?.entry?entryFields(local.entry).episodesWatched??'brak':'brak')+', rewatch='+String(local?.entry?entryFields(local.entry).timesRewatched??'brak':'brak'),
-          'Pamięć serwera: '+(data.itemCache?.present?'obecna':'brak')+', ważna='+(data.itemCache?.valid?'tak':'nie')+', odcinki='+String(data.itemCache?.watchedEpisodes??'brak')+', rewatch='+String(data.itemCache?.timesRewatched??'brak'),
-        ];
-        for(const p of data.probes||[]){
-          lines.push('--- '+(p.stage==='standard'?'MAL GET standard':'MAL GET jawne pola')+' ---');
-          lines.push('HTTP: '+String(p.httpStatus??'brak')+'; czas: '+String(p.elapsedMs??'?')+' ms; list_status: '+(p.listStatusPresent?'jest':'brak'));
-          lines.push('Pola: '+(Array.isArray(p.fieldNames)?p.fieldNames.join(', '):'brak'));
-          lines.push('num_episodes_watched: '+(p.episodesFieldPresent?String(p.episodes??'nieprawidłowa wartość'):'NIE ZWRÓCONO'));
-          lines.push('num_times_rewatched: '+(p.rewatchesFieldPresent?String(p.rewatches??'nieprawidłowa wartość'):'NIE ZWRÓCONO'));
-          if(p.error)lines.push('Błąd: '+String(p.error));
-        }
-        lines.push('Raport nie zawiera OAuth, tokenów, nagłówków ani pełnego JSON.');
-        diagReport.value=lines.join('\n');
-      }catch(e){diagReport.value='Błąd diagnostyki: '+String(e.message||e);}
-      finally{diagRun.disabled=false;}
-    });
-    diagnostic.append(diagHelp,diagRun,diagReport,diagCopy);main.append(diagnostic);
+    // v0.4.40: diagnostic UI removed after confirming the API field mapping.
     const editor=el('details','mf-mal-editor');editor.open=Boolean(editorOpen);
     const toggle=el('summary','mf-mal-editor-toggle','Edytuj MAL');editor.append(toggle);
     const status=makeSelect(statuses,data?.status||'plan_to_watch');
@@ -372,7 +355,8 @@
           storeVisible(ctx.userId,ctx.malId,result);
           const session=detailSessions.get(ctx.sessionKey);
           if(session){session.entry=result;session.fromCache=false;session.phase='ready';session.at=Date.now();}
-          renderEntry(panel,result,ctx,false,true,'Zapisano w MyAnimeList.');
+          renderEntry(panel,result,ctx,false,false,'Zapisano w MyAnimeList.');
+          showMalSaveToast('✓ Zapisano zmiany w MyAnimeList');
         }
       }catch(e){message.textContent=e.message||'Błąd zapisu w MAL';}
       finally{save.disabled=false;refresh.disabled=false;}
@@ -431,10 +415,6 @@
     // caused MutationObserver -> remount -> another API request indefinitely.
     if(session.phase==='irrelevant'){panel.hidden=true;return;}
     panel.hidden=false;
-    if(session.malId){
-      panel.querySelector('.mf-mal-detail-caption').textContent=
-        `MAL ID: ${session.malId} · ${session.seasonId?'Ten sezon':'Ten tytuł'}`;
-    }
     if(session.phase==='ready'){
       const ctx={catalogId:session.catalogId,seasonId:session.seasonId,malId:session.malId,
         generation:detailGeneration,pageId:session.id,userId:session.userId,sessionKey:session.key};
@@ -486,7 +466,7 @@
         }
         Object.assign(session,{catalogId,seasonId,malId});
         rememberBinding(uid,seasonId||catalogId,malId);
-        updateSession(session,'loading',`MAL ID: ${malId} · Sprawdzanie połączenia MAL…`);
+        updateSession(session,'loading','Sprawdzanie połączenia MyAnimeList…');
         const c=await connectionStatus();
         if(!c.connected){
           updateSession(session,'disconnected','MAL nie jest połączony z tym użytkownikiem Jellyfin.');return;
@@ -518,20 +498,35 @@
     const session=newDetailSession(uid,id);
     const panel=el('section','mf-mal-detail-panel');
     panel.setAttribute('aria-label','Moja lista anime na MyAnimeList');
-    panel.append(el('h3','','Moje MyAnimeList'),
-      el('p','mf-mal-detail-caption','Ocena, status i obejrzenia — osobno dla tego anime lub sezonu.'));
-    panel.append(el('div','mf-mal-content'));
-    const host=page.querySelector('.mf-detail-main')||page.querySelector('.detailPagePrimaryContent');
+    const mobileToggle=el('button','mf-mal-mobile-toggle','MAL');
+    mobileToggle.type='button';mobileToggle.setAttribute('aria-expanded','false');
+    const detailsContent=el('div','mf-mal-content');
+    detailsContent.id='mf-mal-detail-'+id;
+    mobileToggle.setAttribute('aria-controls',detailsContent.id);
+    panel.dataset.mfExpanded='false';
+    mobileToggle.addEventListener('click',()=>{
+      const expanded=panel.dataset.mfExpanded!=='true';
+      panel.dataset.mfExpanded=String(expanded);
+      mobileToggle.setAttribute('aria-expanded',String(expanded));
+    });
+    panel.append(mobileToggle,el('h3','','Moje MyAnimeList'),detailsContent);
+    const rail=page.querySelector('.mf-detail-poster-rail');
+    const host=rail||page.querySelector('.mf-detail-main')||page.querySelector('.detailPagePrimaryContent');
     if(!host)return;
-    const seriesSections=host.querySelector('.mf-detail-series-sections');
-    host.insertBefore(panel,seriesSections||null);
+    // Rail order is poster → Continue Watching → MAL. Do not move the player.
+    if(rail)rail.append(panel);
+    else{
+      const seriesSections=host.querySelector('.mf-detail-series-sections');
+      host.insertBefore(panel,seriesSections||null);
+    }
     detailGeneration++;detailPanel=panel;currentDetail=id;currentDetailKey=session.key;
     paintSession(session);
     void startDetailRead(session);
   }
   function clearHeaderForPreviousDetail(){
     document.querySelectorAll('#itemDetailPage.mf-detail-mal-rating').forEach(p=>{
-      p.classList.remove('mf-detail-mal-rating');p.querySelector('.mf-detail-mal-badge')?.remove();
+      p.classList.remove('mf-detail-mal-rating');p.removeAttribute('data-mf-mal-watch');
+      p.querySelector('.mf-detail-mal-badge')?.remove();
     });
   }
   function syncDetails(){

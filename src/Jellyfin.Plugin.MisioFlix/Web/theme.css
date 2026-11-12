@@ -1135,3 +1135,95 @@ html.misioflix-skin .mf-mal-diagnostics{margin:10px 0;padding:10px 0;border-top:
 html.misioflix-skin .mf-mal-diagnostics>summary{display:list-item;cursor:pointer;font-weight:650;color:#f5d5eb;padding:8px 2px}
 html.misioflix-skin .mf-mal-debug-output{display:block;box-sizing:border-box;width:100%;margin:10px 0;min-height:150px;padding:12px;border-radius:9px;border:1px solid rgba(244,158,206,.4);background:#1d1020;color:#ffeaf6;resize:vertical;font:12px/1.5 ui-monospace,Consolas,monospace}
 html.misioflix-skin .mf-mal-diagnostics .mf-mal-action-secondary{margin-right:8px}
+
+
+/* v0.4.40 — compact MAL summary under the Continue Watching card (poster rail). */
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .mf-mal-detail-panel {
+  box-sizing:border-box;width:100%;max-width:100%;margin:0 0 12px;padding:9px 10px;
+  border:1px solid rgba(244,165,206,.45);border-radius:11px;
+  background:rgba(43,16,42,.66);color:#fbedf7;overflow-wrap:anywhere;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .mf-mal-detail-panel h3 {
+  margin:0 0 6px;font-size:15px;line-height:1.2;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .mf-mal-readonly {
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;margin:4px 0 8px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .mf-mal-readonly-cell {
+  min-width:0;padding:6px 7px;border-radius:7px;gap:2px;
+}
+html.misioflix-skin .mf-detail-poster-rail .mf-mal-readonly-label {font-size:10px;line-height:1.3}
+html.misioflix-skin .mf-detail-poster-rail .mf-mal-readonly-value {font-size:13px;line-height:1.3}
+html.misioflix-skin .mf-detail-poster-rail .mf-mal-summary {font-size:10px;line-height:1.4;margin:4px 0 6px}
+html.misioflix-skin .mf-detail-poster-rail .mf-mal-view-actions {gap:6px;margin:4px 0 6px}
+html.misioflix-skin .mf-detail-poster-rail .mf-mal-action,
+html.misioflix-skin .mf-detail-poster-rail .mf-mal-action-secondary {font-size:11px;padding:5px 9px;min-height:30px;border-radius:7px}
+html.misioflix-skin .mf-detail-poster-rail .mf-mal-editor {padding-top:7px}
+html.misioflix-skin .mf-detail-poster-rail .mf-mal-editor-toggle {font-size:11px;min-height:30px;padding:5px 9px}
+html.misioflix-skin .mf-detail-poster-rail .mf-mal-form {grid-template-columns:minmax(0,1fr);gap:7px;margin-top:8px}
+html.misioflix-skin .mf-detail-poster-rail .mf-mal-field {font-size:11px;gap:4px}
+html.misioflix-skin .mf-detail-poster-rail .mf-mal-field :is(select,input) {min-width:0;width:100%;box-sizing:border-box;padding:6px}
+html.misioflix-skin .mf-detail-poster-rail .mf-mal-field small {font-size:10px}
+html.misioflix-skin .mf-mal-mobile-toggle {display:none}
+html.misioflix-skin .mf-mal-detail-panel[hidden] {display:none!important}
+/* The same per-user MAL status controls the full-size details poster border. */
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-mf-mal-watch="unwatched"]{--mf-detail-mal-border:#f4a5ce}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-mf-mal-watch="started"]{--mf-detail-mal-border:#e6a23c}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-mf-mal-watch="watched"]{--mf-detail-mal-border:#45b879}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-mf-mal-watch]:not([data-mf-mal-watch="unknown"]) .mf-detail-poster-rail > .detailImageContainer {
+  outline:3px solid var(--mf-detail-mal-border);outline-offset:1px;border-radius:15px;
+}
+/* Consistent numerical score + pink paw in homepage and anime search cards. */
+html.misioflix-skin .mf-home-mal-score {display:flex;align-items:center;gap:3px;justify-content:flex-end;
+  padding:0;margin:0;border:0;background:transparent;color:#fff;font-size:12px;font-weight:750}
+html.misioflix-skin .mf-home-mal-score .mf-mal-rating-paw {width:13px;height:13px;flex:0 0 13px;color:#ee9fc9}
+html.misioflix-skin .mf-mal-toast {
+  position:fixed;bottom:clamp(16px,5vh,46px);left:50%;transform:translateX(-50%);
+  z-index:100000;max-width:min(92vw,420px);box-sizing:border-box;padding:11px 18px;
+  border:1px solid #63bd89;border-radius:11px;background:#193b30;color:#f4fff7;
+  box-shadow:0 10px 35px #0009;font-size:14px;font-weight:700;text-align:center;pointer-events:none;
+}
+@media(max-width:850px){
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail {
+    max-width:min(100%,330px);margin-inline:auto;
+  }
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .mf-mal-detail-panel {
+    margin-top:0;padding:0;border:0;background:transparent;
+  }
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .mf-mal-mobile-toggle {
+    display:flex;align-items:center;justify-content:space-between;width:100%;min-height:38px;
+    padding:8px 13px;border:1px solid #b75f91;border-radius:9px;background:#42243d;color:#fff;
+    cursor:pointer;font-weight:700;text-align:left;
+  }
+  html.misioflix-skin .mf-mal-mobile-toggle::after {content:'⌄';font-size:19px;line-height:1}
+  html.misioflix-skin .mf-mal-detail-panel[data-mf-expanded="true"] .mf-mal-mobile-toggle::after {content:'⌃'}
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .mf-mal-detail-panel > h3 {display:none}
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .mf-mal-detail-panel:not([data-mf-expanded="true"]) > .mf-mal-content {display:none}
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .mf-mal-content {
+    padding:8px 3px;border:1px solid rgba(244,165,206,.45);border-top:0;border-radius:0 0 10px 10px;
+  }
+}
+/* Mobile AnimePL uses original native cards, but compact badges, typography and no redundant ANIME stamp. */
+@media(max-width:680px){
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-kind {display:none!important}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-format {display:none!important}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-top {padding:5px 5px 0!important;gap:2px}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-year {font-size:10px;max-width:100%;padding:2px 4px}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-stats {
+    padding:2px 3px;gap:1px;border-radius:8px;min-width:0;
+  }
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-stat {min-width:0;gap:2px}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-stat-number {font-size:11px;line-height:1.08}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-stat .mf-paw {width:12px;height:12px}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .cardText-first {
+    font-size:11px!important;line-height:1.23!important;margin-top:5px!important;min-height:2.42em!important;
+  }
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-description {
+    font-size:10px;line-height:1.34;-webkit-line-clamp:5;min-height:6.65em;margin:3px 5px 7px;
+  }
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-genres {padding:7px 3px 5px;gap:2px}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-genre {font-size:9px;padding:2px 4px}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"][data-mf-watch="watched"] .cardImageContainer {box-shadow:inset 0 0 0 2px #45b879!important}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"][data-mf-watch="started"] .cardImageContainer {box-shadow:inset 0 0 0 2px #e6a23c!important}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"][data-mf-watch="unwatched"] .cardImageContainer {box-shadow:inset 0 0 0 2px #f4a5ce!important}
+}

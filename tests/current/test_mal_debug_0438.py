@@ -38,12 +38,13 @@ class MalDiagnostics0438(unittest.TestCase):
         self.assertNotIn('rawJson',body)
         self.assertNotIn('request.Headers',body)
         self.assertIn('allowed = new HashSet<string>',body)
-    def test_explicit_user_button_only(self):
-        self.assertIn("el('summary','','Diagnostyka MAL')",JS)
-        self.assertIn("diagRun.addEventListener('click',async()=>",JS)
-        self.assertIn("request(`/diagnostics?catalogId=${ctx.catalogId}",JS)
-        self.assertIn("'NIE ZWRÓCONO'",JS)
-        self.assertIn("diagReport.select()",JS)
+    def test_diagnostics_ui_removed_but_backend_stays_private(self):
+        # The debugging endpoint remains protected for future troubleshooting,
+        # but the end-user panel no longer displays or invokes it.
+        self.assertNotIn("el('summary','','Diagnostyka MAL')",JS)
+        self.assertNotIn('diagRun.addEventListener',JS)
+        self.assertNotIn('request(`/diagnostics?',JS)
+        self.assertIn('showMalSaveToast',JS)
     def test_mixed_cards_share_original_0429_badges(self):
         ui=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/client.js').read_text()
         part=ui.split('function attachOverlay(card){',1)[1].split('function attachDescription',1)[0]

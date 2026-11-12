@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.39: poprawny odczyt rewatch MAL i wygląd kart AnimePL z 0.4.29",
+  "description": "MisioFlix 0.4.40: kompaktowy MAL pod Oglądaj dalej, ramka plakatu, łapka oceny i poprawki mobile",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.39.0",
+  "version": "0.4.40.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,
