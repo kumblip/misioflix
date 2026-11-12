@@ -32,7 +32,8 @@ class MAL0430(unittest.TestCase):
         self.assertIn('AuthorizedMalIdAsync',section)
         self.assertIn('GetAuthenticatedUserIdAsync',section)
         self.assertIn('refresh',section)
-        self.assertIn('ReadAllAsync',section)
+        self.assertIn('ReadItemAsync',section)
+        self.assertNotIn('ReadAllAsync',section)
 
     def test_plugin_serves_module(self):
         self.assertIn('"mal.js" => ("Web.mal.js"',CTRL)

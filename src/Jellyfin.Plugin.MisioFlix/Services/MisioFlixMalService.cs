@@ -42,6 +42,11 @@ public sealed class MisioFlixMalService
         int MalUserId = 0, string MalUsername = "");
     private sealed record MalIdentity(int Id, string Username);
     private sealed record CachedList(DateTimeOffset Expires, Dictionary<int, MalEntry> Entries);
+    // Selected-title data is deliberately cached separately: the paginated MAL list can
+    // omit advanced list_status properties (in particular the rewatch counter).
+    // Never share a user's personal list data with another Jellyfin user.
+    private sealed record CachedItem(DateTimeOffset Expires, MalEntry? Entry);
+    private static readonly ConcurrentDictionary<string, CachedItem> ItemCache = new();
     public sealed record MalConnection(bool Connected, int? MalUserId, string? Username);
 
     public MisioFlixMalService(HttpClient client, IApplicationPaths app)
@@ -55,6 +60,14 @@ public sealed class MisioFlixMalService
     private string TokenPath(string userId) => Path.Combine(_folder, UserId(userId) + ".json");
     private static SemaphoreSlim TokenLock(string user) => TokenLocks.GetOrAdd(user, _ => new SemaphoreSlim(1, 1));
     private static SemaphoreSlim ListLock(string user) => ListLocks.GetOrAdd(user, _ => new SemaphoreSlim(1, 1));
+    private static string ItemCacheKey(string user, int malId) =>
+        user + ":" + malId.ToString(CultureInfo.InvariantCulture);
+    private static void ClearItemCache(string user)
+    {
+        // Small, in-memory index only. Does not touch token files or MAL itself.
+        foreach (var key in ItemCache.Keys)
+            if (key.StartsWith(user + ":", StringComparison.Ordinal)) ItemCache.TryRemove(key, out _);
+    }
     private static string RandomUrlSafe(int bytes) => Convert.ToBase64String(RandomNumberGenerator.GetBytes(bytes))
         .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
@@ -174,6 +187,7 @@ public sealed class MisioFlixMalService
                 }
                 finally { gate.Release(); }
                 ListCache.TryRemove(pending.UserId, out _);
+                ClearItemCache(pending.UserId);
             }
             finally { listGate.Release(); }
         }
@@ -284,6 +298,7 @@ public sealed class MisioFlixMalService
                 var path = TokenPath(user);
                 if (File.Exists(path)) File.Delete(path);
                 ListCache.TryRemove(user, out _);
+                ClearItemCache(user);
             }
             finally { gate.Release(); }
         }
@@ -432,6 +447,39 @@ public sealed class MisioFlixMalService
         finally { gate.Release(); }
     }
 
+    /// <summary>
+    /// Read the complete, authenticated status for ONE MAL anime. Unlike the paged
+    /// user list, /anime/{id}?fields=my_list_status includes advanced counters.
+    /// Uses the same per-user lock as writes and keeps a one-hour cache; refresh
+    /// bypasses it only when explicitly requested by the user.
+    /// </summary>
+    public async Task<MalEntry?> ReadItemAsync(string userId, int malId, bool refresh, CancellationToken cancel)
+    {
+        var user = UserId(userId);
+        if (malId <= 0) throw new ArgumentOutOfRangeException(nameof(malId));
+        var key = ItemCacheKey(user, malId);
+        if (!refresh && ItemCache.TryGetValue(key, out var hit) && hit.Expires > DateTimeOffset.UtcNow)
+            return hit.Entry;
+        var gate = ListLock(user);
+        await gate.WaitAsync(cancel).ConfigureAwait(false);
+        try
+        {
+            if (!refresh && ItemCache.TryGetValue(key, out hit) && hit.Expires > DateTimeOffset.UtcNow)
+                return hit.Entry;
+            var access = await AccessAsync(user, cancel).ConfigureAwait(false);
+            if (access is null) return null;
+            using var doc = await SendJsonAsync(HttpMethod.Get,
+                $"anime/{malId}?fields=my_list_status", access, null, cancel).ConfigureAwait(false);
+            var root = doc.RootElement;
+            MalEntry? result = null;
+            if (root.TryGetProperty("my_list_status", out var status) && status.ValueKind == JsonValueKind.Object)
+                result = ReadEntry(malId, status);
+            ItemCache[key] = new CachedItem(DateTimeOffset.UtcNow.AddHours(1), result);
+            return result;
+        }
+        finally { gate.Release(); }
+    }
+
     public async Task<MalEntry> UpdateAsync(string userId, int malId, MalUpdate value, CancellationToken cancel)
     {
         if (malId <= 0) throw new ArgumentOutOfRangeException(nameof(malId));
@@ -455,6 +503,7 @@ public sealed class MisioFlixMalService
         var user = UserId(userId);
         // Writes, disconnect and relink are ordered for this one user only.
         var gate = ListLock(user);
+        MalEntry updated;
         await gate.WaitAsync(cancel).ConfigureAwait(false);
         try
         {
@@ -462,20 +511,28 @@ public sealed class MisioFlixMalService
                 ?? throw new InvalidOperationException("Połącz własne konto MAL przed zapisem");
             using var doc = await SendJsonAsync(HttpMethod.Patch,
                 $"anime/{malId}/my_list_status", token, fields, cancel).ConfigureAwait(false);
+            updated = ReadEntry(malId, doc.RootElement);
             ListCache.TryRemove(user, out _);
-            return ReadEntry(malId, doc.RootElement);
+            ItemCache.TryRemove(ItemCacheKey(user, malId), out _);
         }
         finally { gate.Release(); }
+        // PATCH is already committed. If the follow-up read fails, never report
+        // the successful write as failed, and never invent missing counters.
+        try { return await ReadItemAsync(user, malId, refresh: true, cancel: cancel).ConfigureAwait(false) ?? updated; }
+        catch (HttpRequestException) { return updated; }
     }
 
     private static MalEntry ReadEntry(int id, JsonElement e)
     {
         static int Int(JsonElement x, string key) => x.TryGetProperty(key, out var v) && v.TryGetInt32(out var n) ? n : 0;
+        static int? OptionalCount(JsonElement x, string key) =>
+            x.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number &&
+            v.TryGetInt32(out var n) && n >= 0 ? n : null;
         static string Str(JsonElement x, string key) => x.TryGetProperty(key, out var v) ? v.GetString() ?? "" : "";
         return new MalEntry(id, Str(e, "status"), Int(e, "score"),
-            Int(e, "num_episodes_watched"), Int(e, "num_times_rewatched"));
+            OptionalCount(e, "num_episodes_watched"), OptionalCount(e, "num_times_rewatched"));
     }
 }
 
-public sealed record MalEntry(int mal_id, string status, int score, int episodes_watched, int times_rewatched);
+public sealed record MalEntry(int mal_id, string status, int score, int? episodes_watched, int? times_rewatched);
 public sealed record MalUpdate(string? Status, int? Score, int? EpisodesWatched, int? TimesRewatched);

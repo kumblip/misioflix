@@ -1,4 +1,4 @@
-/* MisioFlix v0.4.35: scoped MAL ID lookup and stable detail UI.
+/* MisioFlix v0.4.36: exact per-anime MAL counters and stable detail UI.
  * Home: OAuth connect/disconnect only, never fetch anime list.
  * Item details: lazy one-item MAL read, local display cache and explicit save/refresh.
  * Does not alter Jellyfin playback, NFO or native React-owned DOM children.
@@ -18,12 +18,12 @@
     const a=apiClient();const t=typeof a?.accessToken==='function'?a.accessToken():a?.accessToken;
     return typeof t==='string'?t:'';
   };
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-mal", Version="0.4.35", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-mal", Version="0.4.36", Token="${token().replace(/["\r\n]/g,'')}"`});
   const el=(tag,cls,text)=>{const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=String(text);return x;};
   const params=()=>new URLSearchParams((window.location.hash||'').split('?')[1]||'');
   const homeRoute=()=>/^#\/(?:home)?(?:\?|$)/i.test(location.hash||'#/home') && (params().get('tab')||'0')==='0' && !params().has('mfCollections');
   const detailId=()=>/^#\/details\?/i.test(location.hash||'')?compact(params().get('id')):'';
-  const cacheKey=(uid,malId)=>`misioflix-mal-v1:${compact(uid)}:${malId}`;
+  const cacheKey=(uid,malId)=>`misioflix-mal-v2:${compact(uid)}:${malId}`;
   const loadCache=(uid,malId)=>{
     try {const a=JSON.parse(localStorage.getItem(cacheKey(uid,malId))||'null');return a&&typeof a.at==='number'&&a.at>Date.now()-7*24*3600e3?a:null;}
     catch{return null;}
@@ -32,7 +32,7 @@
 
   // The home page NEVER contacts MAL. It uses the last user-scoped list snapshot
   // from an anime-detail visit; missing information stays unknown, not Jellyfin-owned.
-  const indexKey=uid=>`misioflix-mal-index-v1:${compact(uid)}`;
+  const indexKey=uid=>`misioflix-mal-index-v2:${compact(uid)}`;
   const mappingKey=uid=>`misioflix-mal-bindings-v1:${compact(uid)}`;
   function indexState(uid){try{const x=JSON.parse(localStorage.getItem(indexKey(uid))||'null');return x&&x.entries&&typeof x.entries==='object'?x:{entries:{},full:false};}catch{return {entries:{},full:false};}}
   function loadIndex(uid){return indexState(uid).entries;}
@@ -100,7 +100,7 @@
   }
 
   const clearCache=uid=>{
-    try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k?.startsWith(`misioflix-mal-v1:${compact(uid)}:`)||k===indexKey(uid)||k===mappingKey(uid))localStorage.removeItem(k);}}catch{}
+    try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if((k?.startsWith(`misioflix-mal-v2:${compact(uid)}:`)||k?.startsWith(`misioflix-mal-v1:${compact(uid)}:`))||k===indexKey(uid)||k===mappingKey(uid))localStorage.removeItem(k);}}catch{}
     window.dispatchEvent(new Event('misioflix-mal-cache-changed'));
   };
   async function request(path,method='GET',body){
@@ -125,9 +125,9 @@
     return {
       status:String(value(obj,'status','Status')||'plan_to_watch'),
       score:Number(value(obj,'score','Score')||0),
-      episodesWatched:optionalCount(obj,'num_episodes_watched','num_watched_episodes',
+      episodesWatched:optionalCount(obj,'episodes_watched','num_episodes_watched','num_watched_episodes',
         'NumEpisodesWatched','NumWatchedEpisodes','episodesWatched','EpisodesWatched'),
-      timesRewatched:optionalCount(obj,'num_times_rewatched','NumTimesRewatched',
+      timesRewatched:optionalCount(obj,'times_rewatched','num_times_rewatched','NumTimesRewatched',
         'timesRewatched','TimesRewatched','numRewatches','NumRewatches')
     };
   }

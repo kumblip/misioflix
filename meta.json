@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix v0.4.35: ochrona natywnego widoku AnimePL przed modyfikacjami DOM; liczniki MAL bezpieczne, odczyt serwera wymaga weryfikacji.",
+  "description": "MisioFlix v0.4.36: ochrona natywnego widoku AnimePL przed modyfikacjami DOM; liczniki MAL bezpieczne, odczyt serwera wymaga weryfikacji.",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.35.0",
+  "version": "0.4.36.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

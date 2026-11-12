@@ -302,8 +302,9 @@ public sealed class MisioFlixController : ControllerBase
             var user = await _catalog.GetAuthenticatedUserIdAsync(Request, cancel).ConfigureAwait(false);
             var connection = await _mal.GetConnectionAsync(user, cancel, refreshProfile:false).ConfigureAwait(false);
             if (!connection.Connected) return Ok(new { connected = false, malId, entry = (MalEntry?)null });
-            var entries = await _mal.ReadAllAsync(user, refresh, cancel).ConfigureAwait(false);
-            entries.TryGetValue(malId, out var entry);
+            // Only this MAL title needs an exact status read, not the full anime list.
+            // The server caches the complete status for one hour per Jellyfin user.
+            var entry = await _mal.ReadItemAsync(user, malId, refresh, cancel).ConfigureAwait(false);
             return Ok(new { connected = true, malId, entry });
         }
         catch (UnauthorizedAccessException) { return Forbid(); }

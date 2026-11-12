@@ -38,7 +38,7 @@ class MalView0433(unittest.TestCase):
         self.assertIn('FirstSeasonMalId',CAT)
         self.assertIn('seasonnumber',CAT)
         self.assertIn('malId:item.malId??item.mal_id??null',HOME)
-        self.assertIn('misioflix-mal-index-v1:',MAL)
+        self.assertRegex(MAL,r'misioflix-mal-index-v[0-9]+:')
         self.assertIn('loadIndex(uid)',MAL)
         self.assertIn('data-mf-mal-id',CLIENT)
     def test_no_mal_network_call_during_home_mount(self):
@@ -58,7 +58,7 @@ class MalView0433(unittest.TestCase):
         self.assertIn("'/update','POST'",MAL)
         self.assertIn('&refresh=true',MAL)
     def test_per_jellyfin_user_isolation(self):
-        self.assertIn('misioflix-mal-index-v1:${compact(uid)}',MAL)
+        self.assertRegex(MAL,r'misioflix-mal-index-v[0-9]+:\$\{compact\(uid\)\}')
         self.assertIn('currentUser===ctx.userId',MAL)
         self.assertIn('onUserSwitch()',MAL)
     def test_not_connected_has_no_fake_jellyfin_score(self):
