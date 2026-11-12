@@ -8,6 +8,10 @@
   if (window.__MISIOFLIX_NATIVE_SKIN_0411__) return;
   window.__MISIOFLIX_NATIVE_SKIN_0411__ = true;
 
+  // Jellyfin 12.4's #/mixed (AnimePL) is a native, virtualized card view.
+  // Its scroller is owned by a WebComponent; NEVER insert/remove children inside
+  // its cards while they are mounting. Keep only passive MAL status attributes.
+  const modernMixedRoute=()=>/^#\/mixed(?:[?&#]|$)/i.test(window.location?.hash||'');
   const CARD = '.card, .MuiCard-root, [data-testid="item-card"], [data-testid="media-card"]';
   const IMAGE = '.cardImageContainer, .MuiCardMedia-root, [data-testid="media-image"]';
   const TITLE = 'h1,h2,h3,h4,.sectionTitle,.sectionTitleTextButton,.MuiTypography-h4,.MuiTypography-h5';
@@ -64,6 +68,7 @@
     return backup;
   }
   function markSections(){
+    if(modernMixedRoute())return; // Preserve the native Jellyfin virtual list unchanged.
     const headings=[...document.body.querySelectorAll(TITLE)].slice(0,110);
     for(const h of headings){
       // v0.4.19 home shelves live in their own scoped subtree, not native sections.
@@ -149,6 +154,8 @@
     return [...new Set(raw.split(/[|,;]/).map(x=>x.trim()).filter(Boolean))].slice(0,3);
   }
   function attachOverlay(card){
+    // Never append nested overlays into a React/WebComponent-managed /mixed card.
+    if(modernMixedRoute())return;
     const surface=card.querySelector('.cardScalable,.MuiCardMedia-root');
     if(!surface)return;
     const kind=cardKind(card), year=cardYear(card);
@@ -211,6 +218,20 @@
     return kind==='anime' && !['Episode','Video'].includes(card.getAttribute('data-type')||'');
   }
   function markCards(){
+    if(modernMixedRoute()){
+      // Attribute-only integration: MAL may paint a border, but no card children
+      // or Jellyfin-owned scrolling/layout elements are ever touched.
+      for(const card of document.body.querySelectorAll(CARD)){
+        if(!card.closest('.itemsContainer')||!card.getAttribute('data-id')||!card.querySelector(IMAGE))continue;
+        const id=String(card.getAttribute('data-id')||'').replace(/-/g,'').toLowerCase();
+        if(card.dataset.mfItemId && card.dataset.mfItemId!==id){
+          for(const key of ['data-mf-anime','data-mf-mal-id','data-mf-watch','data-mf-user-rating'])card.removeAttribute(key);
+        }
+        card.dataset.mfItemId=id;
+        card.dataset.mfCard='1';
+      }
+      return;
+    }
     let n=0;
     for(const card of document.body.querySelectorAll(CARD)){
       if(card.closest('.dialog,#dashboardPage,[role="dialog"]'))continue;
@@ -299,6 +320,19 @@
   }
   function useMetadata(card,data){
     if(!data||typeof data!=='object')return;
+    if(modernMixedRoute()){
+      // Native #/mixed never gets appended badges, descriptions, poster hacks,
+      // or dynamic child-node replacement. MAL still receives its NFO binding.
+      if(data.anime){
+        card.setAttribute('data-mf-anime','1');
+        if(data.malId!==undefined&&data.malId!==null&&data.malId!=='')
+          card.setAttribute('data-mf-mal-id',String(data.malId));
+        if(!card.hasAttribute('data-mf-watch'))card.setAttribute('data-mf-watch','unknown');
+      }else{
+        for(const attr of ['data-mf-anime','data-mf-mal-id','data-mf-watch','data-mf-user-rating'])card.removeAttribute(attr);
+      }
+      return;
+    }
     const set=(name,v)=>{
       if(v===undefined||v===null||v==='')card.removeAttribute(name);
       else card.setAttribute(name,String(v));
