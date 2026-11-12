@@ -1,4 +1,4 @@
-/* MisioFlix v0.4.33: scoped MAL ID lookup and stable detail UI.
+/* MisioFlix v0.4.34: scoped MAL ID lookup and stable detail UI.
  * Home: OAuth connect/disconnect only, never fetch anime list.
  * Item details: lazy one-item MAL read, local display cache and explicit save/refresh.
  * Does not alter Jellyfin playback, NFO or native React-owned DOM children.
@@ -18,7 +18,7 @@
     const a=apiClient();const t=typeof a?.accessToken==='function'?a.accessToken():a?.accessToken;
     return typeof t==='string'?t:'';
   };
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-mal", Version="0.4.33", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-mal", Version="0.4.34", Token="${token().replace(/["\r\n]/g,'')}"`});
   const el=(tag,cls,text)=>{const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=String(text);return x;};
   const params=()=>new URLSearchParams((window.location.hash||'').split('?')[1]||'');
   const homeRoute=()=>/^#\/(?:home)?(?:\?|$)/i.test(location.hash||'#/home') && (params().get('tab')||'0')==='0' && !params().has('mfCollections');
@@ -110,14 +110,25 @@
     return data;
   }
   function value(o,...keys){for(const key of keys){if(o&&o[key]!==undefined&&o[key]!==null)return o[key];}return undefined;}
+  // MAL's read API uses num_episodes_watched, while its write API uses
+  // num_watched_episodes. Older service DTOs may use PascalCase. Crucially,
+  // an ABSENT counter is not zero: defaulting to 0 could erase MAL history.
+  function optionalCount(obj,...keys){
+    const raw=value(obj,...keys);
+    if(raw===undefined||raw===null||raw==='')return null;
+    const number=Number(raw);
+    return Number.isSafeInteger(number)&&number>=0?number:null;
+  }
   function entryFields(item){
-    // Old MAL service models may use PascalCase or MAL's native snake_case.
-    const obj=value(item,'my_list_status','MyListStatus')||item||{};
+    const holder=value(item,'entry','Entry')||item||{};
+    const obj=value(holder,'my_list_status','MyListStatus','list_status','ListStatus')||holder;
     return {
       status:String(value(obj,'status','Status')||'plan_to_watch'),
       score:Number(value(obj,'score','Score')||0),
-      episodesWatched:Number(value(obj,'num_episodes_watched','NumEpisodesWatched','episodesWatched','EpisodesWatched')||0),
-      timesRewatched:Number(value(obj,'num_times_rewatched','NumTimesRewatched','timesRewatched','TimesRewatched')||0)
+      episodesWatched:optionalCount(obj,'num_episodes_watched','num_watched_episodes',
+        'NumEpisodesWatched','NumWatchedEpisodes','episodesWatched','EpisodesWatched'),
+      timesRewatched:optionalCount(obj,'num_times_rewatched','NumTimesRewatched',
+        'timesRewatched','TimesRewatched','numRewatches','NumRewatches')
     };
   }
   let currentUser='',connection=null,connectionPromise=null,dialog=null,homeButton=null;
@@ -253,20 +264,29 @@
     const data=entry?entryFields(entry):null;
     showDetailMalRating(panel,entry);
     const view=el('div','mf-mal-readonly');view.setAttribute('aria-label','Moje dane MAL');
-    const watched=Boolean(data&&(data.status==='completed'||data.timesRewatched>0));
-    const watchCount=watched?1+Math.max(0,data.timesRewatched):0;
+    const watched=Boolean(data&&(data.status==='completed'||(data.timesRewatched??0)>0));
+    // A completed anime with a missing rewatch counter has an UNKNOWN total;
+    // guessing one would be incorrect (e.g. MAL may report five rewatches).
+    const watchCount=!data?null:data.timesRewatched!==null?
+      (watched?1+data.timesRewatched:0):(!watched?0:null);
     const cells=[
       ['Moja ocena',data?.score>0?`${data.score}/10`:'Bez oceny'],
       ['Status',data?statusLabel(data.status):'Nie dodano do MAL'],
       ['Obejrzane',watched?'Tak':'Nie'],
-      ['Pełne obejrzenia',data?String(watchCount):'Brak danych'],
-      ['Obejrzane odcinki',data?String(data.episodesWatched):'Brak danych']
+      ['Pełne obejrzenia',watchCount===null?'Brak danych':String(watchCount)],
+      ['Obejrzane odcinki',data?.episodesWatched===null||!data?'Brak danych':String(data.episodesWatched)]
     ];
     for(const [name,value] of cells){
       const cell=el('div','mf-mal-readonly-cell');cell.append(el('span','mf-mal-readonly-label',name),el('strong','mf-mal-readonly-value',value));view.append(cell);
     }
     main.append(view);
     const note=el('p','mf-mal-summary',fromCache?'Dane z pamięci lokalnej. Możesz je odświeżyć z MAL.':'Dane zalogowanego użytkownika MyAnimeList.');main.append(note);
+    if(data&&(data.episodesWatched===null||data.timesRewatched===null||
+      (data.status==='completed'&&data.episodesWatched===0))){
+      const warning=el('p','mf-mal-summary mf-mal-counter-warning',
+        'Uwaga: liczniki mogą być niepełne (np. ukończone anime z 0 odcinków). Nie są wysyłane do MAL, dopóki ręcznie ich nie zmienisz.');
+      main.append(warning);
+    }
     const actionsOutside=el('div','mf-mal-view-actions');
     const refresh=el('button','mf-mal-action-secondary','Odśwież z MAL');refresh.type='button';
     const liveMessage=el('span','mf-mal-save-message',notice);liveMessage.setAttribute('role','status');
@@ -276,12 +296,18 @@
     const status=makeSelect(statuses,data?.status||'plan_to_watch');
     const scores=[['0','Bez oceny'],...Array.from({length:10},(_,i)=>[String(i+1),`${i+1}/10`])];
     const score=makeSelect(scores,data?.score||0);
-    const episodes=el('input');episodes.type='number';episodes.min='0';episodes.max='9999';episodes.step='1';episodes.value=String(Math.max(0,data?.episodesWatched||0));
-    const rewatches=el('input');rewatches.type='number';rewatches.min='0';rewatches.max='9999';rewatches.step='1';rewatches.value=String(Math.max(0,data?.timesRewatched||0));
+    const episodes=el('input');episodes.type='number';episodes.min='0';episodes.max='9999';episodes.step='1';episodes.value=data?.episodesWatched===null||!data?'':String(data.episodesWatched);
+    const rewatches=el('input');rewatches.type='number';rewatches.min='0';rewatches.max='9999';rewatches.step='1';rewatches.value=data?.timesRewatched===null||!data?'':String(data.timesRewatched);
+    // Never echo server-supplied counters back unless the user edited the field.
+    // A legacy service could deserialize missing MAL values as 0: this protects
+    // real MAL history even when the current UI displays that incorrect 0.
+    let episodesEdited=false,rewatchesEdited=false;
+    episodes.addEventListener('input',()=>{episodesEdited=true;});
+    rewatches.addEventListener('input',()=>{rewatchesEdited=true;});
     const form=el('form','mf-mal-form');form.append(
       inputRow('Status',status),inputRow('Ocena',score),
-      inputRow('Obejrzane odcinki',episodes,'Liczba odcinków oznaczonych w MAL jako obejrzane.'),
-      inputRow('Ponowne pełne obejrzenia',rewatches,'MAL liczy tylko powtórki, nie pierwsze obejrzenie.')
+      inputRow('Obejrzane odcinki',episodes,'Puste pole = nie zmieniaj licznika MAL. Wpisz 0 tylko, gdy świadomie chcesz go wyzerować.'),
+      inputRow('Ponowne pełne obejrzenia',rewatches,'MAL liczy tylko powtórki, nie pierwsze obejrzenie. Puste pole = bez zmiany.')
     );
     const saveArea=el('div','mf-mal-detail-actions');
     const save=el('button','mf-mal-action','Zapisz w MAL');save.type='submit';
@@ -290,8 +316,12 @@
     const isSame=()=>ctx.generation===detailGeneration&&currentUser===ctx.userId&&panel.isConnected;
     form.addEventListener('submit',async event=>{
       event.preventDefault();if(!form.isConnected)return;
-      const fields=[Number(score.value),Number(episodes.value),Number(rewatches.value)];
-      if(fields.some(v=>!Number.isSafeInteger(v)||v<0)||fields[0]>10||fields[1]>9999||fields[2]>9999){message.textContent='Nieprawidłowe wartości.';return;}
+      const optionalInput=(element,edited)=>!edited||element.value.trim()===''?null:Number(element.value);
+      const fields=[Number(score.value),optionalInput(episodes,episodesEdited),optionalInput(rewatches,rewatchesEdited)];
+      if(!Number.isSafeInteger(fields[0])||fields[0]<0||fields[0]>10||
+        fields.slice(1).some(v=>v!==null&&(!Number.isSafeInteger(v)||v<0||v>9999))){
+        message.textContent='Nieprawidłowe wartości.';return;
+      }
       save.disabled=true;refresh.disabled=true;message.textContent='Zapisywanie…';
       try{
         const answer=await request('/update','POST',{catalogId:ctx.catalogId,seasonId:ctx.seasonId||null,status:status.value,score:fields[0],episodesWatched:fields[1],timesRewatched:fields[2]});
