@@ -32,7 +32,7 @@ class MalView0433(unittest.TestCase):
         self.assertIn("if(!entry)return 'unknown'",MAL)
         self.assertIn("item.anime?'unknown':state",HOME)
         self.assertIn("if(!item.anime)addStat(item.userRating",HOME)
-        self.assertIn("if(data.anime)card.setAttribute('data-mf-watch','unknown')",CLIENT)
+        self.assertIn("card.setAttribute('data-mf-watch','unknown')",CLIENT)
     def test_all_home_mal_values_from_nfo_and_local_snapshot(self):
         self.assertIn('malId = isAnime ?',CAT)
         self.assertIn('FirstSeasonMalId',CAT)

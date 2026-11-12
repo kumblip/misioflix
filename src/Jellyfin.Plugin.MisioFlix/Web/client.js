@@ -8,9 +8,9 @@
   if (window.__MISIOFLIX_NATIVE_SKIN_0411__) return;
   window.__MISIOFLIX_NATIVE_SKIN_0411__ = true;
 
-  // Jellyfin 12.4's #/mixed (AnimePL) is a native, virtualized card view.
-  // Its scroller is owned by a WebComponent; NEVER insert/remove children inside
-  // its cards while they are mounting. Keep only passive MAL status attributes.
+  // Jellyfin 12.4's #/mixed (AnimePL) keeps its original card/router/scroller.
+  // Reuse the same noninteractive visual ornaments as v0.4.29, not a separate
+  // plain-text CSS lookalike. Cards may be recycled: always check data-id.
   const modernMixedRoute=()=>/^#\/mixed(?:[?&#]|$)/i.test(window.location?.hash||'');
   const CARD = '.card, .MuiCard-root, [data-testid="item-card"], [data-testid="media-card"]';
   const IMAGE = '.cardImageContainer, .MuiCardMedia-root, [data-testid="media-image"]';
@@ -154,8 +154,8 @@
     return [...new Set(raw.split(/[|,;]/).map(x=>x.trim()).filter(Boolean))].slice(0,3);
   }
   function attachOverlay(card){
-    // Never append nested overlays into a React/WebComponent-managed /mixed card.
-    if(modernMixedRoute())return;
+    // v0.4.29 ornament: same markup and paw icons in home/native library views.
+    // No href, router, card owner or scrolling element is replaced.
     const surface=card.querySelector('.cardScalable,.MuiCardMedia-root');
     if(!surface)return;
     const kind=cardKind(card), year=cardYear(card);
@@ -217,36 +217,8 @@
     // Episode stills are intrinsically 16:9: preserve them, do not crop faces.
     return kind==='anime' && !['Episode','Video'].includes(card.getAttribute('data-type')||'');
   }
-  // #/mixed cards are React/WebComponent-owned. CSS pseudo-elements read these
-  // attributes without changing any child elements, scroll controllers or click links.
-  function paintMixedCard(card){
-    if(!modernMixedRoute() || card.getAttribute('data-mf-anime')!=='1')return;
-    const image=card.querySelector('.cardImageContainer');
-    const scalable=card.querySelector('.cardScalable');
-    const box=card.querySelector('.cardBox');
-    if(!image || !scalable)return;
-    const year=card.getAttribute('data-mf-year')||cardYear(card);
-    const format=String(card.getAttribute('data-mf-format')||'').trim();
-    scalable.setAttribute('data-mf-mixed-heading','ANIME'+(year?'\n'+year:''));
-    if(format)scalable.setAttribute('data-mf-mixed-format',format);
-    const seasons=shortNumber(card.getAttribute('data-mf-seasons'));
-    const episodes=shortNumber(card.getAttribute('data-mf-episodes'));
-    const rating=shortNumber(card.getAttribute('data-mf-user-rating'),false);
-    const lines=[];
-    if(seasons)lines.push(seasons+' 🐾');
-    if(episodes)lines.push(episodes+' 🐾');
-    if(rating)lines.push(rating+'/10');
-    if(lines.length)scalable.setAttribute('data-mf-mixed-stats',lines.join('\n'));
-    else scalable.removeAttribute('data-mf-mixed-stats');
-    const chips=genres(card);
-    if(chips.length)image.setAttribute('data-mf-mixed-genres',chips.join('  ·  '));
-    else image.removeAttribute('data-mf-mixed-genres');
-    // Summary is textContent-safe: metadata is used as a CSS attr(), never HTML.
-    // Only the original .cardBox gets an attribute, not an inserted element.
-    const description=String(card.getAttribute('data-mf-description')||'').replace(/\s+/g,' ').trim();
-    if(box && description)box.setAttribute('data-mf-mixed-description',description.slice(0,180));
-    else box?.removeAttribute('data-mf-mixed-description');
-  }
+  // v0.4.29 library presentation, including in #/mixed. Only previously
+  // existing Jellyfin cards are decorated, never copied or recreated.
   function clearMixedCard(card){
     card.querySelector('.cardScalable')?.removeAttribute('data-mf-mixed-heading');
     card.querySelector('.cardScalable')?.removeAttribute('data-mf-mixed-format');
@@ -254,32 +226,20 @@
     card.querySelector('.cardImageContainer')?.removeAttribute('data-mf-mixed-genres');
     card.querySelector('.cardBox')?.removeAttribute('data-mf-mixed-description');
   }
+  function paintMixedCard(card){
+    // Same v0.4.29 overlay is used for every Jellyfin anime card.
+    if(card.getAttribute('data-mf-anime')==='1')attachOverlay(card);
+  }
   function markCards(){
-    // Scope pseudo-element card decorations to the actual native AnimePL route.
     document.documentElement.classList.toggle('mf-modern-mixed-route',modernMixedRoute());
-    if(modernMixedRoute()){
-      // Attribute-only integration: never insert/remove children of a virtual card.
-      for(const card of document.body.querySelectorAll(CARD)){
-        if(!card.closest('.itemsContainer')||!card.getAttribute('data-id')||!card.querySelector(IMAGE))continue;
-        const id=String(card.getAttribute('data-id')||'').replace(/-/g,'').toLowerCase();
-        if(card.dataset.mfItemId && card.dataset.mfItemId!==id){
-          for(const key of ['data-mf-anime','data-mf-mal-id','data-mf-watch','data-mf-user-rating',
-            'data-mf-year','data-mf-format','data-mf-seasons','data-mf-episodes','data-mf-genres',
-            'data-mf-description','data-mf-overlay-ready'])card.removeAttribute(key);
-          clearMixedCard(card);
-          seenCards.delete(card); // Virtualized slot now represents another item.
-        }
-        card.dataset.mfItemId=id;
-        card.dataset.mfCard='1';
-        paintMixedCard(card);
-      }
-      return;
-    }
     let n=0;
     for(const card of document.body.querySelectorAll(CARD)){
       if(card.closest('.dialog,#dashboardPage,[role="dialog"]'))continue;
+      // Virtualized #/mixed slots can be reused for a DIFFERENT anime.
       resetCardIfReused(card);
       if(!card.querySelector(IMAGE))continue;
+      if(modernMixedRoute() && (!card.closest('.itemsContainer') || !card.getAttribute('data-id')))continue;
+      clearMixedCard(card); // Remove v0.4.37 pseudo data attributes, if any.
       card.dataset.mfCard='1';
       const kind=cardKind(card);
       if(kind)card.dataset.mfKind=kind;
@@ -296,7 +256,7 @@
         else if(state)card.dataset.mfWatch=state;
         else card.removeAttribute('data-mf-watch');
       }
-      // Very small DOM ornament inside Jellyfin's native image wrapper: noninteractive.
+      // v0.4.29's exact paw/genre/year badge DOM, pointer-events:none.
       if(n++<220)attachOverlay(card);
     }
   }
@@ -363,43 +323,15 @@
   }
   function useMetadata(card,data){
     if(!data||typeof data!=='object')return;
-    if(modernMixedRoute()){
-      // Native #/mixed never gets appended badges, descriptions or modified children.
-      // Its original poster, title, scroll and click navigation stay owned by Jellyfin.
-      const set=(key,value)=>{
-        if(value===undefined||value===null||value==='')card.removeAttribute(key);
-        else card.setAttribute(key,String(value));
-      };
-      const before=card.getAttribute('data-mf-mal-id');
-      if(data.anime){
-        card.setAttribute('data-mf-anime','1');
-        card.setAttribute('data-mf-overlay-ready','1');
-        set('data-mf-year',data.year);
-        set('data-mf-format',data.format);
-        set('data-mf-seasons',data.seasons);
-        set('data-mf-episodes',data.episodes);
-        set('data-mf-mal-id',data.malId);
-        set('data-mf-genres',Array.isArray(data.genres)?data.genres.slice(0,3).join('|'):'');
-        set('data-mf-description',data.description);
-        if(!card.hasAttribute('data-mf-watch'))card.setAttribute('data-mf-watch','unknown');
-      }else{
-        for(const attr of ['data-mf-anime','data-mf-mal-id','data-mf-watch','data-mf-user-rating',
-          'data-mf-year','data-mf-format','data-mf-seasons','data-mf-episodes','data-mf-genres',
-          'data-mf-description'])card.removeAttribute(attr);
-        clearMixedCard(card);
-      }
-      paintMixedCard(card);
-      // Notify the existing MAL local-cache decorator once the NFO ID becomes known.
-      // No remote MAL request is initiated from the library route.
-      if(data.anime && before!==card.getAttribute('data-mf-mal-id'))
-        window.dispatchEvent(new Event('misioflix-mal-binding-ready'));
-      return;
-    }
+    // One visual component for Home's native cards, AnimePL and other libraries:
+    // restore the proven v0.4.29 overlay instead of the pseudo-content imitation.
+    const before=card.getAttribute('data-mf-mal-id')||'';
     const set=(name,v)=>{
       if(v===undefined||v===null||v==='')card.removeAttribute(name);
       else card.setAttribute(name,String(v));
     };
     if(data.anime)card.setAttribute('data-mf-anime','1');
+    else card.removeAttribute('data-mf-anime');
     card.setAttribute('data-mf-overlay-ready','1');
     set('data-mf-year',data.year);
     set('data-mf-format',data.format);
@@ -410,12 +342,24 @@
     set('data-mf-genres',Array.isArray(data.genres)?data.genres.slice(0,3).join('|'):'');
     attachDescription(card,data.description);
     if(cardIsAnimePoster(card))card.setAttribute('data-mf-anime-poster','1');
+    else card.removeAttribute('data-mf-anime-poster');
     syncPrimaryPoster(card,data);
     const status=data.watchStatus;
-    if(data.anime)card.setAttribute('data-mf-watch','unknown');
-    else if(['unwatched','started','watched'].includes(status))card.setAttribute('data-mf-watch',status);
+    if(data.anime){
+      // Only the logged-in MAL user's own list controls anime frames. Preserve
+      // already-hydrated MAL status on re-renders of the SAME anime.
+      if(before!==String(data.malId||'')){
+        card.setAttribute('data-mf-watch','unknown');
+        card.removeAttribute('data-mf-user-rating');
+      }
+    }else if(['unwatched','started','watched'].includes(status)){
+      card.setAttribute('data-mf-watch',status);
+    }else card.removeAttribute('data-mf-watch');
     attachOverlay(card);
+    if(data.anime && before!==String(data.malId||''))
+      window.dispatchEvent(new Event('misioflix-mal-binding-ready'));
   }
+
   async function flushMetadata(){
     hydrationTimer=null;
     if(hydrationBusy||overlayDisabled||!overlayQueue.size)return;
@@ -499,15 +443,13 @@
     if(io){io.disconnect();io=null;}
     seenCards=new WeakSet();overlayDisabled=false;
     for(const card of document.body.querySelectorAll('[data-mf-card="1"]')){
-      for(const key of ['data-mf-year','data-mf-format','data-mf-genres',
+      for(const key of ['data-mf-mal-id','data-mf-item-id','data-mf-year','data-mf-format','data-mf-genres',
         'data-mf-seasons','data-mf-episodes','data-mf-user-rating',
         'data-mf-anime','data-mf-overlay-ready','data-mf-watch'])card.removeAttribute(key);
       clearMixedCard(card);
       card.removeAttribute('data-mf-description');
-      if(!modernMixedRoute()){
-        card.querySelector('.mf-native-overlay')?.remove();
-        card.querySelector('.mf-native-description')?.remove();
-      }
+      card.querySelector('.mf-native-overlay')?.remove();
+      card.querySelector('.mf-native-description')?.remove();
       card.removeAttribute('data-mf-has-summary');
       card.removeAttribute('data-mf-anime-poster');
       card.removeAttribute('data-mf-redundant-year');

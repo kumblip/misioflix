@@ -1,4 +1,4 @@
-/* MisioFlix v0.4.36: exact per-anime MAL counters and stable detail UI.
+/* MisioFlix v0.4.39: exact per-anime MAL counters and stable detail UI.
  * Home: OAuth connect/disconnect only, never fetch anime list.
  * Item details: lazy one-item MAL read, local display cache and explicit save/refresh.
  * Does not alter Jellyfin playback, NFO or native React-owned DOM children.
@@ -18,12 +18,12 @@
     const a=apiClient();const t=typeof a?.accessToken==='function'?a.accessToken():a?.accessToken;
     return typeof t==='string'?t:'';
   };
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-mal", Version="0.4.36", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-mal", Version="0.4.39", Token="${token().replace(/["\r\n]/g,'')}"`});
   const el=(tag,cls,text)=>{const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=String(text);return x;};
   const params=()=>new URLSearchParams((window.location.hash||'').split('?')[1]||'');
   const homeRoute=()=>/^#\/(?:home)?(?:\?|$)/i.test(location.hash||'#/home') && (params().get('tab')||'0')==='0' && !params().has('mfCollections');
   const detailId=()=>/^#\/details\?/i.test(location.hash||'')?compact(params().get('id')):'';
-  const cacheKey=(uid,malId)=>`misioflix-mal-v2:${compact(uid)}:${malId}`;
+  const cacheKey=(uid,malId)=>`misioflix-mal-v3:${compact(uid)}:${malId}`;
   const loadCache=(uid,malId)=>{
     try {const a=JSON.parse(localStorage.getItem(cacheKey(uid,malId))||'null');return a&&typeof a.at==='number'&&a.at>Date.now()-7*24*3600e3?a:null;}
     catch{return null;}
@@ -100,7 +100,7 @@
   }
 
   const clearCache=uid=>{
-    try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if((k?.startsWith(`misioflix-mal-v2:${compact(uid)}:`)||k?.startsWith(`misioflix-mal-v1:${compact(uid)}:`))||k===indexKey(uid)||k===mappingKey(uid))localStorage.removeItem(k);}}catch{}
+    try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if((k?.startsWith(`misioflix-mal-v3:${compact(uid)}:`)||k?.startsWith(`misioflix-mal-v2:${compact(uid)}:`)||k?.startsWith(`misioflix-mal-v1:${compact(uid)}:`))||k===indexKey(uid)||k===mappingKey(uid))localStorage.removeItem(k);}}catch{}
     window.dispatchEvent(new Event('misioflix-mal-cache-changed'));
   };
   async function request(path,method='GET',body){
@@ -264,14 +264,12 @@
     const data=entry?entryFields(entry):null;
     showDetailMalRating(panel,entry);
     const view=el('div','mf-mal-readonly');view.setAttribute('aria-label','Moje dane MAL');
-    const watched=Boolean(data&&(data.status==='completed'||(data.timesRewatched??0)>0));
     // MAL's num_times_rewatched is already the count of REWATCHES.
     // Display it verbatim. Do not add the initial viewing to this field.
     const rewatchCount=data?.timesRewatched ?? null;
     const cells=[
       ['Moja ocena',data?.score>0?`${data.score}/10`:'Bez oceny'],
       ['Status',data?statusLabel(data.status):'Nie dodano do MAL'],
-      ['Obejrzane',watched?'Tak':'Nie'],
       ['Ponowne obejrzenia',rewatchCount===null?'Brak danych':String(rewatchCount)],
       ['Obejrzane odcinki',data?.episodesWatched===null||!data?'Brak danych':String(data.episodesWatched)]
     ];

@@ -473,8 +473,14 @@ public sealed class MisioFlixMalService
                 return hit.Entry;
             var access = await AccessAsync(user, cancel).ConfigureAwait(false);
             if (access is null) return null;
+            // MAL can omit num_times_rewatched when only my_list_status is requested.
+            // The 0.4.38 diagnostics confirmed that the explicit nested selector
+            // returns the real rewatch count (e.g. MAL 1195 -> 6). Do not replace
+            // a missing value with zero and do not scrape the HTML website.
+            var requested = Uri.EscapeDataString(
+                "my_list_status{status,score,num_episodes_watched,num_times_rewatched,is_rewatching}");
             using var doc = await SendJsonAsync(HttpMethod.Get,
-                $"anime/{malId}?fields=my_list_status", access, null, cancel).ConfigureAwait(false);
+                $"anime/{malId}?fields={requested}", access, null, cancel).ConfigureAwait(false);
             var root = doc.RootElement;
             MalEntry? result = null;
             if (root.TryGetProperty("my_list_status", out var status) && status.ValueKind == JsonValueKind.Object)

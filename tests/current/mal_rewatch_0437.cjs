@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '../..');
 const source = fs.readFileSync(path.join(root, 'src/Jellyfin.Plugin.MisioFlix/Web/mal.js'), 'utf8');
-const start = source.indexOf('    const watched=Boolean(', source.indexOf('function renderEntry('));
+const start = source.indexOf('    const rewatchCount=', source.indexOf('function renderEntry('));
 const end = source.indexOf('    for(const [name,value] of cells)', start);
 assert(start > 0 && end > start, 'Nie znaleziono renderowania panelu MAL');
 // Exercise the SAME JavaScript expression used to build the actual view.
@@ -14,7 +14,8 @@ const watched = format({status:'completed',score:10,timesRewatched:5,episodesWat
 assert.equal(watched['Ponowne obejrzenia'], '5', 'Nie wolno dodawać pierwszego seansu do rewatches');
 assert.equal(watched['Obejrzane odcinki'], '13');
 assert.equal(watched['Moja ocena'], '10/10');
-assert.equal(watched['Obejrzane'], 'Tak');
+assert.equal(watched['Status'], 'completed');
+assert(!('Obejrzane' in watched), 'Status obejrzane wystarczy bez dodatkowego pola Tak/Nie');
 assert.equal(format({status:'completed',timesRewatched:0,episodesWatched:13})['Ponowne obejrzenia'], '0');
 assert.equal(format({status:'completed',timesRewatched:null,episodesWatched:null})['Ponowne obejrzenia'], 'Brak danych');
 assert.equal(format({status:'watching',timesRewatched:2,episodesWatched:7})['Ponowne obejrzenia'], '2');

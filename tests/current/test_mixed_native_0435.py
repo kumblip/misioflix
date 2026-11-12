@@ -13,12 +13,15 @@ class MixedNative0435(unittest.TestCase):
         self.assertIn(f'<AssemblyVersion>{version}</AssemblyVersion>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
         for name in ('client.js','mal.js'):
             subprocess.run(['node','--check',str(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web'/name)],check=True,capture_output=True)
-    def test_native_mixed_route_has_safe_path(self):
-        self.assertIn('const modernMixedRoute=',JS)
-        self.assertIn('if(modernMixedRoute())return; // Preserve the native Jellyfin virtual list unchanged.', JS)
-        self.assertIn('function attachOverlay(card){\n    // Never append nested overlays',JS)
-        self.assertIn('if(modernMixedRoute()){\n      // Attribute-only integration',JS)
-        self.assertIn('if(modernMixedRoute()){\n      // Native #/mixed never gets appended badges',JS)
+    def test_mixed_route_restores_original_0429_overlay(self):
+        self.assertIn('const modernMixedRoute=', JS)
+        self.assertIn('if(modernMixedRoute() && (!card.closest(', JS)
+        self.assertIn('function attachOverlay(card){', JS)
+        self.assertIn("overlay=makeEl('div','mf-native-overlay')", JS)
+        self.assertIn("overlay.setAttribute('aria-hidden','true')",JS)
+        self.assertIn('appendChild(paw(s.color))',JS)
+        self.assertIn('card.dataset.mfItemId',JS) if 'card.dataset.mfItemId' in JS else self.assertIn("card.setAttribute('data-mf-item-id',id)", JS)
+
     def test_mal_counts_not_fabricated(self):
         self.assertIn("timesRewatched:optionalCount",MAL)
         self.assertIn("episodesWatched:optionalCount",MAL)

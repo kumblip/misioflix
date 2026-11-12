@@ -8,7 +8,7 @@ JS=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/mal.js').read_text()
 
 class MalDiagnostics0438(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.38.0')
+        self.assertGreaterEqual(tuple(map(int,json.loads((ROOT/'meta.json').read_text())['version'].split('.'))),(0,4,38,0))
     def test_authenticated_and_nfo_bound(self):
         text=CTRL.split('[HttpGet("api/mal/diagnostics")]')[1].split('[HttpGet("api/mal/connect")]')[0]
         self.assertIn('[Authorize]',text)
@@ -44,13 +44,13 @@ class MalDiagnostics0438(unittest.TestCase):
         self.assertIn("request(`/diagnostics?catalogId=${ctx.catalogId}",JS)
         self.assertIn("'NIE ZWRÓCONO'",JS)
         self.assertIn("diagReport.select()",JS)
-    def test_mixed_cards_use_home_labels_without_dom_injection(self):
+    def test_mixed_cards_share_original_0429_badges(self):
         ui=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/client.js').read_text()
-        part=ui.split('function paintMixedCard(card){',1)[1].split('function clearMixedCard',1)[0]
-        self.assertIn("lines.push(seasons+' 🐾')",part)
-        self.assertIn("lines.push(episodes+' 🐾')",part)
-        self.assertNotIn("lines.push('Sez. '",part)
-        self.assertNotIn('.appendChild(',part)
+        part=ui.split('function attachOverlay(card){',1)[1].split('function attachDescription',1)[0]
+        self.assertIn('appendChild(paw(s.color))',part)
+        self.assertIn("'mf-native-year'",part)
+        self.assertIn("'mf-native-genres'",part)
+
     def test_javascript_syntax(self):
         subprocess.run(['node','--check',str(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/mal.js')],check=True)
 if __name__=='__main__':unittest.main()

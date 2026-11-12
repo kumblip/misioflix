@@ -65,7 +65,7 @@ assert.deepEqual(counters({status:'completed',score:10}),['completed',10,null,nu
         subprocess.run(['node','-e',src+check],check=True,text=True,capture_output=True)
 
     def test_old_local_cache_not_reused(self):
-        self.assertIn('misioflix-mal-v2:',JS)
+        self.assertIn('misioflix-mal-v3:',JS)
         self.assertIn('misioflix-mal-index-v2:',JS)
         self.assertIn('cacheTime=60*60*1000',JS)
         self.assertIn("!edited||element.value.trim()===''?null:Number(element.value)",JS)
