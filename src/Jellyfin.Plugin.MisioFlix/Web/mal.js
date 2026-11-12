@@ -265,15 +265,14 @@
     showDetailMalRating(panel,entry);
     const view=el('div','mf-mal-readonly');view.setAttribute('aria-label','Moje dane MAL');
     const watched=Boolean(data&&(data.status==='completed'||(data.timesRewatched??0)>0));
-    // A completed anime with a missing rewatch counter has an UNKNOWN total;
-    // guessing one would be incorrect (e.g. MAL may report five rewatches).
-    const watchCount=!data?null:data.timesRewatched!==null?
-      (watched?1+data.timesRewatched:0):(!watched?0:null);
+    // MAL's num_times_rewatched is already the count of REWATCHES.
+    // Display it verbatim. Do not add the initial viewing to this field.
+    const rewatchCount=data?.timesRewatched ?? null;
     const cells=[
       ['Moja ocena',data?.score>0?`${data.score}/10`:'Bez oceny'],
       ['Status',data?statusLabel(data.status):'Nie dodano do MAL'],
       ['Obejrzane',watched?'Tak':'Nie'],
-      ['Pełne obejrzenia',watchCount===null?'Brak danych':String(watchCount)],
+      ['Ponowne obejrzenia',rewatchCount===null?'Brak danych':String(rewatchCount)],
       ['Obejrzane odcinki',data?.episodesWatched===null||!data?'Brak danych':String(data.episodesWatched)]
     ];
     for(const [name,value] of cells){
@@ -520,6 +519,7 @@
     mo.observe(document.body,{childList:true,subtree:true});
     ['hashchange','pageshow','popstate'].forEach(e=>window.addEventListener(e,schedule));
     window.addEventListener('misioflix-mal-cache-changed',schedule);
+    window.addEventListener('misioflix-mal-binding-ready',schedule);
     window.addEventListener('misioflix-mal-updated',()=>{
       connection=null;detailSessions.clear();detailGeneration++;indexRequestedUser='';detailPanel?.remove();
       detailPanel=null;currentDetail='';currentDetailKey='';schedule();

@@ -1119,3 +1119,55 @@ html.misioflix-skin .mf-home-poster[data-mf-watch="unknown"] .mf-home-cover,html
 html.misioflix-skin .mf-home-mal-score{display:inline-block;margin-left:4px;padding:4px 6px;border-radius:7px;background:rgba(35,17,40,.85);border:1px solid #d985b5;color:#ffdaef;font-size:11px;font-weight:700}
 html.misioflix-skin .card[data-mf-anime="1"][data-mf-watch="unknown"] .cardImageContainer{outline:0!important;box-shadow:none!important;border-color:transparent!important}
 @media(max-width:650px){html.misioflix-skin .mf-mal-readonly{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v0.4.37: restored MisioFlix presentation for the virtualized AnimePL #/mixed view.
+   ONLY pseudo-elements and existing element attributes. Absolutely no nested
+   DOM insertion into Jellyfin's WebComponents or its scroll host. */
+html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"]:has(.cardScalable[data-mf-mixed-heading]) .cardScalable{
+  position:relative;isolation:isolate;
+}
+html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"] .cardScalable[data-mf-mixed-heading]::before{
+  content:attr(data-mf-mixed-heading);white-space:pre-line;position:absolute;
+  left:7px;top:7px;z-index:10;pointer-events:none;max-width:62%;
+  padding:4px 6px;border-radius:6px;background:rgba(24,13,30,.87);
+  color:#ffecf6;font-size:11px;font-weight:760;line-height:1.45;
+  box-shadow:0 2px 7px #0008;text-align:left;
+}
+html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"] .cardScalable[data-mf-mixed-stats]::after{
+  content:attr(data-mf-mixed-stats);white-space:pre-line;position:absolute;
+  right:6px;top:7px;z-index:10;pointer-events:none;max-width:42%;
+  padding:5px 7px;border:1px solid rgba(255,210,235,.48);border-radius:9px;
+  background:rgba(20,10,27,.86);color:#ffedf6;text-align:right;
+  font-size:11px;font-weight:760;line-height:1.45;font-variant-numeric:tabular-nums;
+  box-shadow:0 2px 8px #0009;
+}
+html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"] .cardImageContainer[data-mf-mixed-genres]::after{
+  content:attr(data-mf-mixed-genres);position:absolute;left:5px;right:5px;bottom:5px;
+  z-index:9;pointer-events:none;max-height:32px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;box-sizing:border-box;padding:4px 6px;border-radius:9px;
+  background:rgba(34,17,38,.87);border:1px solid rgba(255,220,240,.25);
+  color:#fff4fb;text-align:left;font-size:10px;line-height:1.3;
+}
+/* Preserve the native title/link and show NFO description as passive CSS text. */
+html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"] .cardBox[data-mf-mixed-description]::after{
+  content:attr(data-mf-mixed-description);display:-webkit-box;-webkit-box-orient:vertical;
+  -webkit-line-clamp:3;overflow:hidden;white-space:normal;max-height:4.2em;
+  margin:5px 8px 11px;color:#d9c4d4;font-size:11px;line-height:1.4;text-align:left;
+  pointer-events:none;
+}
+html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"]:has(.cardBox[data-mf-mixed-description]) .cardText-secondary{display:none}
+/* Status from logged-in user's MAL index, never from Jellyfin's played badge. */
+html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"][data-mf-watch="watched"] .cardImageContainer{
+  outline:2px solid #45b879!important;outline-offset:-2px;
+}
+html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"][data-mf-watch="started"] .cardImageContainer{
+  outline:2px solid #e6a23c!important;outline-offset:-2px;
+}
+html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"][data-mf-watch="unwatched"] .cardImageContainer{
+  outline:2px solid #f4a5ce!important;outline-offset:-2px;
+}
+@media(max-width:650px){
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"] .cardScalable[data-mf-mixed-heading]::before,
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"] .cardScalable[data-mf-mixed-stats]::after{font-size:9px;padding:3px 4px}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-card="1"][data-mf-anime="1"] .cardImageContainer[data-mf-mixed-genres]::after{font-size:9px}
+}

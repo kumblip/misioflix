@@ -32,7 +32,7 @@ assert.deepEqual((()=>{let x=entryFields({status:'completed',num_episodes_watche
         self.assertIn("episodes.addEventListener('input'",JS)
         self.assertIn("episodesWatched:fields[1],timesRewatched:fields[2]",JS)
         self.assertIn("data?.timesRewatched===null",JS)
-        self.assertIn("watchCount===null?'Brak danych'",JS)
+        self.assertIn("rewatchCount===null?'Brak danych'",JS)
         self.assertIn("data?.episodesWatched===null",JS)
         self.assertIn('Puste pole = nie zmieniaj licznika MAL',JS)
 

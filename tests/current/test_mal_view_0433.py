@@ -19,7 +19,7 @@ class MalView0433(unittest.TestCase):
         self.assertIn("el('details','mf-mal-editor')",MAL)
         self.assertIn("'Edytuj MAL'",MAL)
         self.assertIn('editor.open=Boolean(editorOpen)',MAL)
-        self.assertIn("['Pełne obejrzenia'",MAL)
+        self.assertIn("['Ponowne obejrzenia'",MAL)
     def test_personal_rating_replaces_community_only_on_anime(self):
         self.assertIn('mf-detail-mal-rating',MAL)
         self.assertIn('Osobista ocena zalogowanego użytkownika MyAnimeList',MAL)
