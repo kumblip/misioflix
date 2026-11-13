@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.42: wyszukiwarka anime 3 kolumny na telefonie, tytuły anime w jednej linii",
+  "description": "MisioFlix 0.4.43: różowa ramka nieobejrzanych anime w szczegółach; panel MAL tylko dla anime",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.42.0",
+  "version": "0.4.43.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

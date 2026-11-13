@@ -265,7 +265,10 @@
     const page=panel.closest('#itemDetailPage');if(!page)return;
     // Only MAL-backed anime detail pages. Do not overwrite Jellyfin's stored rating.
     page.classList.add('mf-detail-mal-rating');
-    page.setAttribute('data-mf-mal-watch',statusState(entry));
+    // A successful MAL lookup with no list entry means this verified anime has
+    // never been added to the user's MAL list. Only here is null = unwatched;
+    // disconnected, failed and unverified states must remain unknown.
+    page.setAttribute('data-mf-mal-watch',entry===null?'unwatched':statusState(entry));
     let label=page.querySelector('.mf-detail-mal-badge');
     if(!label){
       label=el('span','mf-detail-mal-badge');
@@ -386,7 +389,7 @@
     let session=detailSessions.get(key);
     if(!session){
       session={key,userId:uid,id,phase:'idle',message:'Sprawdzanie MAL ID z NFO…',at:0,
-        malId:null,entry:null,fromCache:false,catalogId:'',seasonId:'',promise:null};
+        malId:null,entry:null,fromCache:false,catalogId:'',seasonId:'',animeVerified:false,promise:null};
       detailSessions.set(key,session);
     }
     return session;
@@ -414,9 +417,10 @@
     const panel=detailPanel;
     const content=panel.querySelector('.mf-mal-content');
     if(!content)return;
-    // Non-anime/unsupported types stay mounted but hidden: removing them here
-    // caused MutationObserver -> remount -> another API request indefinitely.
-    if(session.phase==='irrelevant'){panel.hidden=true;return;}
+    // The panel is never visible until the authenticated NFO anime-root
+    // classification has positively identified the item as anime. Keep the
+    // hidden shell mounted to avoid a MutationObserver remount/request loop.
+    if(session.phase==='irrelevant'||session.animeVerified!==true){panel.hidden=true;return;}
     panel.hidden=false;
     if(session.phase==='ready'){
       const ctx={catalogId:session.catalogId,seasonId:session.seasonId,malId:session.malId,
@@ -457,7 +461,15 @@
         const catalogId=metadata.Type==='Season'?compact(metadata.SeriesId):id;
         const seasonId=metadata.Type==='Season'?id:'';
         if(!valid(catalogId))throw new Error('Brak identyfikatora nadrzędnej serii w Jellyfin');
-        updateSession(session,'loading','Sprawdzanie anime i NFO…');
+        // Classification is based on the SAME authenticated AnimeRoot/NFO check
+        // used for native Jellyfin card overlays, not a title or genre guess.
+        // A normal film/series must never display a MAL panel or MAL error.
+        const overlays=await readJson(`/MisioFlix/api/overlays?ids=${id}`);
+        const overlay=Array.isArray(overlays)?overlays.find(item=>compact(item.id)===id):null;
+        if(!overlay||overlay.anime!==true){
+          updateSession(session,'irrelevant','');return;
+        }
+        updateSession(session,'loading','Sprawdzanie MAL ID z NFO…',{animeVerified:true});
         const target=await readJson(`/MisioFlix/api/mal/resolve?catalogId=${catalogId}${seasonId?'&seasonId='+seasonId:''}`);
         if(!target?.anime){
           updateSession(session,'irrelevant','');return;
@@ -500,6 +512,7 @@
     if(!valid(uid))return;
     const session=newDetailSession(uid,id);
     const panel=el('section','mf-mal-detail-panel');
+    panel.hidden=true; // No loading flash on ordinary movies/series before verification.
     panel.setAttribute('aria-label','Moja lista anime na MyAnimeList');
     const mobileToggle=el('button','mf-mal-mobile-toggle','MAL');
     mobileToggle.type='button';mobileToggle.setAttribute('aria-expanded','false');
