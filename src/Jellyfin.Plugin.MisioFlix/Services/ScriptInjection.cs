@@ -112,13 +112,16 @@ public sealed class MisioFlixServiceRegistrator : IPluginServiceRegistrator
     {
         services.AddTransient<IStartupFilter, MisioFlixStartupFilter>();
         services.AddHostedService<MisioFlixMalRefreshHostedService>();
+        services.AddSingleton<MisioFlixSimklLocalStore>();
+        services.AddHostedService<MisioFlixSimklPlaybackHostedService>();
         // Device-PIN sessions and read snapshots MUST survive separate HTTP requests.
         // Typed AddHttpClient<T> is transient; it would forget the pending PIN before poll!
         services.AddHttpClient("MisioFlixSimkl", http => { http.Timeout=TimeSpan.FromSeconds(30); })
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect=false });
         services.AddSingleton<MisioFlixSimklService>(provider => new MisioFlixSimklService(
             provider.GetRequiredService<IHttpClientFactory>().CreateClient("MisioFlixSimkl"),
-            provider.GetRequiredService<IApplicationPaths>()));
+            provider.GetRequiredService<IApplicationPaths>(),
+            provider.GetRequiredService<MisioFlixSimklLocalStore>()));
         services.AddHttpClient<MisioFlixMalService>(http => { http.Timeout=TimeSpan.FromSeconds(30); })
             .ConfigurePrimaryHttpMessageHandler(() => new System.Net.Http.HttpClientHandler { AllowAutoRedirect=false });
         services.AddHttpClient<MisioFlixCatalogService>(http =>

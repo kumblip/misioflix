@@ -33,7 +33,7 @@ class SimklIsolated046(unittest.TestCase):
 
     def test_scopes_and_app_identifiers(self):
         self.assertIn('"client_id="+Uri.EscapeDataString(credential.ClientId)',SERVICE)
-        self.assertIn('app-name=misioflix&app-version=0.4.49',SERVICE)
+        self.assertIn('app-name=misioflix&app-version=0.4.50',SERVICE)
         self.assertIn('media:write',SERVICE)
         self.assertIn('ClientId()',SERVICE)
 
@@ -137,7 +137,7 @@ class SimklIsolated046(unittest.TestCase):
         self.assertNotIn('Simkl',old+theme+mal)
 
     def test_version_beta(self):
-        self.assertIn('0.4.49.0',(ROOT/'meta.json').read_text())
-        self.assertIn('<AssemblyVersion>0.4.49.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertIn('0.4.50.0',(ROOT/'meta.json').read_text())
+        self.assertIn('<AssemblyVersion>0.4.50.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__':unittest.main()

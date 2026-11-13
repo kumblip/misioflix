@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.49 beta: Simkl dodawanie nowych tytułów oraz ręczne oznaczanie odcinków",
+  "description": "MisioFlix 0.4.50 beta: Simkl 75 procent, backup NAS, ponowne obejrzenia i prosty status odcinka",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.49.0",
+  "version": "0.4.50.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

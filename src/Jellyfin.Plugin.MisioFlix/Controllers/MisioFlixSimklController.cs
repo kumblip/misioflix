@@ -16,9 +16,11 @@ public sealed class MisioFlixSimklController : ControllerBase
 {
     private readonly MisioFlixCatalogService _catalog;
     private readonly MisioFlixSimklService _simkl;
-    public MisioFlixSimklController(MisioFlixCatalogService catalog,MisioFlixSimklService simkl)
+    private readonly MisioFlixSimklLocalStore _local;
+    public MisioFlixSimklController(MisioFlixCatalogService catalog,MisioFlixSimklService simkl,
+        MisioFlixSimklLocalStore local)
     {
-        _catalog=catalog;_simkl=simkl;
+        _catalog=catalog;_simkl=simkl;_local=local;
     }
     private void NoCache()=>Response.Headers.CacheControl="private, no-store";
     private async Task<string> CurrentUser(CancellationToken cancel)=>
@@ -84,7 +86,10 @@ public sealed class MisioFlixSimklController : ControllerBase
             var target=episode?.Target ?? await _catalog.AuthorizedSimklTargetAsync(Request,catalogId,seasonId,cancel).ConfigureAwait(false);
             if(!target.Relevant)return Ok(new{relevant=false});
             // Identity matching is server-side, never trust external IDs sent by the browser.
-            var entry=await _simkl.ReadItemAsync(await CurrentUser(cancel),target,refresh,cancel).ConfigureAwait(false);
+            var user=await CurrentUser(cancel);
+            var entry=await _simkl.ReadItemAsync(user,target,refresh,cancel).ConfigureAwait(false);
+            var rewatches=episode.HasValue?(int?)null:
+                await _local.GetRewatchAsync(user,catalogId,seasonId,cancel).ConfigureAwait(false);
             // The nested SimklEntry record also needs explicit lower-case JSON
             // field names (Score/Status/WatchedEpisodes were invisible in the UI).
             var item=entry.Entry is null ? null : new {
@@ -109,7 +114,8 @@ public sealed class MisioFlixSimklController : ControllerBase
                 episodeNumber=episode?.EpisodeNumber,
                 episodeWatched=episode.HasValue?watched.Contains(episode.Value.EpisodeNumber):(bool?)null,
                 watchedEpisodeNumbers=target.SeasonNumber.HasValue?watched:null,
-                hasIds=target.Ids.Count>0,connected=entry.Connected,matched=entry.Matched,entry=item});
+                hasIds=target.Ids.Count>0,connected=entry.Connected,matched=entry.Matched,
+                localBackup=entry.LocalBackup,rewatches,entry=item});
         }
         catch(Exception ex){return Failure(ex);}
     }
@@ -166,5 +172,40 @@ public sealed class MisioFlixSimklController : ControllerBase
             return Ok(new{saved=true});
         }
         catch(Exception ex){return Failure(ex);}
+    }    [HttpGet("sync-check")]
+    public async Task<IActionResult> SyncCheck(CancellationToken cancel)
+    {
+        NoCache();try
+        {
+            var checkedOk=await _simkl.SyncIfDueAsync(await CurrentUser(cancel),cancel).ConfigureAwait(false);
+            return Ok(new{checkedOk});
+        }
+        catch(Exception ex){return Failure(ex);}
     }
+    public sealed record RewatchEditRequest(Guid CatalogId,Guid? SeasonId,int Count);
+    [HttpPost("rewatch")]
+    public async Task<IActionResult> Rewatch([FromBody]RewatchEditRequest input,CancellationToken cancel)
+    {
+        NoCache();try
+        {
+            var target=await _catalog.AuthorizedSimklTargetAsync(Request,input.CatalogId,input.SeasonId,cancel).ConfigureAwait(false);
+            if(!target.Relevant)return BadRequest(new{error="Simkl nie jest dostępny w AnimePL"});
+            if(input.Count is <0 or >100000)return BadRequest(new{error="Nieprawidłowy licznik ponownych obejrzeń"});
+            var count=await _local.SetRewatchAsync(await CurrentUser(cancel),input.CatalogId,input.SeasonId,input.Count,cancel);
+            return Ok(new{saved=true,rewatches=count,localOnly=true});
+        }
+        catch(Exception ex){return Failure(ex);}
+    }
+    [HttpGet("export")]
+    public async Task<IActionResult> Export(CancellationToken cancel)
+    {
+        NoCache();try
+        {
+            var user=await CurrentUser(cancel);
+            var data=await _local.ExportAsync(user,cancel).ConfigureAwait(false);
+            return File(data,"application/json","MisioFlix_Simkl_Backup_"+DateTime.UtcNow.ToString("yyyyMMdd")+".json");
+        }
+        catch(Exception ex){return Failure(ex);}
+    }
+
 }
