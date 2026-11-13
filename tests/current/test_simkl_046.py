@@ -134,10 +134,12 @@ class SimklIsolated046(unittest.TestCase):
         self.assertIn('addScrollEventListener',old)
         self.assertIn('mf-native-stats',theme)
         self.assertIn('/MisioFlix/api/mal',mal)
-        self.assertNotIn('Simkl',old+theme+mal)
+        self.assertNotIn("request('/simkl",old)
+        self.assertNotIn('mf-simkl-native-score',theme)
+        self.assertNotIn('mf-simkl-native-score',mal)
 
     def test_version_beta(self):
-        self.assertIn('0.4.50.0',(ROOT/'meta.json').read_text())
-        self.assertIn('<AssemblyVersion>0.4.50.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertIn('0.4.51.0',(ROOT/'meta.json').read_text())
+        self.assertIn('<AssemblyVersion>0.4.51.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__':unittest.main()

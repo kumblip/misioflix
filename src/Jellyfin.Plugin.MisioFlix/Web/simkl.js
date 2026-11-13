@@ -45,11 +45,14 @@
     const last=lastSyncCheck.get(currentUser)||0;
     if(Date.now()-last<60*60*1000)return;
     lastSyncCheck.set(currentUser,Date.now());
-    void request('/sync-check').catch(()=>{});
+    void request('/sync-check').then(data=>{if(data?.checkedOk)resetCardScores();}).catch(()=>{});
   }
   function resetUser(){
     const id=user();if(id===currentUser)return;
     currentUser=id;connection=null;connectionPromise=null;button=null;sessions.clear();generation++;
+    cardScores.clear();pendingScoreIds.clear();scoreRetryAfter=0;
+    document.querySelectorAll('.mf-simkl-home-score,.mf-simkl-native-score').forEach(node=>node.remove());
+    document.querySelectorAll('[data-mf-simkl-score]').forEach(node=>node.removeAttribute('data-mf-simkl-score'));
     panel?.remove();panel=null;currentDetail='';closeModal();
   }
   async function getConnection(force=false){
@@ -160,6 +163,7 @@
       const latest=await request(`/item?catalogId=${session.catalogId}${session.seasonId?'&seasonId='+session.seasonId:''}${session.episodeId?'&episodeId='+session.episodeId:''}&refresh=true`);
       if(!same())return;
       session.data=latest;session.at=Date.now();session.phase='ready';renderReady(session);
+      resetCardScores();
     }
     // On an episode there is ONLY one field, on desktop and Android.
     // The dropdown itself commits; no other Simkl controls, rating or rewatch.
@@ -392,7 +396,91 @@
     if(currentDetail===id&&panel?.isConnected&&panel.closest('#itemDetailPage')===page)return;
     panel?.remove();panel=null;mount(page,id);
   }
-  function tick(){timer=0;resetUser();mountHome();syncDetails();}
+  // v0.4.51 — Simkl poster score renderer. OWN classes, separate from MAL.
+  // Scores come only from the per-user NAS archive. The server authorizes every
+  // Jellyfin ID and never accepts client-supplied TMDB/IMDb identifiers.
+  const cardScores=new Map();
+  const pendingScoreIds=new Set();
+  let scoreFetchBusy=false,scoreRetryAfter=0;
+  function resetCardScores(){
+    cardScores.clear();pendingScoreIds.clear();scoreRetryAfter=0;
+    document.querySelectorAll('.mf-simkl-home-score,.mf-simkl-native-score').forEach(node=>node.remove());
+    document.querySelectorAll('[data-mf-simkl-score]').forEach(node=>node.removeAttribute('data-mf-simkl-score'));
+    schedule();
+  }
+  function simklPaw(){
+    const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
+    svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
+    svg.classList.add('mf-simkl-score-paw');
+    for(const [x,y] of [[5,8.7],[9.5,5.8],[14.5,5.8],[19,8.7]]){
+      const toe=document.createElementNS(ns,'ellipse');
+      for(const [k,v] of [['cx',x],['cy',y],['rx',1.9],['ry',2.55],['fill','currentColor']])toe.setAttribute(k,String(v));
+      svg.append(toe);
+    }
+    const base=document.createElementNS(ns,'path');
+    base.setAttribute('d','M12.2 10.6c-2.2 0-3.5 1.9-5.2 4-.9 1.1-1.8 2.3-1.8 3.6 0 1.6 1.3 2.7 2.8 2.7 1.4 0 2.5-.9 4-.9s2.6.9 4 .9c1.5 0 2.8-1.1 2.8-2.7 0-1.3-.9-2.5-1.8-3.6-1.7-2.1-3-4.8-4Z');
+    base.setAttribute('fill','currentColor');svg.append(base);return svg;
+  }
+  function renderCardScore(card,score,native){
+    const cls=native?'mf-simkl-native-score':'mf-simkl-home-score';
+    const old=card.querySelector('.'+cls);
+    if(!(Number(score)>=1&&Number(score)<=10)){
+      old?.remove();card.removeAttribute('data-mf-simkl-score');
+      if(!native){const holder=card.querySelector('.mf-home-stats');if(holder&&!holder.childElementCount)holder.remove();}
+      return;
+    }
+    const container=native
+      ? card.querySelector('.mf-native-top .mf-native-stats')||card.querySelector('.mf-native-top')
+      : card.querySelector('.mf-home-stats')||(()=>{const h=el('div','mf-home-stats');card.append(h);return h;})();
+    if(!container)return; // Jellyfin's native overlay is not ready yet.
+    if(old&&old.parentElement===container&&old.textContent===String(score))return;
+    old?.remove();
+    const badge=el('span',cls);
+    badge.title='Moja ocena Simkl';
+    badge.append(el('span','mf-simkl-score-number',String(score)),simklPaw());
+    container.append(badge);card.setAttribute('data-mf-simkl-score',String(score));
+  }
+  function nearby(card){
+    const box=typeof card.getBoundingClientRect==='function'?card.getBoundingClientRect():null;
+    return !box||(box.bottom>=-350&&box.top<=(window.innerHeight||1000)+550);
+  }
+  function decorateCardScores(){
+    if(!valid(currentUser)||!token())return;
+    const cards=document.querySelectorAll('.mf-home-poster[data-mf-simkl-id], .card[data-mf-card="1"][data-id]');
+    for(const card of cards){
+      const native=!card.classList.contains('mf-home-poster');
+      if(native){
+        if(card.dataset.mfAnime==='1'||!['film','serial'].includes(card.dataset.mfKind))continue;
+        card.classList.add('mf-simkl-native-media');
+      }
+      if(!nearby(card))continue;
+      const id=compact(native?card.getAttribute('data-id'):card.dataset.mfSimklId);
+      if(!valid(id))continue;
+      if(!cardScores.has(id)){pendingScoreIds.add(id);continue;}
+      renderCardScore(card,cardScores.get(id),native);
+    }
+    if(pendingScoreIds.size&&!scoreFetchBusy&&Date.now()>=scoreRetryAfter)void fetchCardScores();
+  }
+  async function fetchCardScores(){
+    if(scoreFetchBusy||!valid(currentUser)||!token())return;
+    const batch=[...pendingScoreIds].slice(0,36);
+    if(!batch.length)return;
+    batch.forEach(id=>pendingScoreIds.delete(id));
+    const selectedUser=currentUser;scoreFetchBusy=true;
+    try{
+      const data=await request('/card-scores?ids='+encodeURIComponent(batch.join(',')));
+      if(currentUser!==selectedUser)return;
+      const ratings=data?.scores&&typeof data.scores==='object'?data.scores:{};
+      for(const id of batch){
+        const value=Number(ratings[id]??ratings[id.toUpperCase()]??0);
+        cardScores.set(id,Number.isInteger(value)&&value>=1&&value<=10?value:0);
+      }
+    }catch{
+      if(currentUser===selectedUser){batch.forEach(id=>pendingScoreIds.add(id));scoreRetryAfter=Date.now()+30000;}
+    }finally{scoreFetchBusy=false;schedule();}
+  }
+
+  function tick(){timer=0;resetUser();mountHome();syncDetails();decorateCardScores();}
   function schedule(){if(!timer)timer=window.setTimeout(tick,180);}
   function init(){
     const observer=new MutationObserver(changes=>{
@@ -401,6 +489,7 @@
     });
     observer.observe(document.body,{childList:true,subtree:true});
     ['hashchange','pageshow','popstate'].forEach(evt=>window.addEventListener(evt,schedule));
+    window.addEventListener('scroll',schedule,{passive:true,capture:true});
     window.addEventListener('focus',()=>{
       const session=sessions.get(`${currentUser}:${currentDetail}`);
       if(session&&Date.now()-session.at>30000){session.phase='idle';void read(session,true);}

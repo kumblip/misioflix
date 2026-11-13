@@ -88,6 +88,6 @@ class Simkl050(unittest.TestCase):
   self.assertNotIn('MisioFlixMalService',SERVICE)
   self.assertNotIn('mal.js',MON)
  def test_version(self):
-  self.assertIn('0.4.50.0',(ROOT/'meta.json').read_text('utf8'))
-  self.assertIn('0.4.50.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
+  self.assertIn('0.4.51.0',(ROOT/'meta.json').read_text('utf8'))
+  self.assertIn('0.4.51.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
 if __name__=='__main__':unittest.main()

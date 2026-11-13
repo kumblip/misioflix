@@ -12,7 +12,7 @@ class Drag(unittest.TestCase):
               "event.pointerType !== 'pen'"]:
       self.assertIn(x,JS)
   def test_swipe_does_not_break_links(self):
-    self.assertIn("const link=set(own('a','mf-home-poster')",JS)
+    self.assertIn("const link=set(own('a','mf-home-poster'+",JS)
     self.assertIn('nativeDetails(item.id,item.serverId)',JS)
     self.assertIn("scroll.addEventListener('dragstart'",JS)
     self.assertIn("scroll.addEventListener('click'",JS)

@@ -190,8 +190,10 @@
     return b;
   }
   function makePoster(item){
-    const link=set(own('a','mf-home-poster'), 'href', nativeDetails(item.id,item.serverId));
+    const nonAnimeMedia=!item.anime&&['Movie','Series','Season'].includes(item.type);
+    const link=set(own('a','mf-home-poster'+(nonAnimeMedia?' mf-simkl-media-poster':'')), 'href', nativeDetails(item.id,item.serverId));
     if(item.anime){link.dataset.mfItemId=compactId(item.id);if(Number(item.malId)>0)link.dataset.mfMalId=String(item.malId);}
+    else if((item.type==='Movie'||item.type==='Series')&&validId(item.id))link.dataset.mfSimklId=compactId(item.id);
     link.setAttribute('aria-label',`Szczegóły: ${item.title || 'Pozycja'}`);
     const imgUrl=imageFor(item);
     if(imgUrl){
@@ -205,29 +207,29 @@
     }else link.classList.add('mf-home-no-cover');
     const left=own('div','mf-home-top-left');
     badge(left,item.type==='BoxSet'?'KOLEKCJA':item.anime?'ANIME':item.type==='Movie'?'FILM':'SERIAL','mf-home-kind');
-    if(item.year)badge(left,String(item.year).slice(0,14),'mf-home-year');
+    if(item.year)badge(left,String(item.year).slice(0,14),'mf-home-year'+(nonAnimeMedia?' mf-simkl-media-year':''));
     link.appendChild(left);
-    const count=own('div','mf-home-stats');
+    const count=own('div','mf-home-stats'+(nonAnimeMedia?' mf-simkl-media-stats':''));
     const addStat=(v,label,color,rating=false)=>{
       const val=short(v,rating);
       if(!val)return;
-      const stat=own('div','mf-home-stat');
+      const stat=own('div','mf-home-stat'+(nonAnimeMedia?' mf-simkl-media-stat':''));
       stat.setAttribute('title',label);
       append(stat,own('span','',val),paw(color));
       count.appendChild(stat);
     };
     if(item.type==='BoxSet'){
       const count=short(item.collectionCount);
-      if(count)badge(left,count+' filmów','mf-home-collection-count');
+      if(count){const b=badge(left,count+' 🎬','mf-home-collection-count');b.setAttribute('aria-label',count+' filmów w kolekcji');}
     }else{
       if(item.type!=='Movie'){
         addStat(item.seasons,'Sezony','#f7b449');
         addStat(item.episodes,'Odcinki','#6bd1f6');
       }
-      if(!item.anime)addStat(item.userRating,'Moja ocena','#f49fce',true);
+      // Simkl scores for films/series are decorated by simkl.js, never from Jellyfin's UserRating.
     }
     if(count.childElementCount)link.appendChild(count);
-    const chips=own('div','mf-home-genres');
+    const chips=own('div','mf-home-genres'+(nonAnimeMedia?' mf-simkl-media-genres':''));
     (Array.isArray(item.genres) ? item.genres.slice(0,3) : []).forEach(v=>{if(v)badge(chips,v,'mf-home-genre');});
     if(chips.childElementCount)link.appendChild(chips);
     // A collection has no single watched state: don't show a misleading frame.
@@ -238,11 +240,12 @@
     return link;
   }
   function makeCard(item){
-    const card=own('article','mf-home-card'+(item.type==='BoxSet'?' mf-home-collection-card':''));
+    const nonAnimeMedia=!item.anime&&['Movie','Series','Season'].includes(item.type);
+    const card=own('article','mf-home-card'+(item.type==='BoxSet'?' mf-home-collection-card':'')+(nonAnimeMedia?' mf-simkl-media-card':''));
     append(card,makePoster(item));
     const content=own('div','mf-home-card-body');
-    const title=set(own('a','mf-home-card-title',item.title||'Brak tytułu'), 'href',nativeDetails(item.id,item.serverId));
-    const description=own('p','mf-home-card-desc',item.description||'');
+    const title=set(own('a','mf-home-card-title'+(nonAnimeMedia?' mf-simkl-media-title':''),item.title||'Brak tytułu'), 'href',nativeDetails(item.id,item.serverId));
+    const description=own('p','mf-home-card-desc'+(nonAnimeMedia?' mf-simkl-media-desc':''),item.description||'');
     append(content,title,description);
     append(card,content);
     return card;
@@ -952,7 +955,7 @@
   function createSearchModal(kind){
     const overlay=own('div','mf-home-search-overlay');
     overlay.setAttribute('role','presentation');
-    const dialog=own('section','mf-home-search-dialog');
+    const dialog=own('section','mf-home-search-dialog'+(kind==='media'?' mf-simkl-media-search':''));
     dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');
     dialog.setAttribute('aria-label',kind==='anime'?'Wyszukiwarka anime':'Wyszukiwarka filmów i seriali');
     const header=own('div','mf-home-search-modal-header');
@@ -994,7 +997,7 @@
     const genres=own('div','mf-home-genre-filters');
     const status=own('p','mf-home-search-status','Ładowanie katalogu…');
     status.setAttribute('role','status');
-    const grid=own('div','mf-home-search-grid');
+    const grid=own('div','mf-home-search-grid'+(kind==='media'?' mf-simkl-media-grid':''));
     const more=own('button','mf-home-button mf-home-search-more','Pokaż kolejne');more.type='button';more.hidden=true;
     main.append(tool,choicesWrap,genresHead,summary,help,genres,status,grid,more);
     dialog.append(header,main);overlay.appendChild(dialog);

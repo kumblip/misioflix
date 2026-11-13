@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.MisioFlix.Services;
@@ -33,6 +34,31 @@ public sealed class MisioFlixSimklController : ControllerBase
         HttpRequestException=>StatusCode(502,new{error=error.Message}),
         _=>StatusCode(500,new{error="Błąd modułu Simkl"})
     };
+    /// <summary>Read personal Simkl scores for a bounded, Jellyfin-authorized poster batch.</summary>
+    [HttpGet("card-scores")]
+    public async Task<IActionResult> CardScores([FromQuery]string? ids,CancellationToken cancel)
+    {
+        NoCache();
+        try
+        {
+            var user=await CurrentUser(cancel).ConfigureAwait(false);
+            var targets=await _catalog.AuthorizedSimklCardTargetsAsync(Request,ids,cancel).ConfigureAwait(false);
+            var snapshot=(await _local.ReadAsync(user,cancel).ConfigureAwait(false)).Snapshot;
+            var scores=new System.Collections.Generic.Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+            if(snapshot is not null)
+                foreach(var target in targets)
+                {
+                    var matches=snapshot.Items.Values.Where(entry=>entry.Kind==target.Value.Kind&&entry.Score is > 0 and <= 10&&
+                        target.Value.Ids.Any(pair=>entry.Ids.TryGetValue(pair.Key,out var other)&&
+                            string.Equals(other,pair.Value,StringComparison.OrdinalIgnoreCase)))
+                        .GroupBy(entry=>entry.Id).ToArray();
+                    if(matches.Length==1)scores[target.Key]=matches[0].First().Score!.Value;
+                }
+            return Ok(new {scores});
+        }
+        catch(Exception ex){return Failure(ex);}
+    }
+
     [HttpGet("connection")]
     public async Task<IActionResult> Connection(CancellationToken cancel)
     {

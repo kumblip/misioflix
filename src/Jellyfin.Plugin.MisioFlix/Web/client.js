@@ -145,7 +145,7 @@
     // Ratings are PERSONAL: do not use CommunityRating or the like button.
     const rawRating=card.getAttribute('data-mf-user-rating');
     const rating=shortNumber(rawRating,kind!=='anime'||!Number.isInteger(Number(rawRating)));
-    if(rating)result.push({value:rating,label:kind==='anime'?'Moja ocena MAL':'Moja ocena',cls:'rating',color:'#ee9fc9'});
+    if(kind==='anime'&&rating)result.push({value:rating,label:'Moja ocena MAL',cls:'rating',color:'#ee9fc9'});
     return result;
   }
   function genres(card){
@@ -315,6 +315,8 @@
       }
       card.querySelector('.mf-native-overlay')?.remove();
       card.querySelector('.mf-native-description')?.remove();
+      card.classList.remove('mf-simkl-native-media');
+      card.removeAttribute('data-mf-simkl-score');
       card.querySelectorAll('.mf-collection-preview,.mf-collection-label').forEach(node=>node.remove());
       card.classList.remove('mf-collection-card','mf-collection-has-preview','mf-physical-folder','mf-empty-folder');
       card.removeAttribute('data-mf-collection-type');

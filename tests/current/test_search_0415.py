@@ -22,7 +22,7 @@ class TestSearch0415(unittest.TestCase):
         self.assertIn('aria-haspopup',HOME)
 
     def test_separate_modal_on_demand(self):
-        self.assertIn("own('section','mf-home-search-dialog')",HOME)
+        self.assertIn("own('section','mf-home-search-dialog'+(kind==='media'?",HOME)
         self.assertIn("dialog.setAttribute('aria-modal','true')",HOME)
         self.assertIn("function openSearch(kind,initialGenre=",HOME)
         self.assertIn('document.body.appendChild(state.overlay)',HOME)

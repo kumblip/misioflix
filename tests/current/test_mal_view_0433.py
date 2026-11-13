@@ -31,7 +31,8 @@ class MalView0433(unittest.TestCase):
         self.assertIn("if(x.status==='watching'||x.status==='on_hold')return 'started'",MAL)
         self.assertIn("if(!entry)return 'unknown'",MAL)
         self.assertIn("item.anime?'unknown':state",HOME)
-        self.assertIn("if(!item.anime)addStat(item.userRating",HOME)
+        self.assertNotIn("addStat(item.userRating",HOME)
+        self.assertIn("mfSimklId",HOME)
         self.assertIn("card.setAttribute('data-mf-watch','unknown')",CLIENT)
     def test_all_home_mal_values_from_nfo_and_local_snapshot(self):
         self.assertIn('malId = isAnime ?',CAT)

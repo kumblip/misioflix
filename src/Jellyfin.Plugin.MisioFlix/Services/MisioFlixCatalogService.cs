@@ -829,6 +829,40 @@ public sealed class MisioFlixCatalogService
         return null;
     }
 
+    /// <summary>
+    /// Read-only, per-user authorization for a bounded group of Simkl card scores.
+    /// Never accept external provider IDs or paths from a browser. Avoid touching
+    /// all-items catalog scans or making one HTTP request for each poster.
+    /// </summary>
+    public async Task<Dictionary<string,SimklMediaTarget>> AuthorizedSimklCardTargetsAsync(
+        HttpRequest caller, string? ids, CancellationToken cancel)
+    {
+        var requested=(ids??string.Empty).Split(',',StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x=>Guid.TryParse(x,out _)).Select(Guid.Parse).Distinct().Take(36).ToArray();
+        var targets=new Dictionary<string,SimklMediaTarget>(StringComparer.OrdinalIgnoreCase);
+        if(requested.Length==0)return targets;
+        var (origin,auth,userId)=await AuthenticatedUserAsync(caller,cancel).ConfigureAwait(false);
+        using var response=await GetJsonAsync(origin,
+            $"Items?UserId={Uri.EscapeDataString(userId)}&Ids={Uri.EscapeDataString(string.Join(',',requested.Select(g=>g.ToString("N"))))}"+
+            $"&Fields=ProviderIds&IncludeItemTypes=Movie,Series&Limit={requested.Length}",auth,cancel).ConfigureAwait(false);
+        var items=Get(response.RootElement,"Items");
+        if(items.ValueKind!=JsonValueKind.Array)return targets;
+        var allowed=requested.ToHashSet();
+        foreach(var item in items.EnumerateArray())
+        {
+            if(!Guid.TryParse(Text(Get(item,"Id")),out var id)||!allowed.Contains(id))continue;
+            var type=Text(Get(item,"Type"));
+            if(type!="Movie"&&type!="Series")continue;
+            try
+            {
+                var target=MakeSimklTarget(id,item,type=="Movie"?"movies":"shows",null);
+                if(target.Relevant&&target.Ids.Count>0)targets[id.ToString("N")]=target;
+            }
+            catch(UnauthorizedAccessException) { /* Missing/non-visible local item: no rating. */ }
+        }
+        return targets;
+    }
+
     // Simkl has a separate trust boundary: authenticated Jellyfin media identity,
     // NEVER an arbitrary external ID submitted by a browser and NEVER the AnimeRoot.
     // A Season maps to the parent series in Simkl (Simkl has one show-list entry).

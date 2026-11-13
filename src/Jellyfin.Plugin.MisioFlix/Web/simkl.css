@@ -82,3 +82,87 @@ html.misioflix-skin .mf-simkl-rewatch {display:flex;flex-direction:column;gap:8p
 html.misioflix-skin .mf-simkl-rewatch input {width:100%;box-sizing:border-box;padding:8px;border:1px solid #98617d;border-radius:8px;background:#2e1c30;color:#fff;font:inherit}
 html.misioflix-skin .mf-simkl-offline {margin:7px 0;font-size:12px;color:#ffe4a8}
 @media(max-width:850px){html.misioflix-skin .mf-simkl-episode-select {font-size:16px;min-height:44px}}
+
+/* v0.4.51: independent Simkl scores (only non-anime movies/series). */
+html.misioflix-skin .mf-simkl-home-score,
+html.misioflix-skin .mf-simkl-native-score {
+  display:flex;align-items:center;justify-content:flex-end;gap:3px;min-width:0;
+  white-space:nowrap;color:#fff;font-size:12px;font-weight:750;
+  font-variant-numeric:tabular-nums;
+}
+html.misioflix-skin .mf-simkl-score-paw {
+  width:13px;height:13px;flex:0 0 13px;color:#ee9fc9;
+}
+html.misioflix-skin .mf-simkl-score-number {line-height:1.1}
+html.misioflix-skin .mf-native-top > .mf-simkl-native-score {
+  padding:5px 7px;border-radius:11px;background:rgba(22,10,24,.80);
+  border:1px solid rgba(255,224,240,.5);
+  box-shadow:0 6px 14px rgba(0,0,0,.3);
+}
+/* In an existing seasons/episodes stack, Simkl rating adds a separate paw row. */
+html.misioflix-skin .mf-native-stats > .mf-simkl-native-score {padding:0 0 1px}
+/* All sizing rules for non-anime mobile screens live here, never in MAL CSS. */
+@media(max-width:680px){
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid {
+    display:grid;grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:8px!important;
+  }
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-simkl-media-card {
+    width:100%;min-width:0;max-width:none;flex:none;
+  }
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-simkl-media-poster .mf-home-kind {display:none!important}
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-home-top-left {top:5px;left:5px;gap:2px}
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-simkl-media-year {font-size:10px;padding:2px 4px}
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-simkl-media-stats {
+    top:4px;right:4px;gap:1px;padding:2px 3px;border-radius:7px;min-width:0;
+  }
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-simkl-media-stat,
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-simkl-home-score {
+    gap:2px;font-size:10px;line-height:1.03;padding:0;margin:0;
+  }
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-home-paw,
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-simkl-score-paw {
+    width:10px;height:10px;flex:0 0 10px;
+  }
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-simkl-media-genres {left:4px;right:4px;bottom:5px;gap:2px}
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-home-genre {padding:2px 4px;font-size:9px}
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-simkl-media-card > .mf-home-card-body {
+    padding:6px 6px 8px!important;gap:4px!important;min-height:0!important;
+  }
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-simkl-media-title {
+    display:block!important;max-width:100%;width:100%;box-sizing:border-box;
+    white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;
+    -webkit-line-clamp:unset!important;-webkit-box-orient:initial!important;
+    min-height:1.3em!important;max-height:1.3em!important;font-size:10.5px!important;
+    line-height:1.3!important;text-align:center!important;
+  }
+  html.misioflix-skin .mf-simkl-media-search .mf-simkl-media-grid .mf-simkl-media-desc {
+    font-size:9.75px;line-height:1.36;-webkit-line-clamp:6;max-height:8.16em;
+  }
+  /* Original Jellyfin cards: compact just like native AnimePL; keep native DOM and scroller. */
+  html.misioflix-skin .card.mf-simkl-native-media .mf-native-top {padding:4px 4px 0!important;gap:1px!important}
+  html.misioflix-skin .card.mf-simkl-native-media .mf-native-kind {display:none!important}
+  html.misioflix-skin .card.mf-simkl-native-media .mf-native-year {font-size:10px!important;padding:2px 4px!important}
+  html.misioflix-skin .card.mf-simkl-native-media .mf-native-stats,
+  html.misioflix-skin .card.mf-simkl-native-media .mf-native-top > .mf-simkl-native-score {
+    padding:2px 3px!important;gap:1px!important;border-radius:7px!important;min-width:0!important;
+  }
+  html.misioflix-skin .card.mf-simkl-native-media .mf-native-stat {gap:2px!important;min-width:0!important}
+  html.misioflix-skin .card.mf-simkl-native-media .mf-native-stat-number,
+  html.misioflix-skin .card.mf-simkl-native-media .mf-simkl-score-number {font-size:10px!important;line-height:1.03!important}
+  html.misioflix-skin .card.mf-simkl-native-media .mf-native-stat .mf-paw,
+  html.misioflix-skin .card.mf-simkl-native-media .mf-simkl-score-paw {width:10px!important;height:10px!important;flex:0 0 10px!important}
+  html.misioflix-skin .card.mf-simkl-native-media .mf-native-genres {padding:7px 3px 5px;gap:2px}
+  html.misioflix-skin .card.mf-simkl-native-media .mf-native-genre {font-size:9px;padding:2px 4px}
+  html.misioflix-skin .card.mf-simkl-native-media .cardText-first {
+    display:block!important;white-space:nowrap!important;overflow:hidden!important;
+    text-overflow:ellipsis!important;min-height:1.3em!important;max-height:1.3em!important;
+    -webkit-line-clamp:unset!important;font-size:10.5px!important;line-height:1.25!important;
+  }
+  html.misioflix-skin .card.mf-simkl-native-media .mf-native-description {
+    font-size:9.75px!important;line-height:1.36!important;-webkit-line-clamp:6!important;min-height:0!important;
+  }
+}
+/* Hide Jellyfin's own pink unplayed count when MisioFlix's total paws are present.
+   Restrict to non-anime so MAL keeps its independent presentation. */
+html.misioflix-skin .card.mf-simkl-native-media:has(.mf-simkl-native-score) .countIndicator {display:none!important}
