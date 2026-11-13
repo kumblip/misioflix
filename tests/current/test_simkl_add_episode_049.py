@@ -41,8 +41,8 @@ class NewItemsAndEpisodes049(unittest.TestCase):
   self.assertIn("['true','Obejrzany']",episode)
   self.assertIn('return;',episode)
  def test_isolation_and_version(self):
-  self.assertIn('0.4.53.0',(ROOT/'meta.json').read_text('utf8'))
-  self.assertIn('0.4.53.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
+  self.assertIn('0.4.54.0',(ROOT/'meta.json').read_text('utf8'))
+  self.assertIn('0.4.54.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
   self.assertNotIn('/scrobble/',SVC)
   self.assertNotIn('mf-mal-',UI)
   self.assertIn('AnimeRoot',CAT)

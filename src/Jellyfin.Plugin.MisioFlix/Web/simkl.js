@@ -1,4 +1,4 @@
-/* MisioFlix Simkl module v0.4.53 — independent of MAL.
+/* MisioFlix Simkl module v0.4.54 — independent of MAL.
  * Server-side Jellyfin playback events mark watched after 75%; other writes manual.
  * User-separated NAS backup, offline export and local rewatch counters.
  */
@@ -14,7 +14,7 @@
   const client=()=>window.ApiClient||window.ConnectionManager?.getApiClient?.();
   const user=()=>compact(client()?.getCurrentUserId?.());
   const token=()=>{const api=client();const value=typeof api?.accessToken==='function'?api.accessToken():api?.accessToken;return typeof value==='string'?value:'';};
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.53", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.54", Token="${token().replace(/["\r\n]/g,'')}"`});
   async function request(route,method='GET',body){
     const controller=new AbortController();const timer=window.setTimeout(()=>controller.abort(),30000);
     try{
@@ -50,7 +50,9 @@
   // v0.4.52 — Independent Simkl frame state. Unlike MAL, this combines
   // Simkl's personal list and Jellyfin's actual (non-NextUp) resume positions.
   const cardStates=new Map();
-  let resumeForUser=new Set(),resumeSeasons=new Map(),resumeReadAt=0,resumeReadPromise=null;
+  let resumeForUser=new Set(),resumeSeasons=new Map(),resumeEpisodes=new Set(),resumeReadAt=0,resumeReadPromise=null;
+  // Only for current user. Episode frames are never inferred from a show-wide status.
+  const episodeIndex=new Map();
   function simklFrame(entry,fallback='',resuming=false){
     const status=String(entry?.status||'').toLowerCase();
     const alreadyWatched=status==='completed'||(!status&&fallback==='watched');
@@ -91,6 +93,91 @@
       const resuming=resumeSeasons.get(parent)?.has(season)===true;
       const fallback=card.getAttribute('data-mf-watch')||'';
       card.setAttribute('data-mf-simkl-watch',simklFrame(null,fallback,resuming));
+    }
+  }
+  // Season details display native Jellyfin episode list rows. Read exact episode
+  // identities once per season; never infer watched status from neighbouring rows.
+  // Fetch via the same Jellyfin Shows/Episodes endpoint used by details.js.
+  function clearEpisodeFrames(){
+    document.querySelectorAll('.mf-simkl-episode-row').forEach(row=>{
+      row.classList.remove('mf-simkl-episode-row');
+      row.removeAttribute('data-mf-simkl-episode-watch');
+      row.querySelector(':scope > .mf-simkl-episode-frame')?.remove();
+    });
+  }
+  function seasonEpisodeIndex(session){
+    const key=`${session.user}:${session.seasonId}`;
+    const saved=episodeIndex.get(key);
+    if(saved && ((saved.items && Date.now()-saved.at<120000)||saved.promise || (saved.retryAt && Date.now()<saved.retryAt)))return saved;
+    if(saved?.promise)return saved;
+    const cache={items:null,at:Date.now(),promise:null,retryAt:0};episodeIndex.set(key,cache);
+    const query=new URLSearchParams({UserId:session.user,SeasonId:session.seasonId,
+      EnableUserData:'true',IsMissing:'false',StartIndex:'0',Limit:'500'});
+    const relative=`Shows/${session.catalogId}/Episodes?${query}`;
+    const api=client();
+    const url=typeof api?.getUrl==='function'?api.getUrl(relative):'/'+relative;
+    cache.promise=fetch(url,{headers:headers(),cache:'no-store'}).then(async response=>{
+      if(!response.ok)throw new Error(`Jellyfin episodes HTTP ${response.status}`);
+      const body=await response.json();
+      const index=new Map();
+      for(const item of (Array.isArray(body?.Items)?body.Items:[])){
+        const id=compact(item?.Id),number=Number(item?.IndexNumber);
+        if(valid(id)&&Number.isInteger(number)&&number>0){
+          index.set(id,{number,played:item?.UserData?.Played===true});
+        }
+      }
+      cache.items=index;cache.at=Date.now();schedule();return index;
+    }).catch(()=>{cache.retryAt=Date.now()+30000;cache.at=Date.now()-90000;return null;}).finally(()=>{cache.promise=null;});
+    return cache;
+  }
+  function episodeRowId(row){
+    const candidates=[row.getAttribute('data-id'),row.getAttribute('data-itemid'),
+      row.getAttribute('data-item-id'),row.querySelector('[data-id]')?.getAttribute('data-id'),
+      row.querySelector('[data-itemid]')?.getAttribute('data-itemid')];
+    for(const value of candidates){if(valid(value))return compact(value);}
+    for(const link of row.querySelectorAll('a[href]')){
+      const href=link.getAttribute('href')||'';
+      const id=href.match(/(?:[?&#]|%3[fF])id=([0-9a-f-]{32,36})(?:[&#]|$)/i)?.[1];
+      if(valid(id))return compact(id);
+    }
+    return '';
+  }
+  function episodeRowNumber(row){
+    const title=row.querySelector('.listItemBodyText,.listItemName,.cardText-first,.episodeCardTitle');
+    const match=String(title?.textContent||'').match(/^\s*(\d+)\s*[.·:–-]\s*\S/);
+    return match?Number(match[1]):null;
+  }
+  function decorateEpisodeFrames(session){
+    if(!session||session.phase!=='ready'||session.episodeId||!valid(session.seasonId)||
+       session.data?.relevant!==true||session.data?.connected!==true||session.user!==currentUser)return;
+    const page=pageFor(session.id);
+    const area=page?.querySelector('.mf-detail-series-sections');
+    if(!area)return;
+    const cache=seasonEpisodeIndex(session);
+    if(!cache.items)return; // Retry on the next render after Jellyfin responds.
+    const watched=new Set(Array.isArray(session.data.watchedEpisodeNumbers)
+      ?session.data.watchedEpisodeNumbers.map(Number):[]);
+    const numberToId=new Map([...cache.items].map(([id,item])=>[item.number,id]));
+    const hasSimklEntry=session.data.entry!==null && session.data.entry!==undefined;
+    for(const row of area.querySelectorAll('.listItem,.episodeCard,.card[data-id]')){
+      // Jellyfin list items can store the GUID on the row or an inner link.
+      let episodeId=episodeRowId(row),info=cache.items.get(episodeId);
+      if(!info && !valid(episodeId) && row.matches('.listItem,.episodeCard')){
+        const number=episodeRowNumber(row);
+        if(numberToId.has(number)){
+          episodeId=numberToId.get(number);info=cache.items.get(episodeId);
+        }
+      }
+      if(!info)continue; // Never decorate cast, other seasons or suggested titles.
+      const seen=watched.has(info.number)||(!hasSimklEntry&&info.played);
+      const inProgress=resumeEpisodes.has(episodeId);
+      const state=seen?(inProgress?'mixed':'watched'):(inProgress?'started':'unwatched');
+      row.classList.add('mf-simkl-episode-row');
+      row.setAttribute('data-mf-simkl-episode-watch',state);
+      if(!row.querySelector(':scope > .mf-simkl-episode-frame')){
+        const frame=el('span','mf-simkl-episode-frame');
+        frame.setAttribute('aria-hidden','true');row.append(frame);
+      }
     }
   }
   function decorateDetailFrame(session){
@@ -135,7 +222,7 @@
     decorateCardScores();
     decorateSeasonFrames();
     const session=sessions.get(`${currentUser}:${currentDetail}`);
-    if(session)decorateDetailFrame(session);
+    if(session){decorateDetailFrame(session);void decorateEpisodeFrames(session);}
   }
   function refreshResume(force=false){
     const id=currentUser;
@@ -149,7 +236,7 @@
         if(!response.ok)throw new Error(`Jellyfin resume: HTTP ${response.status}`);
         const body=await response.json();
         if(id!==currentUser)return;
-        const ids=new Set(),seasons=new Map();
+        const ids=new Set(),seasons=new Map(),episodes=new Set();
         for(const row of (Array.isArray(body?.items)?body.items:[])){
           // NextUp is a suggestion, NOT an active playback position. Hidden
           // Resume entries are deliberately excluded from "Oglądaj dalej".
@@ -157,6 +244,7 @@
           const catalog=compact(row.catalog_id);
           if(!valid(catalog))continue;
           ids.add(catalog);
+          if(valid(row?.id))episodes.add(compact(row.id));
           // Missing season is not Season 0 (Number(null) === 0).
           const season=row?.season===null||row?.season===undefined||row?.season===''?NaN:Number(row.season);
           if(Number.isInteger(season)&&season>=0){
@@ -164,7 +252,7 @@
             seasons.get(catalog).add(season);
           }
         }
-        resumeForUser=ids;resumeSeasons=seasons;
+        resumeForUser=ids;resumeSeasons=seasons;resumeEpisodes=episodes;
         updateAllFrames();
       }catch{
         // Keep last verified resume states rather than switching a green/gold
@@ -180,8 +268,8 @@
     const id=user();if(id===currentUser)return;
     currentUser=id;connection=null;connectionPromise=null;button=null;sessions.clear();generation++;
     cardScores.clear();cardStates.clear();pendingScoreIds.clear();scoreRetryAfter=0;
-    resumeForUser=new Set();resumeSeasons=new Map();resumeReadAt=0;resumeReadPromise=null;
-    clearDetailFrames();
+    resumeForUser=new Set();resumeSeasons=new Map();resumeEpisodes=new Set();resumeReadAt=0;resumeReadPromise=null;
+    episodeIndex.clear();clearEpisodeFrames();clearDetailFrames();
     document.querySelectorAll('[data-mf-simkl-watch]').forEach(node=>node.removeAttribute('data-mf-simkl-watch'));
     document.querySelectorAll('.mf-simkl-home-score,.mf-simkl-native-score').forEach(node=>node.remove());
     document.querySelectorAll('.mf-simkl-season-media').forEach(node=>node.classList.remove('mf-simkl-season-media'));
@@ -285,6 +373,7 @@
     const content=panel.querySelector('.mf-simkl-content');content.replaceChildren();
     const data=session.data,entry=data.entry,kind=data.kind,season=data.seasonNumber;
     decorateDetailFrame(session);
+    void decorateEpisodeFrames(session);
     const isSeason=kind==='shows'&&season!==null&&season!==undefined;
     const isEpisode=isSeason&&Number.isInteger(data.episodeNumber)&&data.episodeNumber>0;
     const seasonEpisodes=isSeason&&Array.isArray(data.episodeNumbers)
@@ -296,7 +385,8 @@
     async function reload(){
       const latest=await request(`/item?catalogId=${session.catalogId}${session.seasonId?'&seasonId='+session.seasonId:''}${session.episodeId?'&episodeId='+session.episodeId:''}&refresh=true`);
       if(!same())return;
-      session.data=latest;session.at=Date.now();session.phase='ready';renderReady(session);
+      session.data=latest;session.at=Date.now();session.phase='ready';
+      episodeIndex.delete(`${session.user}:${session.seasonId}`);renderReady(session);
       resetCardScores();
       void refreshResume(true);
     }
@@ -536,9 +626,9 @@
   }
   function syncDetails(){
     const id=detailId();const page=id?pageFor(id):null;
-    if(!id||!page){if(currentDetail){clearDetailFrames();currentDetail='';panel=null;generation++;}return;}
+    if(!id||!page){if(currentDetail){clearEpisodeFrames();clearDetailFrames();currentDetail='';panel=null;generation++;}return;}
     if(currentDetail===id&&panel?.isConnected&&panel.closest('#itemDetailPage')===page)return;
-    clearDetailFrames();panel?.remove();panel=null;mount(page,id);
+    clearEpisodeFrames();clearDetailFrames();panel?.remove();panel=null;mount(page,id);
   }
   // v0.4.51 — Simkl poster score renderer. OWN classes, separate from MAL.
   // Scores come only from the per-user NAS archive. The server authorizes every
@@ -631,7 +721,12 @@
     }finally{scoreFetchBusy=false;schedule();}
   }
 
-  function tick(){timer=0;resetUser();mountHome();syncDetails();decorateCardScores();decorateSeasonFrames();void refreshResume();}
+  function tick(){
+    timer=0;resetUser();mountHome();syncDetails();decorateCardScores();decorateSeasonFrames();
+    const session=sessions.get(`${currentUser}:${currentDetail}`);
+    if(session)void decorateEpisodeFrames(session);
+    void refreshResume();
+  }
   function schedule(){if(!timer)timer=window.setTimeout(tick,180);}
   function init(){
     const observer=new MutationObserver(changes=>{

@@ -18,7 +18,7 @@ MAL=(SRC/'Web/mal.js').read_text()
 class SimklPosters051(unittest.TestCase):
     def test_version_consistency(self):
         version=json.loads((ROOT/'meta.json').read_text())['version']
-        self.assertEqual(version,'0.4.53.0')
+        self.assertEqual(version,'0.4.54.0')
         self.assertIn(f'<AssemblyVersion>{version}</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
     def test_uses_personal_nas_backup_never_jellyfin_user_rating(self):

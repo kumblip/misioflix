@@ -253,3 +253,25 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-simkl-detail-score-sou
     min-height:0;padding:0 10px;margin-right:4px;font-size:14px;
   }
 }
+
+/* v0.4.54 — Episode-level Simkl frames on native season episode rows.
+   This is NOT a series/season frame and never uses MAL selectors. */
+html.misioflix-skin #itemDetailPage.mf-detail-compact
+  .mf-detail-series-sections .mf-simkl-episode-row {
+  position:relative!important;isolation:isolate;
+  border-radius:12px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact
+  .mf-detail-series-sections .mf-simkl-episode-row > .mf-simkl-episode-frame {
+  position:absolute;inset:0;z-index:5;pointer-events:none;
+  box-sizing:border-box;border-radius:inherit;padding:2px;
+  background:var(--mf-simkl-episode-frame);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="unwatched"] {--mf-simkl-episode-frame:#f4a5ce}
+html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="started"] {--mf-simkl-episode-frame:#e6a23c}
+html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="watched"] {--mf-simkl-episode-frame:#45b879}
+html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="mixed"] {
+  --mf-simkl-episode-frame:linear-gradient(90deg,#e6a23c 0 50%,#45b879 50% 100%);
+}
