@@ -93,8 +93,34 @@ public sealed class MisioFlixSimklController : ControllerBase
                 title=entry.Entry.Title,
                 slug=entry.Entry.Slug
             };
+            var seasonEpisodes=target.SeasonNumber.HasValue
+                ? await _catalog.AuthorizedSimklSeasonEpisodeNumbersAsync(Request,seasonId!.Value,cancel).ConfigureAwait(false)
+                : null;
+            var watched=target.SeasonNumber.HasValue && entry.Entry?.WatchedSeasons is not null &&
+                entry.Entry.WatchedSeasons.TryGetValue(target.SeasonNumber.Value,out var seen)
+                ? seen : new System.Collections.Generic.List<int>();
             return Ok(new{relevant=true,kind=target.Kind,seasonNumber=target.SeasonNumber,
+                episodeNumbers=seasonEpisodes,watchedEpisodeNumbers=target.SeasonNumber.HasValue?watched:null,
                 hasIds=target.Ids.Count>0,connected=entry.Connected,matched=entry.Matched,entry=item});
+        }
+        catch(Exception ex){return Failure(ex);}
+    }
+    public sealed record SeasonHistoryRequest(Guid CatalogId,Guid SeasonId,bool Watched,
+        System.Collections.Generic.List<int>? EpisodeNumbers);
+    [HttpPost("season-history")]
+    public async Task<IActionResult> UpdateSeasonHistory([FromBody]SeasonHistoryRequest input,CancellationToken cancel)
+    {
+        NoCache();
+        try
+        {
+            if(input.SeasonId==Guid.Empty)return BadRequest(new{error="Wybierz sezon."});
+            var target=await _catalog.AuthorizedSimklTargetAsync(Request,input.CatalogId,input.SeasonId,cancel).ConfigureAwait(false);
+            if(!target.Relevant)return BadRequest(new{error="Simkl nie jest dostępny w AnimePL"});
+            var allowed=await _catalog.AuthorizedSimklSeasonEpisodeNumbersAsync(Request,input.SeasonId,cancel).ConfigureAwait(false);
+            await _simkl.UpdateSeasonAsync(await CurrentUser(cancel),target,
+                new MisioFlixSimklService.SimklSeasonEdit(input.Watched,input.EpisodeNumbers),allowed,cancel)
+                .ConfigureAwait(false);
+            return Ok(new{saved=true});
         }
         catch(Exception ex){return Failure(ex);}
     }
@@ -108,6 +134,7 @@ public sealed class MisioFlixSimklController : ControllerBase
         {
             var target=await _catalog.AuthorizedSimklTargetAsync(Request,input.CatalogId,input.SeasonId,cancel).ConfigureAwait(false);
             if(!target.Relevant)return BadRequest(new{error="Simkl nie jest dostępny w AnimePL"});
+            if(input.SeasonId.HasValue)return BadRequest(new{error="Edycja statusu i oceny serialu jest dostępna tylko na stronie serialu."});
             await _simkl.UpdateAsync(await CurrentUser(cancel),target,
                 new MisioFlixSimklService.SimklEdit(input.Status,input.Score,input.ChangeStatus,input.ChangeScore),cancel)
                 .ConfigureAwait(false);

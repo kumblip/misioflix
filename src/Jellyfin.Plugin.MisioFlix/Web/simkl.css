@@ -58,3 +58,13 @@ html.misioflix-skin .mf-simkl-toast {position:fixed;bottom:clamp(16px,5vh,46px);
   html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-poster-rail .mf-simkl-content {padding:8px 3px;border:1px solid rgba(244,165,206,.45);border-top:0;border-radius:0 0 10px 10px}
 }
 @media(max-width:650px){html.misioflix-skin .mf-simkl-readonly {grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v0.4.48: independent, per-season Simkl episode editor. */
+html.misioflix-skin .mf-simkl-season-editor {display:flex;flex-direction:column;gap:9px}
+html.misioflix-skin .mf-simkl-season-actions {display:flex;flex-wrap:wrap;gap:7px}
+html.misioflix-skin .mf-simkl-episodes-heading {margin:5px 0 0;font-size:12px;font-weight:700}
+html.misioflix-skin .mf-simkl-episodes {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;max-height:230px;overflow:auto;padding:5px 2px}
+html.misioflix-skin .mf-simkl-episode {display:flex;align-items:center;gap:6px;padding:6px;border:1px solid #714264;border-radius:7px;color:#f2deed;font-size:11px;cursor:pointer}
+html.misioflix-skin .mf-simkl-episode input {accent-color:#d97dab;width:15px;height:15px;margin:0;flex:none}
+html.misioflix-skin .mf-simkl-detail-actions {display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+@media(max-width:400px){html.misioflix-skin .mf-simkl-episodes {grid-template-columns:minmax(0,1fr)}}

@@ -18,8 +18,8 @@ namespace Jellyfin.Plugin.MisioFlix.Services;
 
 /// <summary>
 /// Independent Simkl AUTH V2 and sync module. Never references MAL or changes
-/// Jellyfin playback, status, NFO, folders or user ratings. Writes happen only
-/// in UpdateAsync, invoked by the explicit authenticated /simkl/update endpoint.
+/// Jellyfin playback, status, NFO, folders or user ratings. Writes happen only in explicit UpdateAsync or UpdateSeasonAsync calls from
+/// authenticated /simkl/update or /simkl/season-history endpoints.
 /// </summary>
 public sealed class MisioFlixSimklService
 {
@@ -40,16 +40,18 @@ public sealed class MisioFlixSimklService
         public string Activity { get; set; } = "";
         public DateTimeOffset CheckedAt { get; set; }
         public Dictionary<string, SimklEntry> Items { get; } = new(StringComparer.Ordinal);
+        public bool HasEpisodeDetails { get; set; }
     }
     public sealed record SimklConnection(bool Connected, bool CanWrite);
     public sealed record SimklPin(string Code, string Uri, int ExpiresIn, int Interval);
     public sealed record SimklPoll(bool Connected, bool Pending, int RetryAfter);
     public sealed record SimklEntry(string Kind, long Id, string Status, int? Score,
         int? WatchedEpisodes, int? TotalEpisodes, Dictionary<string,string> Ids,
-        string? Title, string? Slug);
+        string? Title, string? Slug, Dictionary<int,List<int>>? WatchedSeasons=null);
     public sealed record SimklItemResponse(bool Connected, bool Matched, SimklEntry? Entry,
         int? SeasonNumber);
     public sealed record SimklEdit(string? Status, int? Score, bool ChangeStatus, bool ChangeScore);
+    public sealed record SimklSeasonEdit(bool Watched, IReadOnlyList<int>? EpisodeNumbers);
 
     public MisioFlixSimklService(HttpClient http, IApplicationPaths paths)
     {
@@ -105,7 +107,7 @@ public sealed class MisioFlixSimklService
         string? bearer,object? payload,CancellationToken cancel,bool form=false)
     {
         using var request=new HttpRequestMessage(method,Api+route);
-        request.Headers.UserAgent.ParseAdd("MisioFlix/0.4.46 (Jellyfin)");
+        request.Headers.UserAgent.ParseAdd("MisioFlix/0.4.48 (Jellyfin)");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if(!string.IsNullOrWhiteSpace(bearer))request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",bearer);
         if(payload is Dictionary<string,string> pairs && form)
@@ -258,11 +260,31 @@ public sealed class MisioFlixSimklService
         // All API calls are scoped to the authenticated user token; no direct browser requests to Simkl.
         var sep=route.Contains('?')?"&":"?";
         var full=route+sep+"client_id="+Uri.EscapeDataString(credential.ClientId)+
-            "&app-name=misioflix&app-version=0.4.46";
+            "&app-name=misioflix&app-version=0.4.48";
         var(status,doc)=await SendAsync(method,full,credential.AccessToken,payload,cancel).ConfigureAwait(false);
         try{EnsureSuccess(status,doc);return doc;}catch{doc.Dispose();throw;}
     }
-    private static void MergeRows(SyncSnapshot state,JsonElement doc)
+    private static Dictionary<int,List<int>> ParseWatchedSeasons(JsonElement row)
+    {
+        var map=new Dictionary<int,List<int>>();
+        if(!row.TryGetProperty("seasons",out var seasons)||seasons.ValueKind!=JsonValueKind.Array)return map;
+        foreach(var season in seasons.EnumerateArray())
+        {
+            var number=Count(season,"number");
+            if(!number.HasValue||number.Value<0||number.Value>500)continue;
+            var watched=new List<int>();
+            if(season.TryGetProperty("episodes",out var episodes)&&episodes.ValueKind==JsonValueKind.Array)
+                foreach(var episode in episodes.EnumerateArray())
+                {
+                    var episodeNumber=Count(episode,"number");
+                    if(episodeNumber is >0 and <10000 && !watched.Contains(episodeNumber.Value))
+                        watched.Add(episodeNumber.Value);
+                }
+            watched.Sort();map[number.Value]=watched;
+        }
+        return map;
+    }
+    private static void MergeRows(SyncSnapshot state,JsonElement doc,bool withEpisodes=false)
     {
         foreach(var kind in new[]{"shows","movies"})
         {
@@ -277,37 +299,50 @@ public sealed class MisioFlixSimklService
                     var entry=Get(ids,key);if(!string.IsNullOrWhiteSpace(entry))ext[key]=entry;
                 }
                 var score=Count(row,"user_rating");
+                var key=kind+":"+id.ToString(CultureInfo.InvariantCulture);
+                state.Items.TryGetValue(key,out var oldEntry);
+                var seasonHistory=kind=="shows" && withEpisodes
+                    ? ParseWatchedSeasons(row) : oldEntry?.WatchedSeasons;
                 var entryValue=new SimklEntry(kind,id,Get(row,"status"),score,
                     kind=="shows"?Count(row,"watched_episodes_count"):null,
                     kind=="shows"?Count(row,"total_episodes_count"):null,
-                    ext,Get(media,"title"),Get(ids,"slug"));
-                state.Items[kind+":"+id.ToString(CultureInfo.InvariantCulture)]=entryValue;
+                    ext,Get(media,"title"),Get(ids,"slug"),seasonHistory);
+                state.Items[key]=entryValue;
             }
         }
     }
-    private async Task<SyncSnapshot> LoadSnapshotAsync(string user,bool refresh,CancellationToken cancel)
+    private async Task<SyncSnapshot> LoadSnapshotAsync(string user,bool refresh,CancellationToken cancel,bool needEpisodes=false)
     {
-        if(_snapshots.TryGetValue(user,out var cache)&&!refresh && cache.CheckedAt>DateTimeOffset.UtcNow-CacheLifetime)
+        if(_snapshots.TryGetValue(user,out var cache)&&!refresh && (!needEpisodes||cache.HasEpisodeDetails) && cache.CheckedAt>DateTimeOffset.UtcNow-CacheLifetime)
             return cache;
         await SyncLock(user).WaitAsync(cancel).ConfigureAwait(false);
         try
         {
-            if(_snapshots.TryGetValue(user,out cache)&&!refresh && cache.CheckedAt>DateTimeOffset.UtcNow-CacheLifetime)
+            if(_snapshots.TryGetValue(user,out cache)&&!refresh && (!needEpisodes||cache.HasEpisodeDetails) && cache.CheckedAt>DateTimeOffset.UtcNow-CacheLifetime)
                 return cache;
             using var activities=await ApiAsync(user,HttpMethod.Get,"/sync/activities",null,cancel).ConfigureAwait(false);
             var nowActivity=Get(activities.RootElement,"all");
             if(string.IsNullOrWhiteSpace(nowActivity))throw new HttpRequestException("Simkl nie zwrócił znacznika zmian list.");
             if(cache is not null && cache.Activity==nowActivity)
             {
+                // One lazy initial episode baseline only when a season is opened.
+                if(needEpisodes&&!cache.HasEpisodeDetails)
+                {
+                    using var baseline=await ApiAsync(user,HttpMethod.Get,
+                        "/sync/all-items/shows?extended=full&include_all_episodes=yes",null,cancel).ConfigureAwait(false);
+                    MergeRows(cache,baseline.RootElement,true);
+                    cache.HasEpisodeDetails=true;
+                }
                 cache.CheckedAt=DateTimeOffset.UtcNow;
                 return cache;
             }
-            var result=new SyncSnapshot();
+            var result=new SyncSnapshot{HasEpisodeDetails=needEpisodes||(cache?.HasEpisodeDetails??false)};
             if(cache is null)
             {
                 // Official Simkl phase 1: activities BEFORE initial sequential pulls.
-                using var shows=await ApiAsync(user,HttpMethod.Get,"/sync/all-items/shows",null,cancel).ConfigureAwait(false);
-                MergeRows(result,shows.RootElement);
+                using var shows=await ApiAsync(user,HttpMethod.Get,
+                    "/sync/all-items/shows"+(result.HasEpisodeDetails?"?extended=full&include_all_episodes=yes":""),null,cancel).ConfigureAwait(false);
+                MergeRows(result,shows.RootElement,result.HasEpisodeDetails);
                 using var movies=await ApiAsync(user,HttpMethod.Get,"/sync/all-items/movies",null,cancel).ConfigureAwait(false);
                 MergeRows(result,movies.RootElement);
             }
@@ -316,8 +351,17 @@ public sealed class MisioFlixSimklService
                 foreach(var pair in cache.Items)result.Items[pair.Key]=pair.Value;
                 // Official phase 2: only changes since the *previous* activities snapshot.
                 using var delta=await ApiAsync(user,HttpMethod.Get,"/sync/all-items?date_from="+
-                    Uri.EscapeDataString(cache.Activity),null,cancel).ConfigureAwait(false);
-                MergeRows(result,delta.RootElement);
+                    Uri.EscapeDataString(cache.Activity)+
+                    (result.HasEpisodeDetails?"&extended=full&include_all_episodes=yes":""),null,cancel).ConfigureAwait(false);
+                MergeRows(result,delta.RootElement,result.HasEpisodeDetails);
+                // A normal title-level session might have populated the cache first;
+                // seed per-episode state exactly once for this user's active session.
+                if(needEpisodes&&!cache.HasEpisodeDetails)
+                {
+                    using var baseline=await ApiAsync(user,HttpMethod.Get,
+                        "/sync/all-items/shows?extended=full&include_all_episodes=yes",null,cancel).ConfigureAwait(false);
+                    MergeRows(result,baseline.RootElement,true);
+                }
                 // A rating-only change is absent from all-items; fetch the ratings delta.
                 using var ratings=await ApiAsync(user,HttpMethod.Get,"/sync/ratings?date_from="+
                     Uri.EscapeDataString(cache.Activity),null,cancel).ConfigureAwait(false);
@@ -379,7 +423,7 @@ public sealed class MisioFlixSimklService
         var connection=await ConnectionAsync(user,cancel).ConfigureAwait(false);
         if(!connection.Connected)return new SimklItemResponse(false,false,null,target.SeasonNumber);
         if(target.Ids.Count==0)return new SimklItemResponse(true,false,null,target.SeasonNumber);
-        var snapshot=await LoadSnapshotAsync(user,refresh,cancel).ConfigureAwait(false);
+        var snapshot=await LoadSnapshotAsync(user,refresh,cancel,target.SeasonNumber.HasValue).ConfigureAwait(false);
         return new SimklItemResponse(true,true,Match(snapshot,target),target.SeasonNumber);
     }
     private static bool ValidStatus(string? status,string kind)
@@ -403,8 +447,50 @@ public sealed class MisioFlixSimklService
             : 0;
         if(count<=0)throw new HttpRequestException("Simkl nie potwierdził zapisu tej pozycji.");
     }
+    // Explicit season/episode history mutation; never calls add-to-list or ratings.
+    // This method is reached ONLY from the confirmed season-editor submission.
+    public async Task UpdateSeasonAsync(string user,SimklMediaTarget target,
+        SimklSeasonEdit edit,IReadOnlyCollection<int> allowedEpisodes,CancellationToken cancel)
+    {
+        if(!target.Relevant||target.Kind!="shows"||!target.SeasonNumber.HasValue||
+            target.SeasonNumber.Value<0||target.SeasonNumber.Value>500)
+            throw new ArgumentException("Edycja historii wymaga wskazania jednego sezonu serialu.");
+        if(target.Ids.Count==0)throw new InvalidOperationException("Serial musi mieć poprawny identyfikator TMDB, IMDb albo TVDB.");
+        var chosen=edit.EpisodeNumbers;
+        if(chosen is not null)
+        {
+            if(chosen.Count is <1 or >500 ||chosen.Count!=chosen.Distinct().Count() ||
+                chosen.Any(n=>n<1||n>9999||!allowedEpisodes.Contains(n)))
+                throw new ArgumentException("Wybrane odcinki nie należą do tego sezonu w bibliotece Jellyfin.");
+        }
+        var credential=await ValidCredentialAsync(user,cancel).ConfigureAwait(false);
+        if(!credential.Scope.Split(' ',StringSplitOptions.RemoveEmptyEntries).Contains("media:write"))
+            throw new InvalidOperationException("Połącz ponownie Simkl z uprawnieniem media:write.");
+        var season=new Dictionary<string,object>{{"number",target.SeasonNumber.Value}};
+        if(chosen is not null)season["episodes"]=chosen.Select(n=>new{number=n}).ToArray();
+        var show=new Dictionary<string,object>{{"ids",target.Ids},{"seasons",new[]{season}}};
+        var route=edit.Watched?"/sync/history":"/sync/history/remove";
+        using var response=await ApiAsync(user,HttpMethod.Post,route,
+            new {shows=new[]{show}},cancel).ConfigureAwait(false);
+        // History endpoints acknowledge via added.episodes / deleted.episodes.
+        // A zero count can mean an idempotent repeat, but *not_found* is an error.
+        var root=response.RootElement;
+        if(root.ValueKind!=JsonValueKind.Object)throw new HttpRequestException("Brak potwierdzenia zmiany historii sezonu.");
+        if(root.TryGetProperty("not_found",out var missing)&&missing.ValueKind==JsonValueKind.Object)
+            foreach(var key in new[]{"shows","episodes"})
+                if(missing.TryGetProperty(key,out var rows)&&rows.ValueKind==JsonValueKind.Array&&rows.GetArrayLength()>0)
+                    throw new InvalidOperationException("Simkl nie rozpoznał sezonu lub części odcinków. Sprawdź numerację w serwisie Simkl.");
+        if(!root.TryGetProperty(edit.Watched?"added":"deleted",out var acknowledgment)||
+            acknowledgment.ValueKind!=JsonValueKind.Object||Count(acknowledgment,"episodes") is null)
+            throw new HttpRequestException("Simkl nie potwierdził zmiany historii odcinków.");
+        // Keep the costly initial episode baseline: next explicit read uses
+        // /sync/activities + date_from to update only changed show episodes.
+        if(_snapshots.TryGetValue(user,out var snapshot))snapshot.CheckedAt=DateTimeOffset.MinValue;
+    }
+
     public async Task<SimklEntry?> UpdateAsync(string user,SimklMediaTarget target,SimklEdit edit,CancellationToken cancel)
     {
+        if(target.SeasonNumber.HasValue)throw new ArgumentException("Status i ocena całego serialu są edytowane wyłącznie na stronie serialu. Dla sezonu użyj historii sezonu.");
         if(!target.Relevant||target.Ids.Count==0)throw new InvalidOperationException("Tytuł musi mieć poprawne TMDB, IMDb albo TVDB ID w Jellyfin.");
         if(!edit.ChangeStatus&&!edit.ChangeScore)throw new ArgumentException("Nie wybrano zmian do zapisania.");
         if(edit.ChangeStatus&&!ValidStatus(edit.Status,target.Kind))throw new ArgumentException("Niedozwolony status Simkl.");

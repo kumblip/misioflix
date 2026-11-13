@@ -879,6 +879,30 @@ public sealed class MisioFlixCatalogService
         return MakeSimklTarget(catalogId, item, type=="Movie"?"movies":"shows", null);
     }
 
+    // Episode numbers for the selected season only, obtained via Jellyfin with the
+    // authenticated user's permissions. The browser cannot invent episode numbers.
+    public async Task<List<int>> AuthorizedSimklSeasonEpisodeNumbersAsync(HttpRequest caller,
+        Guid seasonId,CancellationToken cancel)
+    {
+        if(seasonId==Guid.Empty)throw new ArgumentException("Nieprawidłowy sezon");
+        var (origin,auth,userId)=await AuthenticatedUserAsync(caller,cancel).ConfigureAwait(false);
+        using var response=await GetJsonAsync(origin,
+            $"Items?UserId={Uri.EscapeDataString(userId)}&ParentId={seasonId:N}"+
+            "&Recursive=false&IncludeItemTypes=Episode&Limit=501",auth,cancel).ConfigureAwait(false);
+        var root=response.RootElement;
+        if(Number(Get(root,"TotalRecordCount"))>500)
+            throw new InvalidOperationException("Sezon ma ponad 500 odcinków — ręczna edycja odcinków jest wyłączona.");
+        var items=Get(root,"Items");
+        if(items.ValueKind!=JsonValueKind.Array)return new List<int>();
+        if(items.GetArrayLength()>500)
+            throw new InvalidOperationException("Zbyt wiele odcinków w jednym sezonie.");
+        return items.EnumerateArray()
+            .Where(e=>Text(Get(e,"Type"))=="Episode")
+            .Select(e=>(int)Number(Get(e,"IndexNumber")))
+            .Where(n=>n>0 && n<10000)
+            .Distinct().OrderBy(n=>n).ToList();
+    }
+
     private SimklMediaTarget MakeSimklTarget(Guid id, JsonElement data, string kind, int? seasonNumber)
     {
         var local = _library.GetItemById(id);

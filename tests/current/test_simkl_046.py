@@ -33,7 +33,7 @@ class SimklIsolated046(unittest.TestCase):
 
     def test_scopes_and_app_identifiers(self):
         self.assertIn('"client_id="+Uri.EscapeDataString(credential.ClientId)',SERVICE)
-        self.assertIn('app-name=misioflix&app-version=0.4.46',SERVICE)
+        self.assertIn('app-name=misioflix&app-version=0.4.48',SERVICE)
         self.assertIn('media:write',SERVICE)
         self.assertIn('ClientId()',SERVICE)
 
@@ -78,7 +78,9 @@ class SimklIsolated046(unittest.TestCase):
         self.assertIn('/sync/add-to-list',after)
         self.assertIn('/sync/ratings',after)
         self.assertNotIn('scrobble/',SERVICE)
-        self.assertNotIn('history',ROUTES.lower())
+        self.assertIn('[HttpPost("season-history")]',ROUTES)
+        self.assertIn("request('/season-history','POST'",WEB)
+        self.assertIn('if(input.SeasonId.HasValue)return BadRequest',ROUTES)
 
     def test_rating_first_status_last(self):
         edit=SERVICE.split('public async Task<SimklEntry?> UpdateAsync',1)[1]
@@ -94,7 +96,7 @@ class SimklIsolated046(unittest.TestCase):
 
     def test_no_bogus_episodes_write(self):
         self.assertIn('WatchedEpisodes',SERVICE)
-        self.assertIn('Licznik obejrzanych odcinków jest tylko do odczytu',WEB)
+        self.assertIn('Pojedyncze odcinki',WEB)
         edit=SERVICE.split('public async Task<SimklEntry?> UpdateAsync',1)[1]
         self.assertNotIn('watched_episodes_count',edit)
         self.assertNotIn('watchedEpisodes',edit)
@@ -135,7 +137,7 @@ class SimklIsolated046(unittest.TestCase):
         self.assertNotIn('Simkl',old+theme+mal)
 
     def test_version_beta(self):
-        self.assertIn('0.4.47.0',(ROOT/'meta.json').read_text())
-        self.assertIn('<AssemblyVersion>0.4.47.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertIn('0.4.48.0',(ROOT/'meta.json').read_text())
+        self.assertIn('<AssemblyVersion>0.4.48.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__':unittest.main()
