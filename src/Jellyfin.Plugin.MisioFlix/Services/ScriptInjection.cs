@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Net.Http;
+using MediaBrowser.Common.Configuration;
 using System.Text;
 using System.Threading.Tasks;
 using MediaBrowser.Controller;
@@ -75,7 +77,9 @@ public sealed class MisioFlixStartupFilter : IStartupFilter
                         "<script data-misioflix=\"skin\" defer src=\"../MisioFlix/assets/client.js?v=" + version + "\"></script>" +
                         "<script data-misioflix=\"home\" defer src=\"../MisioFlix/assets/home.js?v=" + version + "\"></script>" +
                         "<script data-misioflix=\"details\" defer src=\"../MisioFlix/assets/details.js?v=" + version + "\"></script>" +
-                        "<script data-misioflix=\"mal\" defer src=\"../MisioFlix/assets/mal.js?v=" + version + "\"></script>";
+                        "<script data-misioflix=\"mal\" defer src=\"../MisioFlix/assets/mal.js?v=" + version + "\"></script>" +
+                        "<link data-misioflix=\"simkl\" rel=\"stylesheet\" href=\"../MisioFlix/assets/simkl.css?v=" + version + "\">" +
+                        "<script data-misioflix=\"simkl\" defer src=\"../MisioFlix/assets/simkl.js?v=" + version + "\"></script>";
                     var at = input.LastIndexOf("</head>", StringComparison.OrdinalIgnoreCase);
                     input = input.Insert(at, inject);
                 }
@@ -108,6 +112,13 @@ public sealed class MisioFlixServiceRegistrator : IPluginServiceRegistrator
     {
         services.AddTransient<IStartupFilter, MisioFlixStartupFilter>();
         services.AddHostedService<MisioFlixMalRefreshHostedService>();
+        // Device-PIN sessions and read snapshots MUST survive separate HTTP requests.
+        // Typed AddHttpClient<T> is transient; it would forget the pending PIN before poll!
+        services.AddHttpClient("MisioFlixSimkl", http => { http.Timeout=TimeSpan.FromSeconds(30); })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect=false });
+        services.AddSingleton<MisioFlixSimklService>(provider => new MisioFlixSimklService(
+            provider.GetRequiredService<IHttpClientFactory>().CreateClient("MisioFlixSimkl"),
+            provider.GetRequiredService<IApplicationPaths>()));
         services.AddHttpClient<MisioFlixMalService>(http => { http.Timeout=TimeSpan.FromSeconds(30); })
             .ConfigurePrimaryHttpMessageHandler(() => new System.Net.Http.HttpClientHandler { AllowAutoRedirect=false });
         services.AddHttpClient<MisioFlixCatalogService>(http =>

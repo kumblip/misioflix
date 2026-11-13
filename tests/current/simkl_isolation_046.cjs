@@ -1,0 +1,23 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const path=require('node:path');
+const source=fs.readFileSync(path.resolve(__dirname,'../../src/Jellyfin.Plugin.MisioFlix/Web/simkl.js'),'utf8');
+let fetches=0;let saved=0;let ready;
+const document={readyState:'loading',addEventListener(name,cb){if(name==='DOMContentLoaded')ready=cb;},body:{},querySelector(){return null;},querySelectorAll(){return [];}};
+const window={ApiClient:null,ConnectionManager:null,addEventListener(){},setTimeout(fn){this.task=fn;return 1;},clearTimeout(){},location:{hash:'#/home'},fetch(){fetches++;throw Error('No network permitted before a user connects');}};
+const location=window.location;
+class MutationObserver{constructor(fn){this.fn=fn;}observe(){}}
+const context={window,document,location,MutationObserver,fetch:(...args)=>window.fetch(...args),URLSearchParams,AbortController,setTimeout:fn=>setTimeout(fn,0),console};
+vm.runInNewContext(source,context,{filename:'simkl.js',timeout:1000});
+assert.equal(typeof ready,'function');
+assert.equal(fetches,0,'module import must not call Simkl');
+ready();
+if(window.task)window.task();
+assert.equal(fetches,0,'no Simkl API without an authenticated user and a details view');
+assert.match(source,/window\.confirm\('Zapisać wybrane zmiany w Simkl/);
+assert.match(source,/await request\('\/update','POST'/);
+assert.doesNotMatch(source,/scrobble\/start|scrobble\/stop|playbackPositionTicks|SetPlayed|setUserData/);
+assert.match(source,/if\(!result\.relevant\)return;/);
+console.log('PASS v0.4.46: isolated Simkl boot, explicit save, no auto-scrobble, anime exclusion');

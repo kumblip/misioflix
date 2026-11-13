@@ -829,6 +829,76 @@ public sealed class MisioFlixCatalogService
         return null;
     }
 
+    // Simkl has a separate trust boundary: authenticated Jellyfin media identity,
+    // NEVER an arbitrary external ID submitted by a browser and NEVER the AnimeRoot.
+    // A Season maps to the parent series in Simkl (Simkl has one show-list entry).
+    public async Task<SimklMediaTarget> AuthorizedSimklTargetAsync(HttpRequest caller,
+        Guid catalogId, Guid? seasonId, CancellationToken cancel)
+    {
+        if (catalogId == Guid.Empty || seasonId == Guid.Empty)
+            throw new ArgumentException("Nieprawidłowy identyfikator filmu lub serialu");
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        var id = seasonId ?? catalogId;
+        using var allowed = await GetJsonAsync(origin,
+            $"Items?UserId={Uri.EscapeDataString(userId)}&Ids={id:N}&Recursive=true&Limit=2" +
+            "&IncludeItemTypes=Series,Season,Movie&Fields=ProviderIds", auth, cancel).ConfigureAwait(false);
+        var list = Get(allowed.RootElement, "Items");
+        if (list.ValueKind != JsonValueKind.Array ||
+            !list.EnumerateArray().Any(x => SameGuid(Text(Get(x,"Id")), id)))
+            throw new UnauthorizedAccessException("Pozycja niedostępna dla tego użytkownika Jellyfin");
+
+        using var full = await GetJsonAsync(origin,
+            $"Users/{Uri.EscapeDataString(userId)}/Items/{id:N}", auth, cancel).ConfigureAwait(false);
+        var item = full.RootElement;
+        var type = Text(Get(item, "Type"));
+        int? seasonNumber = null;
+        if (seasonId.HasValue)
+        {
+            if (type != "Season" || !SameGuid(Text(Get(item, "SeriesId")), catalogId))
+                throw new UnauthorizedAccessException("Sezon nie należy do podanego serialu");
+            seasonNumber = (int)Number(Get(item, "IndexNumber"));
+        }
+        else if (type != "Movie" && type != "Series")
+            throw new ArgumentException("Simkl obsługuje tutaj tylko filmy i seriale");
+
+        if (seasonId.HasValue)
+        {
+            using var parentAllowed = await GetJsonAsync(origin,
+                $"Items?UserId={Uri.EscapeDataString(userId)}&Ids={catalogId:N}&Recursive=true&Limit=2" +
+                "&IncludeItemTypes=Series&Fields=ProviderIds", auth, cancel).ConfigureAwait(false);
+            var parentList = Get(parentAllowed.RootElement, "Items");
+            if (parentList.ValueKind != JsonValueKind.Array ||
+                !parentList.EnumerateArray().Any(x => SameGuid(Text(Get(x,"Id")), catalogId)))
+                throw new UnauthorizedAccessException("Serial jest niedostępny dla tego użytkownika");
+            using var parent = await GetJsonAsync(origin,
+                $"Users/{Uri.EscapeDataString(userId)}/Items/{catalogId:N}", auth, cancel).ConfigureAwait(false);
+            if (Text(Get(parent.RootElement,"Type")) != "Series")
+                throw new UnauthorizedAccessException("Element nadrzędny nie jest serialem");
+            return MakeSimklTarget(catalogId, parent.RootElement, "shows", seasonNumber);
+        }
+        return MakeSimklTarget(catalogId, item, type=="Movie"?"movies":"shows", null);
+    }
+
+    private SimklMediaTarget MakeSimklTarget(Guid id, JsonElement data, string kind, int? seasonNumber)
+    {
+        var local = _library.GetItemById(id);
+        if (local is null) throw new UnauthorizedAccessException("Pozycja nie istnieje w bibliotece");
+        var animeRoot = Plugin.Instance?.Configuration.AnimeRoot;
+        if (!string.IsNullOrWhiteSpace(animeRoot) &&
+            IsBelowRoot(local.Path, Path.GetFullPath(animeRoot)))
+            return new SimklMediaTarget(false, kind, seasonNumber, new Dictionary<string,string>(), "");
+        var source = Get(data, "ProviderIds");
+        var ids = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, provider) in new[] { ("tmdb","Tmdb"), ("imdb","Imdb"), ("tvdb","Tvdb") })
+        {
+            var raw = Text(Get(source, provider)).Trim();
+            if (raw.Length is > 0 and < 64 &&
+                (key=="imdb" ? System.Text.RegularExpressions.Regex.IsMatch(raw, @"^tt[0-9]{5,12}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase) :
+                    System.Text.RegularExpressions.Regex.IsMatch(raw, @"^[0-9]{1,14}$"))) ids[key]=raw;
+        }
+        return new SimklMediaTarget(true, kind, seasonNumber, ids, Text(Get(data,"Name")));
+    }
+
     public async Task<int> AuthorizedMalIdAsync(HttpRequest caller, Guid catalogId,
         Guid? seasonId, CancellationToken cancel)
     {
@@ -1331,3 +1401,7 @@ public sealed class HomeTile
 public sealed record HomeResumeTile(HomeTile item, string resumeId, double progress,
     int? season, int? episode, bool nextUp, long positionTicks, string resumeType);
 public sealed record HomeResumeResponse(List<HomeResumeTile> items, List<HomeResumeTile> hidden);
+
+// Separate media identity for Simkl; no MAL IDs or NFO content are transferred.
+public sealed record SimklMediaTarget(bool Relevant, string Kind, int? SeasonNumber,
+    Dictionary<string,string> Ids, string Title);

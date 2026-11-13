@@ -1,0 +1,7 @@
+MISIOFLIX NATIVE — STABILNY PUNKT PRZYWRACANIA v0.4.45.0
+Archiwum: MisioFlix_Native_v0.4.45_GitHub_PELNE.zip
+SHA256: ebcd91d4d9777b9a6dba93df6ecbf3ffce4185a464c62a1d5091fbc7989e5b54
+v0.4.45.0 jest wersją zaakceptowaną przez użytkownika jako działająca.
+Zmiany Simkl v0.4.46.0 są dodatkiem beta; nie zastępują kopii v0.4.45.0.
+W razie regresji: przywróć pliki z oryginalnego ZIP v0.4.45.0,
+uruchom budowę GitHub Actions, zainstaluj wygenerowany DLL i zrestartuj Jellyfin.

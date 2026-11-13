@@ -13,8 +13,9 @@ HOME=(WEB/'home.js').read_text(encoding='utf8')
 
 class NativeSeasonPaw0445(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.45.0')
-        self.assertIn('<AssemblyVersion>0.4.45.0</AssemblyVersion>',
+        version=json.loads((ROOT/'meta.json').read_text())['version']
+        self.assertGreaterEqual(tuple(map(int,version.split('.'))),(0,4,45,0))
+        self.assertIn(f'<AssemblyVersion>{version}</AssemblyVersion>',
             (ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
     def test_season_episode_total_is_distinct_from_native_unplayed_count(self):
         self.assertIn('type == "Season" ? PositiveInt(Get(item,"ChildCount"))',CATALOG)

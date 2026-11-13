@@ -2,7 +2,7 @@
 <html lang="pl"><head><meta charset="utf-8"><title>MisioFlix</title></head><body>
 <div data-role="page" class="page type-interior pluginConfigurationPage" id="misioflixConfigPage">
  <div data-role="content">
-  <h1>MisioFlix 0.4.6 — konfiguracja MyAnimeList</h1>
+  <h1>MisioFlix — konfiguracja integracji</h1>
   <p>Wpisz dane własnej aplikacji z <a href="https://myanimelist.net/apiconfig">MAL API Config</a>.
    Wspólne Client ID dotyczy całej instalacji Jellyfin, ale każdy użytkownik łączy własne konto MAL w swoim profilu MisioFlix. Użytkownicy mogą korzystać z MAL jednocześnie. Nie wpisuj tokenów ręcznie.</p>
   <form id="mf-config-form">
@@ -23,6 +23,18 @@
    <button type="submit" class="raised button-submit emby-button">Zapisz ustawienia MAL</button>
    <p id="mf-config-status" aria-live="polite"></p>
   </form>
+  <hr style="margin:26px 0;border-color:#77526c" />
+  <h2>Simkl — niezależne połączenie filmów i seriali</h2>
+  <p>Utwórz własną aplikację <a href="https://simkl.com/settings/developer/new/" target="_blank" rel="noopener noreferrer">Simkl Developer</a>
+     w systemie <strong>AUTH V2</strong>, typ <strong>TV, devices &amp; command line</strong>.
+     Wymagany jest tylko Client ID (nie Client Secret). Tokeny kont użytkowników są przechowywane oddzielnie po stronie serwera.
+     Integracja dotyczy filmów i seriali spoza AnimePL i nigdy automatycznie nie zapisuje historii odtwarzania.</p>
+  <form id="mf-simkl-config-form">
+   <div class="inputContainer"><label class="inputLabel" for="mf-simkl-client">Simkl AUTH V2 Client ID</label>
+    <input class="emby-input" id="mf-simkl-client" type="text" autocomplete="off" /></div>
+   <button type="submit" class="raised button-submit emby-button">Zapisz ustawienia Simkl</button>
+   <p id="mf-simkl-config-status" aria-live="polite"></p>
+  </form>
  </div>
  <script>
  (()=>{
@@ -33,7 +45,16 @@
     view.querySelector('#mf-mal-client').value=config.MalClientId||'';
     view.querySelector('#mf-mal-secret').value=config.MalClientSecret||'';
     view.querySelector('#mf-mal-redirect').value=config.MalRedirectUri||'';
+    view.querySelector('#mf-simkl-client').value=config.SimklClientId||'';
    }catch(e){view.querySelector('#mf-config-status').textContent='Nie udało się pobrać konfiguracji: '+e.message;}
+  });
+  view.querySelector('#mf-simkl-config-form').addEventListener('submit',async e=>{
+   e.preventDefault();const status=view.querySelector('#mf-simkl-config-status');
+   try{const config=await ApiClient.getPluginConfiguration(pluginId);
+    config.SimklClientId=view.querySelector('#mf-simkl-client').value.trim();
+    await ApiClient.updatePluginConfiguration(pluginId,config);
+    status.textContent='Zapisano ustawienia Simkl. Na stronie głównej użyj Połącz Simkl.';
+   }catch(error){status.textContent='Błąd Simkl: '+error.message;}
   });
   view.querySelector('#mf-config-form').addEventListener('submit',async e=>{
    e.preventDefault();const status=view.querySelector('#mf-config-status');

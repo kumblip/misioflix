@@ -11,6 +11,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public string MalClientSecret { get; set; } = string.Empty;
     public string MalRedirectUri { get; set; } = string.Empty;
 
+    // Simkl AUTH V2 device application ID. Never store tokens in plugin configuration.
+    public string SimklClientId { get; set; } = string.Empty;
+
     // Path seen FROM INSIDE the Jellyfin container, NOT the NAS host path.
     public string AnimeRoot { get; set; } = "/media/raid/animelektor";
 
