@@ -1316,6 +1316,30 @@
     queued=true;
     window.setTimeout(()=>{queued=false;reconcile();},180);
   }
+  // Jellyfin 12.4 can occasionally attach its native /mixed scroll component
+  // before its scroll-controller method is available on the first cold load.
+  // That failure is rendered by the native error boundary; normal navigation
+  // remains entirely native. Recover only this exact error ONCE per library
+  // visit, then leave it visible if it reoccurs (no refresh loops).
+  const MIXED_RECOVERY_KEY = 'misioflix-native-mixed-scroll-retry';
+  const mixedRoute = () => /^#\/mixed(?:[?&#]|$)/i.test(window.location.hash || '');
+  let mixedRecoveryCheck = 0;
+  function checkMixedScrollerError(){
+    if(!mixedRoute() || mixedRecoveryCheck)return;
+    mixedRecoveryCheck=window.setTimeout(()=>{
+      mixedRecoveryCheck=0;
+      if(!mixedRoute() || !document.body)return;
+      const bodyText=document.body.textContent||'';
+      if(!bodyText.includes('TypeError') ||
+         !bodyText.includes('e.addScrollEventListener is not a function'))return;
+      try{
+        if(sessionStorage.getItem(MIXED_RECOVERY_KEY)==='1')return;
+        sessionStorage.setItem(MIXED_RECOVERY_KEY,'1');
+      }catch{return;} // fail closed: never reload in a loop if storage is blocked
+      window.location.reload(); // one retry, same user/library/filter/URL
+    },300);
+  }
+
   function start(){
     if(!normalizeLibraryRoute())reconcile();
     document.addEventListener('keydown',event=>{
@@ -1338,18 +1362,28 @@
       if(!homeRouteFor(link.getAttribute('href')||''))unmountHome();
     },true);
     window.addEventListener('hashchange',()=>{
+      // Once the user leaves the library a future cold load may retry once.
+      if(!mixedRoute()){
+        if(mixedRecoveryCheck){window.clearTimeout(mixedRecoveryCheck);mixedRecoveryCheck=0;}
+        try{sessionStorage.removeItem(MIXED_RECOVERY_KEY);}catch{}
+      }
       if(!homeRoute())unmountHome();
       if(!normalizeLibraryRoute())schedule();
+      checkMixedScrollerError();
     });
     window.addEventListener('pageshow',schedule);
     document.addEventListener('viewshow',schedule);
     const observer=new MutationObserver(mutations=>{
+      // The native error boundary is outside MisioFlix's home route. Only
+      // inspect it on /mixed; do not alter a functioning scroll component.
+      if(mixedRoute())checkMixedScrollerError();
       if(!homeRoute() && !homeRoot)return;
       // Do not rescan due to MisioFlix card insertion or image load.
       if(mutations.some(m=>[...m.addedNodes].some(n=>n.nodeType===1 && !n.closest?.('#mf-home-0412'))))schedule();
       if(homeRoot && !homeRoot.isConnected)schedule();
     });
     observer.observe(document.body,{childList:true,subtree:true});
+    checkMixedScrollerError();
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
   else start();

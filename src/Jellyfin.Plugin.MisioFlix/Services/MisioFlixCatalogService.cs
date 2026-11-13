@@ -430,7 +430,13 @@ public sealed class MisioFlixCatalogService
                 description = (anime ? (nfo?.Plot ?? string.Empty) : Text(Get(item,"Overview"))).Trim(),
                 hasPrimary = HasPrimaryImage(item),
                 seasons = type == "Series" ? PositiveInt(Get(item,"ChildCount")) : null,
-                episodes = type == "Series" ? PositiveInt(Get(item,"RecursiveItemCount")) : null,
+                // A season contains episodes, not sub-seasons. Return its actual
+                // total to the same decorative paw overlay used by series cards.
+                // The native pink badge is UNPLAYED count, not total episodes.
+                episodes = type == "Series" ? PositiveInt(Get(item,"RecursiveItemCount"))
+                    : type == "Season" ? PositiveInt(Get(item,"ChildCount"))
+                        ?? PositiveInt(Get(item,"RecursiveItemCount"))
+                    : null,
                 userRating = PersonalRating(item),
                 malId = anime ? nfo?.MalId ?? (type=="Series" ? FirstSeasonMalId(libItem.Path) : null) : null,
                 watchStatus = type == "Series" && Get(Get(item,"UserData"),"UnplayedItemCount").ValueKind != JsonValueKind.Number
