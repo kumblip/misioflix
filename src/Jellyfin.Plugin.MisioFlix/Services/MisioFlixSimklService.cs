@@ -295,8 +295,8 @@ public sealed class MisioFlixSimklService
                 var ids=media.ValueKind==JsonValueKind.Object && media.TryGetProperty("ids",out var identifiers)?identifiers:default;
                 var id=Identifier(ids,"simkl");if(id==0)continue;
                 var ext=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-                foreach(var key in new[]{"tmdb","imdb","tvdb"}){
-                    var entry=Get(ids,key);if(!string.IsNullOrWhiteSpace(entry))ext[key]=entry;
+                foreach(var idField in new[]{"tmdb","imdb","tvdb"}){
+                    var entry=Get(ids,idField);if(!string.IsNullOrWhiteSpace(entry))ext[idField]=entry;
                 }
                 var score=Count(row,"user_rating");
                 var key=kind+":"+id.ToString(CultureInfo.InvariantCulture);
