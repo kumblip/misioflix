@@ -358,8 +358,8 @@ public sealed class MisioFlixSimklService
                     }
                     cache.IsOffline=false;cache.CheckedAt=DateTimeOffset.UtcNow;
                     await _local.SaveSnapshotAsync(user,ToArchive(cache),cancel).ConfigureAwait(false);
-                    var persisted=(await _local.ReadAsync(user,cancel).ConfigureAwait(false)).Snapshot;
-                    if(persisted is not null)cache=FromArchive(persisted); // includes pending offline watches
+                    var refreshedArchive=(await _local.ReadAsync(user,cancel).ConfigureAwait(false)).Snapshot;
+                    if(refreshedArchive is not null)cache=FromArchive(refreshedArchive); // includes pending offline watches
                     _snapshots[user]=cache;
                     return cache;
                 }

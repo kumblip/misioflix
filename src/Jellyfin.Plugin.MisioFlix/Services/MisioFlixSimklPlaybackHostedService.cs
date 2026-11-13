@@ -80,17 +80,21 @@ public sealed class MisioFlixSimklPlaybackHostedService : IHostedService
     }
     private Playing? Prepare(BaseItem item)
     {
-        if(item.RunTimeTicks.GetValueOrDefault()<=0)return null;
+        var runtimeTicks=item.RunTimeTicks.GetValueOrDefault();
+        if(runtimeTicks<=0)return null;
         BaseItem root;
         Guid seriesId=Guid.Empty;int season=0,episodeNumber=0;
         if(item is Episode ep)
         {
-            if(ep.IndexNumber.GetValueOrDefault()<1||!ep.ParentIndexNumber.HasValue||ep.ParentIndexNumber.Value<0)return null;
+            var seasonIndex=ep.ParentIndexNumber.GetValueOrDefault(-1);
+            var episodeIndex=ep.IndexNumber.GetValueOrDefault();
+            if(episodeIndex<1||!ep.ParentIndexNumber.HasValue||seasonIndex<0)return null;
             seriesId=ep.SeriesId;
             if(seriesId==Guid.Empty)return null;
-            root=_library.GetItemById(seriesId);
-            if(root is not Series)return null;
-            season=ep.ParentIndexNumber.Value;episodeNumber=ep.IndexNumber.Value;
+            var seriesRoot=_library.GetItemById(seriesId);
+            if(seriesRoot is not Series)return null;
+            root=seriesRoot;
+            season=seasonIndex;episodeNumber=episodeIndex;
         }
         else if(item is Movie)root=item;
         else return null;
@@ -112,7 +116,7 @@ public sealed class MisioFlixSimklPlaybackHostedService : IHostedService
             item is Movie?null:season,ids,root.Name,
             root.ProductionYear is >=1888 and <=2100?root.ProductionYear:null);
         return new Playing{ItemId=item.Id,SeriesId=seriesId,Season=season,Episode=episodeNumber,
-            RuntimeTicks=item.RunTimeTicks.Value,Target=target};
+            RuntimeTicks=runtimeTicks,Target=target};
     }
     private void Send(string user,Playing playing)
     {
