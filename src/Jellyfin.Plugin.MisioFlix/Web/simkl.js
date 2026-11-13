@@ -1,4 +1,4 @@
-/* MisioFlix Simkl module v0.4.52 — independent of MAL.
+/* MisioFlix Simkl module v0.4.53 — independent of MAL.
  * Server-side Jellyfin playback events mark watched after 75%; other writes manual.
  * User-separated NAS backup, offline export and local rewatch counters.
  */
@@ -14,7 +14,7 @@
   const client=()=>window.ApiClient||window.ConnectionManager?.getApiClient?.();
   const user=()=>compact(client()?.getCurrentUserId?.());
   const token=()=>{const api=client();const value=typeof api?.accessToken==='function'?api.accessToken():api?.accessToken;return typeof value==='string'?value:'';};
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.52", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.53", Token="${token().replace(/["\r\n]/g,'')}"`});
   async function request(route,method='GET',body){
     const controller=new AbortController();const timer=window.setTimeout(()=>controller.abort(),30000);
     try{
@@ -71,6 +71,28 @@
     const watching=resumeForUser.has(id);
     card.setAttribute('data-mf-simkl-watch',simklFrame(entry,fallback,watching));
   }
+  // Seasons are not independent Simkl list entries or rated titles. Use the
+  // actual Jellyfin parent-series GUID and numeric season from /api/overlays
+  // and the current user's real Resume positions. Do NOT apply series-wide
+  // Simkl scores/statuses to every season card.
+  function decorateSeasonFrames(){
+    if(!valid(currentUser))return;
+    for(const card of document.querySelectorAll('.card[data-mf-card="1"][data-mf-simkl-series][data-mf-simkl-season]')){
+      if(card.dataset.mfAnime==='1')continue;
+      if(!nearby(card))continue;
+      const parent=compact(card.dataset.mfSimklSeries);
+      const raw=card.dataset.mfSimklSeason;
+      const season=Number(raw);
+      if(!valid(parent)||raw===''||!Number.isInteger(season)||season<0)continue;
+      card.classList.remove('mf-simkl-native-media');
+      card.classList.add('mf-simkl-season-media');
+      card.querySelector('.mf-simkl-native-score')?.remove();
+      card.removeAttribute('data-mf-simkl-score');
+      const resuming=resumeSeasons.get(parent)?.has(season)===true;
+      const fallback=card.getAttribute('data-mf-watch')||'';
+      card.setAttribute('data-mf-simkl-watch',simklFrame(null,fallback,resuming));
+    }
+  }
   function decorateDetailFrame(session){
     const page=pageFor(session.id);
     if(!page||!session.data?.relevant||session.phase!=='ready')return;
@@ -103,12 +125,15 @@
     badge.replaceChildren();
     const rating=Number(entry?.score);
     const value=Number.isInteger(rating)&&rating>=1&&rating<=10?`${rating}/10`:'Bez oceny';
-    badge.append(el('span','mf-simkl-detail-score-number',value),simklPaw(),el('span','mf-simkl-detail-score-source','Simkl'));
+    // Score + pink paw only; avoid a redundant 'Simkl' label beside the
+    // native play button. The full origin remains in the accessible tooltip.
+    badge.append(el('span','mf-simkl-detail-score-number',value),simklPaw());
     badge.title='Moja ocena na Simkl — konto aktualnie zalogowanego użytkownika';
   }
   function updateAllFrames(){
     if(!valid(currentUser))return;
     decorateCardScores();
+    decorateSeasonFrames();
     const session=sessions.get(`${currentUser}:${currentDetail}`);
     if(session)decorateDetailFrame(session);
   }
@@ -132,7 +157,8 @@
           const catalog=compact(row.catalog_id);
           if(!valid(catalog))continue;
           ids.add(catalog);
-          const season=Number(row.season);
+          // Missing season is not Season 0 (Number(null) === 0).
+          const season=row?.season===null||row?.season===undefined||row?.season===''?NaN:Number(row.season);
           if(Number.isInteger(season)&&season>=0){
             if(!seasons.has(catalog))seasons.set(catalog,new Set());
             seasons.get(catalog).add(season);
@@ -158,6 +184,7 @@
     clearDetailFrames();
     document.querySelectorAll('[data-mf-simkl-watch]').forEach(node=>node.removeAttribute('data-mf-simkl-watch'));
     document.querySelectorAll('.mf-simkl-home-score,.mf-simkl-native-score').forEach(node=>node.remove());
+    document.querySelectorAll('.mf-simkl-season-media').forEach(node=>node.classList.remove('mf-simkl-season-media'));
     document.querySelectorAll('[data-mf-simkl-score]').forEach(node=>node.removeAttribute('data-mf-simkl-score'));
     panel?.remove();panel=null;currentDetail='';closeModal();
   }
@@ -567,6 +594,10 @@
     for(const card of cards){
       const native=!card.classList.contains('mf-home-poster');
       if(native){
+        // A season uses only its episode progress; a series-level score must
+        // NEVER be requested for the season GUID or printed on its poster.
+        const mediaType=String(card.getAttribute('data-type')||card.getAttribute('data-itemtype')||'').toLowerCase();
+        if(mediaType==='season')continue;
         if(card.dataset.mfAnime==='1'||!['film','serial'].includes(card.dataset.mfKind))continue;
         card.classList.add('mf-simkl-native-media');
       }
@@ -600,7 +631,7 @@
     }finally{scoreFetchBusy=false;schedule();}
   }
 
-  function tick(){timer=0;resetUser();mountHome();syncDetails();decorateCardScores();void refreshResume();}
+  function tick(){timer=0;resetUser();mountHome();syncDetails();decorateCardScores();decorateSeasonFrames();void refreshResume();}
   function schedule(){if(!timer)timer=window.setTimeout(tick,180);}
   function init(){
     const observer=new MutationObserver(changes=>{
@@ -608,7 +639,7 @@
         !(c.target?.nodeType===1&&c.target.closest('.mf-simkl-detail-panel, .mf-simkl-modal-overlay'))))schedule();
     });
     observer.observe(document.body,{childList:true,subtree:true});
-    ['hashchange','pageshow','popstate'].forEach(evt=>window.addEventListener(evt,schedule));
+    ['hashchange','pageshow','popstate','misioflix-simkl-season-ready'].forEach(evt=>window.addEventListener(evt,schedule));
     window.addEventListener('scroll',schedule,{passive:true,capture:true});
     window.addEventListener('focus',()=>{
       void refreshResume(true);

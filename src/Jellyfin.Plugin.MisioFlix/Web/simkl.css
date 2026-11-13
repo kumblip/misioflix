@@ -173,21 +173,25 @@ html.misioflix-skin .card.mf-simkl-native-media:has(.mf-simkl-native-score) .cou
    Left half = resumed (gold), right half = completed (green). */
 html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch="unwatched"],
 html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch="unwatched"],
+html.misioflix-skin .card.mf-simkl-season-media[data-mf-simkl-watch="unwatched"],
 html.misioflix-skin #itemDetailPage.mf-simkl-detail-ready[data-mf-simkl-watch="unwatched"] {
   --mf-simkl-frame:#f4a5ce;
 }
 html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch="started"],
 html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch="started"],
+html.misioflix-skin .card.mf-simkl-season-media[data-mf-simkl-watch="started"],
 html.misioflix-skin #itemDetailPage.mf-simkl-detail-ready[data-mf-simkl-watch="started"] {
   --mf-simkl-frame:#e6a23c;
 }
 html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch="watched"],
 html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch="watched"],
+html.misioflix-skin .card.mf-simkl-season-media[data-mf-simkl-watch="watched"],
 html.misioflix-skin #itemDetailPage.mf-simkl-detail-ready[data-mf-simkl-watch="watched"] {
   --mf-simkl-frame:#45b879;
 }
 html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch="mixed"],
 html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch="mixed"],
+html.misioflix-skin .card.mf-simkl-season-media[data-mf-simkl-watch="mixed"],
 html.misioflix-skin #itemDetailPage.mf-simkl-detail-ready[data-mf-simkl-watch="mixed"] {
   --mf-simkl-frame:linear-gradient(90deg,#e6a23c 0 50%,#45b879 50% 100%);
 }
@@ -204,13 +208,13 @@ html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch]::before {
   -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
   -webkit-mask-composite:xor;mask-composite:exclude;
 }
-html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch] .cardImageContainer {
+html.misioflix-skin .card:is(.mf-simkl-native-media,.mf-simkl-season-media)[data-mf-simkl-watch] .cardImageContainer {
   outline:0!important;box-shadow:none!important;
 }
-html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch] .cardScalable {
+html.misioflix-skin .card:is(.mf-simkl-native-media,.mf-simkl-season-media)[data-mf-simkl-watch] .cardScalable {
   position:relative;outline:0!important;box-shadow:none!important;
 }
-html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch] .cardScalable::after {
+html.misioflix-skin .card:is(.mf-simkl-native-media,.mf-simkl-season-media)[data-mf-simkl-watch] .cardScalable::after {
   content:"";position:absolute;inset:0;z-index:8;pointer-events:none;
   box-sizing:border-box;border-radius:12px;padding:2px;
   background:var(--mf-simkl-frame);
@@ -218,7 +222,10 @@ html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch] .cardScalab
   -webkit-mask-composite:xor;mask-composite:exclude;
 }
 html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-simkl-detail-ready .mf-detail-poster-rail > .detailImageContainer {
-  position:relative;outline:none!important;box-shadow:none!important;border-radius:15px;
+  /* theme.css used position:static!important for the native moved image.
+     Without this override ::after anchors to the entire details grid. */
+  position:relative!important;isolation:isolate;
+  outline:none!important;box-shadow:none!important;border-radius:15px;
 }
 html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-simkl-detail-ready .mf-detail-poster-rail > .detailImageContainer::after {
   content:"";position:absolute;inset:0;z-index:8;pointer-events:none;
@@ -229,20 +236,20 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-simkl-detail-ready .mf-
 }
 /* Personal Simkl rating beside the existing native play/heart actions. */
 html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-simkl-detail-score {
-  display:inline-flex;align-items:center;justify-content:center;gap:5px;
-  white-space:nowrap;flex:0 0 auto;min-height:32px;box-sizing:border-box;
-  padding:5px 9px;margin-right:8px;border:1px solid rgba(245,153,200,.45);
-  border-radius:9px;background:rgba(43,16,42,.8);color:#ffe0ef;
-  font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  white-space:nowrap;flex:0 0 auto;align-self:stretch;min-height:0;box-sizing:border-box;
+  padding:0 13px;margin-right:8px;border:1px solid rgba(245,153,200,.45);
+  border-radius:11px;background:rgba(43,16,42,.8);color:#ffe0ef;
+  font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;
 }
 html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-simkl-detail-score .mf-simkl-score-paw {
-  width:14px;height:14px;flex:0 0 14px;
+  width:18px;height:18px;flex:0 0 18px;
 }
 html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-simkl-detail-score-source {
   font-size:11px;font-weight:600;opacity:.9;
 }
 @media(max-width:700px){
   html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-simkl-detail-score {
-    min-height:29px;padding:4px 7px;margin-right:4px;font-size:12px;
+    min-height:0;padding:0 10px;margin-right:4px;font-size:14px;
   }
 }

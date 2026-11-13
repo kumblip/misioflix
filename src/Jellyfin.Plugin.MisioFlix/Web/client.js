@@ -310,12 +310,14 @@
       for(const attr of ['data-mf-year','data-mf-format','data-mf-genres',
         'data-mf-seasons','data-mf-episodes','data-mf-user-rating','data-mf-anime',
         'data-mf-overlay-ready','data-mf-watch','data-mf-mal-id','data-mf-primary-image',
+        'data-mf-simkl-series','data-mf-simkl-season','data-mf-simkl-watch',
         'data-mf-has-summary','data-mf-anime-poster','data-mf-redundant-year']){
         card.removeAttribute(attr);
       }
       card.querySelector('.mf-native-overlay')?.remove();
       card.querySelector('.mf-native-description')?.remove();
-      card.classList.remove('mf-simkl-native-media');
+      card.classList.remove('mf-simkl-native-media','mf-simkl-season-media');
+      card.removeAttribute('data-mf-simkl-watch');
       card.removeAttribute('data-mf-simkl-score');
       card.querySelectorAll('.mf-collection-preview,.mf-collection-label').forEach(node=>node.remove());
       card.classList.remove('mf-collection-card','mf-collection-has-preview','mf-physical-folder','mf-empty-folder');
@@ -340,6 +342,9 @@
     set('data-mf-format',data.format);
     set('data-mf-seasons',data.seasons);
     set('data-mf-episodes',data.episodes);
+    // Simkl seasonal frame binding stays distinct from AnimePL and MAL.
+    set('data-mf-simkl-series',data.anime?null:data.simklSeriesId);
+    set('data-mf-simkl-season',data.anime?null:data.simklSeasonNumber);
     set('data-mf-user-rating',data.anime?null:data.userRating);
     set('data-mf-mal-id',data.anime?data.malId:null);
     set('data-mf-genres',Array.isArray(data.genres)?data.genres.slice(0,3).join('|'):'');
@@ -361,6 +366,8 @@
     attachOverlay(card);
     if(data.anime && before!==String(data.malId||''))
       window.dispatchEvent(new Event('misioflix-mal-binding-ready'));
+    if(!data.anime && data.simklSeriesId && data.simklSeasonNumber!==null && data.simklSeasonNumber!==undefined)
+      window.dispatchEvent(new Event('misioflix-simkl-season-ready'));
   }
 
   async function flushMetadata(){
@@ -448,7 +455,8 @@
     for(const card of document.body.querySelectorAll('[data-mf-card="1"]')){
       for(const key of ['data-mf-mal-id','data-mf-item-id','data-mf-year','data-mf-format','data-mf-genres',
         'data-mf-seasons','data-mf-episodes','data-mf-user-rating',
-        'data-mf-anime','data-mf-overlay-ready','data-mf-watch'])card.removeAttribute(key);
+        'data-mf-anime','data-mf-overlay-ready','data-mf-watch',
+        'data-mf-simkl-series','data-mf-simkl-season','data-mf-simkl-watch'])card.removeAttribute(key);
       clearMixedCard(card);
       card.removeAttribute('data-mf-description');
       card.querySelector('.mf-native-overlay')?.remove();

@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.52 beta: osobiste ramki Simkl, podwójny status oglądaj dalej i ocena w szczegółach",
+  "description": "MisioFlix 0.4.53 beta: ramki tylko na plakacie, statusy sezonów i wyrównana ocena",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.52.0",
+  "version": "0.4.53.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

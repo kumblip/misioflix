@@ -419,6 +419,24 @@ public sealed class MisioFlixCatalogService
             var type = Text(Get(item,"Type"));
             var anime = IsBelowRoot(libItem.Path, root);
             var nfo = anime ? ReadNfo(libItem.Path, type) : null;
+            // A few Jellyfin 12 item DTOs omit SeriesId/IndexNumber for Season.
+            // Use the matching authorized local item, never a guessed title.
+            Guid seasonParentId = Guid.Empty;
+            int? simklIndex = null;
+            if (type == "Season" && !anime)
+            {
+                if (!Guid.TryParse(Text(Get(item,"SeriesId")), out seasonParentId))
+                {
+                    if (libItem.GetType().GetProperty("SeriesId")?.GetValue(libItem) is Guid parentId)
+                        seasonParentId = parentId;
+                }
+                var rawIndex = Get(item,"IndexNumber");
+                if (rawIndex.ValueKind == JsonValueKind.Number)
+                    simklIndex = (int)Number(rawIndex);
+                else if (libItem.GetType().GetProperty("IndexNumber")?.GetValue(libItem) is int localIndex)
+                    simklIndex = localIndex;
+                if (simklIndex < 0) simklIndex = null;
+            }
             var genres = anime ? (nfo?.Genres ?? new List<string>()) : Strings(Get(item,"Genres"));
             var info = new OverlayInfo
             {
@@ -437,6 +455,11 @@ public sealed class MisioFlixCatalogService
                     : type == "Season" ? PositiveInt(Get(item,"ChildCount"))
                         ?? PositiveInt(Get(item,"RecursiveItemCount"))
                     : null,
+                // Only non-anime seasons: expose Jellyfin's exact parent ID and
+                // season index for the independently-styled Simkl resume border.
+                // Never infer a season number from a translated/display title.
+                simklSeriesId = seasonParentId != Guid.Empty ? seasonParentId.ToString("N") : null,
+                simklSeasonNumber = simklIndex,
                 userRating = PersonalRating(item),
                 malId = anime ? nfo?.MalId ?? (type=="Series" ? FirstSeasonMalId(libItem.Path) : null) : null,
                 watchStatus = type == "Series" && Get(Get(item,"UserData"),"UnplayedItemCount").ValueKind != JsonValueKind.Number
@@ -1465,6 +1488,9 @@ public sealed class OverlayInfo
     public bool hasPrimary { get; set; }
     public int? seasons { get; set; }
     public int? episodes { get; set; }
+    // Simkl-only season decoration data; anime is intentionally excluded.
+    public string? simklSeriesId { get; set; }
+    public int? simklSeasonNumber { get; set; }
     public double? userRating { get; set; }
     public string watchStatus { get; set; } = string.Empty;
     public int? malId { get; set; }
