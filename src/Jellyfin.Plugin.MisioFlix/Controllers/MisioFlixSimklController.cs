@@ -34,19 +34,33 @@ public sealed class MisioFlixSimklController : ControllerBase
     [HttpGet("connection")]
     public async Task<IActionResult> Connection(CancellationToken cancel)
     {
-        NoCache();try{return Ok(await _simkl.ConnectionAsync(await CurrentUser(cancel),cancel));}
+        NoCache();try
+        {
+            var state=await _simkl.ConnectionAsync(await CurrentUser(cancel),cancel);
+            // Jellyfin uses a PascalCase JSON profile by default. Always expose an
+            // explicit lower-camel-case API contract to the independent Simkl UI.
+            return Ok(new { connected=state.Connected, canWrite=state.CanWrite });
+        }
         catch(Exception ex){return Failure(ex);}
     }
     [HttpPost("connect")]
     public async Task<IActionResult> Connect(CancellationToken cancel)
     {
-        NoCache();try{return Ok(await _simkl.StartAsync(await CurrentUser(cancel),cancel));}
+        NoCache();try
+        {
+            var pin=await _simkl.StartAsync(await CurrentUser(cancel),cancel);
+            return Ok(new { code=pin.Code, uri=pin.Uri, expiresIn=pin.ExpiresIn, interval=pin.Interval });
+        }
         catch(Exception ex){return Failure(ex);}
     }
     [HttpPost("poll")]
     public async Task<IActionResult> Poll(CancellationToken cancel)
     {
-        NoCache();try{return Ok(await _simkl.PollAsync(await CurrentUser(cancel),cancel));}
+        NoCache();try
+        {
+            var result=await _simkl.PollAsync(await CurrentUser(cancel),cancel);
+            return Ok(new { connected=result.Connected, pending=result.Pending, retryAfter=result.RetryAfter });
+        }
         catch(Exception ex){return Failure(ex);}
     }
     [HttpPost("disconnect")]
@@ -66,8 +80,21 @@ public sealed class MisioFlixSimklController : ControllerBase
             if(!target.Relevant)return Ok(new{relevant=false});
             // Identity matching is server-side, never trust external IDs sent by the browser.
             var entry=await _simkl.ReadItemAsync(await CurrentUser(cancel),target,refresh,cancel).ConfigureAwait(false);
+            // The nested SimklEntry record also needs explicit lower-case JSON
+            // field names (Score/Status/WatchedEpisodes were invisible in the UI).
+            var item=entry.Entry is null ? null : new {
+                kind=entry.Entry.Kind,
+                id=entry.Entry.Id,
+                status=entry.Entry.Status,
+                score=entry.Entry.Score,
+                watchedEpisodes=entry.Entry.WatchedEpisodes,
+                totalEpisodes=entry.Entry.TotalEpisodes,
+                ids=entry.Entry.Ids,
+                title=entry.Entry.Title,
+                slug=entry.Entry.Slug
+            };
             return Ok(new{relevant=true,kind=target.Kind,seasonNumber=target.SeasonNumber,
-                hasIds=target.Ids.Count>0,connected=entry.Connected,matched=entry.Matched,entry=entry.Entry});
+                hasIds=target.Ids.Count>0,connected=entry.Connected,matched=entry.Matched,entry=item});
         }
         catch(Exception ex){return Failure(ex);}
     }

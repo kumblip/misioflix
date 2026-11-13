@@ -97,8 +97,13 @@
           const result=await request('/connect','POST');
           body.replaceChildren(message);
           note('Wpisz kod na stronie Simkl i zatwierdź dostęp. Następnie kliknij „Sprawdź zatwierdzenie”.');
+          // Never create a blank PIN or a relative /web/undefined link if the
+          // backend changes its JSON serializer profile or returns bad data.
+          if(typeof result?.code!=='string'||!/^[a-z0-9-]{4,32}$/i.test(result.code))
+            throw new Error('Nie otrzymano poprawnego kodu PIN Simkl. Odśwież stronę i spróbuj ponownie.');
           const code=el('strong','mf-simkl-pin',result.code);
-          const link=el('a','mf-simkl-link','Otwórz simkl.com/pin');link.href=result.uri;link.rel='noopener noreferrer';link.target='_blank';
+          const link=el('a','mf-simkl-link','Otwórz simkl.com/pin');
+          link.href='https://simkl.com/pin/';link.rel='noopener noreferrer';link.target='_blank';
           const status=el('p','mf-simkl-message');
           const check=action('Sprawdź zatwierdzenie',async()=>{
             check.disabled=true;
