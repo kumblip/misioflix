@@ -70,13 +70,18 @@ public sealed class MisioFlixSimklController : ControllerBase
         catch(Exception ex){return Failure(ex);}
     }
     [HttpGet("item")]
-    public async Task<IActionResult> Item([FromQuery]Guid catalogId,[FromQuery]Guid? seasonId,
+    public async Task<IActionResult> Item([FromQuery]Guid catalogId,[FromQuery]Guid? seasonId,[FromQuery]Guid? episodeId,
         [FromQuery]bool refresh,CancellationToken cancel)
     {
         NoCache();
         try
         {
-            var target=await _catalog.AuthorizedSimklTargetAsync(Request,catalogId,seasonId,cancel).ConfigureAwait(false);
+            if(episodeId.HasValue && !seasonId.HasValue)
+                return BadRequest(new{error="Odcinek musi mieć wskazany sezon."});
+            var episode=episodeId.HasValue
+                ? await _catalog.AuthorizedSimklEpisodeAsync(Request,catalogId,seasonId!.Value,episodeId.Value,cancel).ConfigureAwait(false)
+                : ((SimklMediaTarget Target,int EpisodeNumber)?)null;
+            var target=episode?.Target ?? await _catalog.AuthorizedSimklTargetAsync(Request,catalogId,seasonId,cancel).ConfigureAwait(false);
             if(!target.Relevant)return Ok(new{relevant=false});
             // Identity matching is server-side, never trust external IDs sent by the browser.
             var entry=await _simkl.ReadItemAsync(await CurrentUser(cancel),target,refresh,cancel).ConfigureAwait(false);
@@ -100,8 +105,28 @@ public sealed class MisioFlixSimklController : ControllerBase
                 entry.Entry.WatchedSeasons.TryGetValue(target.SeasonNumber.Value,out var seen)
                 ? seen : new System.Collections.Generic.List<int>();
             return Ok(new{relevant=true,kind=target.Kind,seasonNumber=target.SeasonNumber,
-                episodeNumbers=seasonEpisodes,watchedEpisodeNumbers=target.SeasonNumber.HasValue?watched:null,
+                episodeNumbers=episode.HasValue?null:seasonEpisodes,
+                episodeNumber=episode?.EpisodeNumber,
+                episodeWatched=episode.HasValue?watched.Contains(episode.Value.EpisodeNumber):(bool?)null,
+                watchedEpisodeNumbers=target.SeasonNumber.HasValue?watched:null,
                 hasIds=target.Ids.Count>0,connected=entry.Connected,matched=entry.Matched,entry=item});
+        }
+        catch(Exception ex){return Failure(ex);}
+    }
+    public sealed record EpisodeHistoryRequest(Guid CatalogId,Guid SeasonId,Guid EpisodeId,bool Watched);
+    [HttpPost("episode-history")]
+    public async Task<IActionResult> UpdateEpisodeHistory([FromBody]EpisodeHistoryRequest input,CancellationToken cancel)
+    {
+        NoCache();try
+        {
+            var (target,episodeNumber)=await _catalog.AuthorizedSimklEpisodeAsync(
+                Request,input.CatalogId,input.SeasonId,input.EpisodeId,cancel).ConfigureAwait(false);
+            if(!target.Relevant)return BadRequest(new{error="Simkl nie jest dostępny w AnimePL"});
+            // Explicitly scope the write to ONE validated episode, never the whole season.
+            await _simkl.UpdateSeasonAsync(await CurrentUser(cancel),target,
+                new MisioFlixSimklService.SimklSeasonEdit(input.Watched,new[]{episodeNumber}),
+                new[]{episodeNumber},cancel).ConfigureAwait(false);
+            return Ok(new{saved=true});
         }
         catch(Exception ex){return Failure(ex);}
     }
@@ -125,7 +150,7 @@ public sealed class MisioFlixSimklController : ControllerBase
         catch(Exception ex){return Failure(ex);}
     }
     public sealed record EditRequest(Guid CatalogId,Guid? SeasonId,string? Status,int? Score,
-        bool ChangeStatus,bool ChangeScore);
+        bool ChangeStatus,bool ChangeScore,bool CreateIfMissing=false);
     [HttpPost("update")]
     public async Task<IActionResult> Update([FromBody]EditRequest input,CancellationToken cancel)
     {
@@ -136,7 +161,7 @@ public sealed class MisioFlixSimklController : ControllerBase
             if(!target.Relevant)return BadRequest(new{error="Simkl nie jest dostępny w AnimePL"});
             if(input.SeasonId.HasValue)return BadRequest(new{error="Edycja statusu i oceny serialu jest dostępna tylko na stronie serialu."});
             await _simkl.UpdateAsync(await CurrentUser(cancel),target,
-                new MisioFlixSimklService.SimklEdit(input.Status,input.Score,input.ChangeStatus,input.ChangeScore),cancel)
+                new MisioFlixSimklService.SimklEdit(input.Status,input.Score,input.ChangeStatus,input.ChangeScore,input.CreateIfMissing),cancel)
                 .ConfigureAwait(false);
             return Ok(new{saved=true});
         }

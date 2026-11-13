@@ -68,3 +68,7 @@ html.misioflix-skin .mf-simkl-episode {display:flex;align-items:center;gap:6px;p
 html.misioflix-skin .mf-simkl-episode input {accent-color:#d97dab;width:15px;height:15px;margin:0;flex:none}
 html.misioflix-skin .mf-simkl-detail-actions {display:flex;flex-wrap:wrap;align-items:center;gap:7px}
 @media(max-width:400px){html.misioflix-skin .mf-simkl-episodes {grid-template-columns:minmax(0,1fr)}}
+
+/* v0.4.49: self-contained episode actions; no MAL or native Jellyfin selectors. */
+html.misioflix-skin .mf-simkl-season-editor > .mf-simkl-action,
+html.misioflix-skin .mf-simkl-season-editor > .mf-simkl-action-secondary {width:100%;text-align:center}

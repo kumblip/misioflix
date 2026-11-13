@@ -50,7 +50,7 @@ public sealed class MisioFlixSimklService
         string? Title, string? Slug, Dictionary<int,List<int>>? WatchedSeasons=null);
     public sealed record SimklItemResponse(bool Connected, bool Matched, SimklEntry? Entry,
         int? SeasonNumber);
-    public sealed record SimklEdit(string? Status, int? Score, bool ChangeStatus, bool ChangeScore);
+    public sealed record SimklEdit(string? Status, int? Score, bool ChangeStatus, bool ChangeScore,bool CreateIfMissing=false);
     public sealed record SimklSeasonEdit(bool Watched, IReadOnlyList<int>? EpisodeNumbers);
 
     public MisioFlixSimklService(HttpClient http, IApplicationPaths paths)
@@ -107,7 +107,7 @@ public sealed class MisioFlixSimklService
         string? bearer,object? payload,CancellationToken cancel,bool form=false)
     {
         using var request=new HttpRequestMessage(method,Api+route);
-        request.Headers.UserAgent.ParseAdd("MisioFlix/0.4.48 (Jellyfin)");
+        request.Headers.UserAgent.ParseAdd("MisioFlix/0.4.49 (Jellyfin)");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if(!string.IsNullOrWhiteSpace(bearer))request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",bearer);
         if(payload is Dictionary<string,string> pairs && form)
@@ -260,7 +260,7 @@ public sealed class MisioFlixSimklService
         // All API calls are scoped to the authenticated user token; no direct browser requests to Simkl.
         var sep=route.Contains('?')?"&":"?";
         var full=route+sep+"client_id="+Uri.EscapeDataString(credential.ClientId)+
-            "&app-name=misioflix&app-version=0.4.48";
+            "&app-name=misioflix&app-version=0.4.49";
         var(status,doc)=await SendAsync(method,full,credential.AccessToken,payload,cancel).ConfigureAwait(false);
         try{EnsureSuccess(status,doc);return doc;}catch{doc.Dispose();throw;}
     }
@@ -499,7 +499,25 @@ public sealed class MisioFlixSimklService
         var token=await ValidCredentialAsync(user,cancel).ConfigureAwait(false);
         if(!token.Scope.Split(' ',StringSplitOptions.RemoveEmptyEntries).Contains("media:write"))
             throw new InvalidOperationException("Połącz ponownie Simkl z uprawnieniem media:write.");
-        var payloadIds=target.Ids.ToDictionary(x=>x.Key,x=>(object)x.Value);
+        var payloadIds=target.Ids.ToDictionary(x=>x.Key,x=>
+            x.Key=="imdb" ? (object)x.Value : long.Parse(x.Value,CultureInfo.InvariantCulture));
+        // Simkl identifies NEW watchlist items more reliably with title and year.
+        // This metadata comes from authorized Jellyfin records, never the browser.
+        var identity=new Dictionary<string,object>{{"ids",payloadIds}};
+        if(!string.IsNullOrWhiteSpace(target.Title))identity["title"]=target.Title;
+        if(target.Year.HasValue)identity["year"]=target.Year.Value;
+        if(edit.CreateIfMissing)
+        {
+            if(!edit.ChangeStatus||!ValidStatus(edit.Status,target.Kind))
+                throw new ArgumentException("Dodanie do Simkl wymaga wybrania statusu.");
+            // Create the watchlist record FIRST, even if the rating is set to 0.
+            // Do not mark unwatched episodes as watched: only the watchlist changes.
+            var create=new Dictionary<string,object>(identity){{"to",edit.Status!}};
+            using var created=await ApiAsync(user,HttpMethod.Post,"/sync/add-to-list",
+                new Dictionary<string,object>{{target.Kind,new[]{create}}},cancel).ConfigureAwait(false);
+            EnsureWriteAcknowledged(created.RootElement,target.Kind);
+            _snapshots.TryRemove(user,out _);
+        }
         // Ratings can auto-move items into Watching/Completed. Therefore apply
         // the selected status LAST. Do not submit unchanged fields.
         if(edit.ChangeScore)
@@ -513,10 +531,13 @@ public sealed class MisioFlixSimklService
         }
         if(edit.ChangeStatus)
         {
-            var element=new Dictionary<string,object>{{"ids",payloadIds},{"to",edit.Status!}};
+            if(!edit.CreateIfMissing || edit.ChangeScore)
+            {
+            var element=new Dictionary<string,object>(identity){{"to",edit.Status!}};
             using var response=await ApiAsync(user,HttpMethod.Post,"/sync/add-to-list",
                 new Dictionary<string,object>{{target.Kind,new[]{element}}},cancel).ConfigureAwait(false);
             EnsureWriteAcknowledged(response.RootElement,target.Kind);
+            }
         }
         // No global cache flush. The next user-triggered read checks activity
         // deltas, including rating-only changes; nothing is sent on playback.

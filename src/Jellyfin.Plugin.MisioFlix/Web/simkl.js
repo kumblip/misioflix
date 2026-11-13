@@ -1,4 +1,4 @@
-/* MisioFlix Simkl module v0.4.48 — intentionally independent of mal.js.
+/* MisioFlix Simkl module v0.4.49 — intentionally independent of mal.js.
  * Read-only on playback; only a manual "Zapisz w Simkl" submits mutations.
  * No MAL caches, MAL classes, MAL APIs, Jellyfin play-state or NFO writes.
  */
@@ -14,7 +14,7 @@
   const client=()=>window.ApiClient||window.ConnectionManager?.getApiClient?.();
   const user=()=>compact(client()?.getCurrentUserId?.());
   const token=()=>{const api=client();const value=typeof api?.accessToken==='function'?api.accessToken():api?.accessToken;return typeof value==='string'?value:'';};
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.48", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.49", Token="${token().replace(/["\r\n]/g,'')}"`});
   async function request(route,method='GET',body){
     const controller=new AbortController();const timer=window.setTimeout(()=>controller.abort(),30000);
     try{
@@ -128,6 +128,7 @@
     const content=panel.querySelector('.mf-simkl-content');content.replaceChildren();
     const data=session.data,entry=data.entry,kind=data.kind,season=data.seasonNumber;
     const isSeason=kind==='shows'&&season!==null&&season!==undefined;
+    const isEpisode=isSeason&&Number.isInteger(data.episodeNumber)&&data.episodeNumber>0;
     const seasonEpisodes=isSeason&&Array.isArray(data.episodeNumbers)
       ? [...new Set(data.episodeNumbers.filter(n=>Number.isInteger(n)&&n>0))].sort((a,b)=>a-b) : [];
     const knownWatched=isSeason&&Array.isArray(data.watchedEpisodeNumbers)
@@ -137,15 +138,16 @@
       ['Moja ocena',entry?.score>0?`${entry.score}/10`:'Bez oceny'],
       ['Status serialu',isSeason?(entry?statusName(kind,entry.status):'Nie dodano do Simkl'):''],
       ['Ponowne obejrzenia','Brak danych'],
-      ['Obejrzane odcinki',isSeason?`${watchedLocal} / ${seasonEpisodes.length}`:
+      ['Obejrzane odcinki',isSeason?(isEpisode?(data.episodeWatched?'Tak':'Nie'):`${watchedLocal} / ${seasonEpisodes.length}`):
         kind==='shows'?(entry?.watchedEpisodes??'Brak danych'):'Nie dotyczy']
     ];
     if(!isSeason)rows[1]=['Status',entry?statusName(kind,entry.status):'Nie dodano do Simkl'];
     const read=el('div','mf-simkl-readonly');
     for(const [label,value] of rows){const cell=el('div','mf-simkl-readonly-cell');cell.append(el('span','mf-simkl-readonly-label',label),el('strong','mf-simkl-readonly-value',value));read.append(cell);}
     content.append(read);
-    if(isSeason)content.append(el('p','mf-simkl-summary',
+    if(isSeason&&!isEpisode)content.append(el('p','mf-simkl-summary',
       `Sezon ${season}: operacje w tym panelu zmieniają wyłącznie historię odcinków tego sezonu. Ocena dotyczy całego serialu — edytuj ją na stronie serialu.`));
+    if(isEpisode)content.append(el('p','mf-simkl-summary',`Odcinek ${data.episodeNumber}, sezon ${season}. Możesz zmienić tylko historię tego odcinka w Simkl.`));
     if(kind==='shows'&&!isSeason)content.append(el('p','mf-simkl-summary',
       'Status i ocena dotyczą całego serialu. Obejrzenie konkretnych sezonów lub odcinków ustawisz na stronie sezonu.'));
     const actions=el('div','mf-simkl-view-actions');
@@ -153,7 +155,7 @@
     const live=el('span','mf-simkl-save-message');live.setAttribute('role','status');actions.append(refresh,live);content.append(actions);
     const same=()=>session.id===currentDetail&&session.user===currentUser&&panel?.isConnected;
     async function reload(){
-      const latest=await request(`/item?catalogId=${session.catalogId}${session.seasonId?'&seasonId='+session.seasonId:''}&refresh=true`);
+      const latest=await request(`/item?catalogId=${session.catalogId}${session.seasonId?'&seasonId='+session.seasonId:''}${session.episodeId?'&episodeId='+session.episodeId:''}&refresh=true`);
       if(!same())return;
       session.data=latest;session.at=Date.now();session.phase='ready';renderReady(session);
     }
@@ -161,6 +163,30 @@
       refresh.disabled=true;live.textContent='Sprawdzanie Simkl…';
       try{await reload();}catch(e){live.textContent=e.message;}finally{refresh.disabled=false;}
     });
+    if(isEpisode){
+      const editor=el('details','mf-simkl-editor');
+      editor.append(el('summary','mf-simkl-editor-toggle',`Edytuj odcinek ${data.episodeNumber} w Simkl`));
+      const form=el('div','mf-simkl-form mf-simkl-season-editor');
+      const yes=el('button','mf-simkl-action','Oznacz odcinek jako obejrzany');yes.type='button';
+      const no=el('button','mf-simkl-action-secondary','Oznacz odcinek jako nieobejrzany');no.type='button';
+      const feedback=el('span','mf-simkl-save-message');feedback.setAttribute('role','status');
+      form.append(yes,no,feedback);editor.append(form);content.append(editor);
+      async function updateEpisode(watched){
+        if(watched===data.episodeWatched){feedback.textContent='Odcinek ma już wybrany stan.';return;}
+        if(!window.confirm(`Czy na pewno ${watched?'oznaczyć':'odznaczyć'} tylko odcinek ${data.episodeNumber} sezonu ${season} w Simkl?`))return;
+        yes.disabled=true;no.disabled=true;refresh.disabled=true;feedback.textContent='Zapisywanie odcinka…';
+        try{
+          await request('/episode-history','POST',{catalogId:session.catalogId,
+            seasonId:session.seasonId,episodeId:session.episodeId,watched});
+          if(!same())return;
+          toast('✓ Zapisano historię odcinka w Simkl');await reload();
+        }catch(e){feedback.textContent=e.message+' Sprawdź stan przez „Odśwież z Simkl”.';}
+        finally{yes.disabled=false;no.disabled=false;refresh.disabled=false;}
+      }
+      yes.addEventListener('click',()=>void updateEpisode(true));
+      no.addEventListener('click',()=>void updateEpisode(false));
+      return; // Episode never edits the whole series or the whole season.
+    }
     if(isSeason){
       const editor=el('details','mf-simkl-editor');
       editor.append(el('summary','mf-simkl-editor-toggle',`Edytuj sezon ${season} w Simkl`));
@@ -225,23 +251,27 @@
       editor.append(form);content.append(editor);
       return; // Crucial: never mount whole-show status/rating editor on a season.
     }
-    const editor=el('details','mf-simkl-editor');editor.append(el('summary','mf-simkl-editor-toggle','Edytuj Simkl'));
+    if(entry===null)content.append(el('p','mf-simkl-summary',
+      'Tego tytułu nie ma jeszcze na Twojej liście Simkl. Wybierz status i dodaj go ręcznie.'));
+    const editor=el('details','mf-simkl-editor');editor.append(el('summary','mf-simkl-editor-toggle',entry===null?'Dodaj do Simkl':'Edytuj Simkl'));
     const status=select(statuses(kind),entry?.status||'plantowatch');
     const score=select([['0','Bez oceny'],...Array.from({length:10},(_,i)=>[String(i+1),`${i+1}/10`])],String(entry?.score||0));
     const form=el('form','mf-simkl-form');form.append(field('Status',status),field('Moja ocena',score));
-    const saveRow=el('div','mf-simkl-detail-actions');const save=el('button','mf-simkl-action','Zapisz w Simkl');save.type='submit';
+    const saveRow=el('div','mf-simkl-detail-actions');const save=el('button','mf-simkl-action',entry===null?'Dodaj do Simkl':'Zapisz w Simkl');save.type='submit';
     const result=el('span','mf-simkl-save-message');result.setAttribute('role','status');
     saveRow.append(save,result);form.append(saveRow);editor.append(form);content.append(editor);
     form.addEventListener('submit',async event=>{
       event.preventDefault();
-      const changedStatus=entry===null||status.value!==entry.status;
+      const changedStatus=entry==null||status.value!==entry.status;
       const changedScore=Number(score.value)!==Number(entry?.score||0);
       if(!changedStatus&&!changedScore){result.textContent='Nie zmieniono żadnego pola.';return;}
-      if(!window.confirm('Zapisać wybrane zmiany w Simkl? To jedyna operacja, która modyfikuje Twoją listę Simkl.'))return;
+      if(entry==null){if(!window.confirm('Dodać ten film lub serial do Twojej listy Simkl?'))return;}
+      else if(!window.confirm('Zapisać wybrane zmiany w Simkl? To jedyna operacja, która modyfikuje Twoją listę Simkl.'))return;
       save.disabled=true;refresh.disabled=true;result.textContent='Zapisywanie w Simkl…';
       try{
         await request('/update','POST',{catalogId:session.catalogId,seasonId:null,
-          status:status.value,score:Number(score.value),changeStatus:changedStatus,changeScore:changedScore});
+          status:status.value,score:Number(score.value),changeStatus:changedStatus,changeScore:changedScore,
+          createIfMissing:entry==null});
         if(!same())return;
         toast('✓ Zapisano zmiany w Simkl');
         try{await reload();}catch(e){result.textContent='Zapisano, ale odświeżenie nie powiodło się: '+e.message;}
@@ -274,11 +304,13 @@
         const response=await fetch(`/Users/${session.user}/Items/${session.id}`,{headers:headers(),cache:'no-store'});
         if(!response.ok)throw new Error('Nie udało się odczytać metadanych Jellyfin.');
         const media=await response.json();
-        if(!['Series','Season','Movie'].includes(media.Type))return;
-        session.catalogId=media.Type==='Season'?compact(media.SeriesId):session.id;
-        session.seasonId=media.Type==='Season'?session.id:'';
+        if(!['Series','Season','Episode','Movie'].includes(media.Type))return;
+        session.catalogId=['Season','Episode'].includes(media.Type)?compact(media.SeriesId):session.id;
+        session.seasonId=media.Type==='Episode'?compact(media.SeasonId):media.Type==='Season'?session.id:'';
+        session.episodeId=media.Type==='Episode'?session.id:'';
+        if(media.Type==='Episode'&&!valid(session.seasonId))throw new Error('Brak identyfikatora sezonu dla odcinka.');
         if(!valid(session.catalogId))throw new Error('Brak identyfikatora serialu.');
-        const result=await request(`/item?catalogId=${session.catalogId}${session.seasonId?'&seasonId='+session.seasonId:''}`);
+        const result=await request(`/item?catalogId=${session.catalogId}${session.seasonId?'&seasonId='+session.seasonId:''}${session.episodeId?'&episodeId='+session.episodeId:''}`);
         if(!sessions.has(session.key)||currentUser!==session.user)return;
         session.data=result;
         if(!result.relevant)return;
@@ -307,7 +339,7 @@
     generation++;panel=section;currentDetail=id;
     const key=`${currentUser}:${id}`;
     let session=sessions.get(key);
-    if(!session){session={key,user:currentUser,id,phase:'idle',at:0,data:null,message:'',catalogId:'',seasonId:''};sessions.set(key,session);}
+    if(!session){session={key,user:currentUser,id,phase:'idle',at:0,data:null,message:'',catalogId:'',seasonId:'',episodeId:''};sessions.set(key,session);}
     show(session);void read(session);
   }
   function syncDetails(){

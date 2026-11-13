@@ -879,6 +879,39 @@ public sealed class MisioFlixCatalogService
         return MakeSimklTarget(catalogId, item, type=="Movie"?"movies":"shows", null);
     }
 
+    // Episode details use a server-verified child of the selected season and series.
+    // A client-provided episode number is NEVER accepted as a write target.
+    public async Task<(SimklMediaTarget Target,int EpisodeNumber)> AuthorizedSimklEpisodeAsync(
+        HttpRequest caller,Guid catalogId,Guid seasonId,Guid episodeId,CancellationToken cancel)
+    {
+        if(episodeId==Guid.Empty||seasonId==Guid.Empty||catalogId==Guid.Empty)
+            throw new ArgumentException("Wybierz prawidłowy odcinek i sezon.");
+        var target=await AuthorizedSimklTargetAsync(caller,catalogId,seasonId,cancel).ConfigureAwait(false);
+        if(!target.Relevant)return (target,0);
+        var (origin,auth,userId)=await AuthenticatedUserAsync(caller,cancel).ConfigureAwait(false);
+        using var allowed=await GetJsonAsync(origin,
+            $"Items?UserId={Uri.EscapeDataString(userId)}&Ids={episodeId:N}&Recursive=true&Limit=2"+
+            "&IncludeItemTypes=Episode",auth,cancel).ConfigureAwait(false);
+        var items=Get(allowed.RootElement,"Items");
+        if(items.ValueKind!=JsonValueKind.Array||
+            !items.EnumerateArray().Any(e=>SameGuid(Text(Get(e,"Id")),episodeId)))
+            throw new UnauthorizedAccessException("Odcinek niedostępny dla tego użytkownika Jellyfin");
+        using var full=await GetJsonAsync(origin,
+            $"Users/{Uri.EscapeDataString(userId)}/Items/{episodeId:N}",auth,cancel).ConfigureAwait(false);
+        var media=full.RootElement;
+        if(Text(Get(media,"Type"))!="Episode" ||
+            !SameGuid(Text(Get(media,"SeasonId")),seasonId) ||
+            !SameGuid(Text(Get(media,"SeriesId")),catalogId))
+            throw new UnauthorizedAccessException("Odcinek nie należy do tego sezonu i serialu");
+        var episodeNumber=(int)Number(Get(media,"IndexNumber"));
+        if(episodeNumber<1||episodeNumber>9999)
+            throw new ArgumentException("Odcinek nie ma prawidłowego numeru w Jellyfin.");
+        var episodeNumbers=await AuthorizedSimklSeasonEpisodeNumbersAsync(caller,seasonId,cancel).ConfigureAwait(false);
+        if(!episodeNumbers.Contains(episodeNumber))
+            throw new UnauthorizedAccessException("Odcinek nie jest dostępny w tym sezonie");
+        return (target,episodeNumber);
+    }
+
     // Episode numbers for the selected season only, obtained via Jellyfin with the
     // authenticated user's permissions. The browser cannot invent episode numbers.
     public async Task<List<int>> AuthorizedSimklSeasonEpisodeNumbersAsync(HttpRequest caller,
@@ -920,7 +953,11 @@ public sealed class MisioFlixCatalogService
                 (key=="imdb" ? System.Text.RegularExpressions.Regex.IsMatch(raw, @"^tt[0-9]{5,12}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase) :
                     System.Text.RegularExpressions.Regex.IsMatch(raw, @"^[0-9]{1,14}$"))) ids[key]=raw;
         }
-        return new SimklMediaTarget(true, kind, seasonNumber, ids, Text(Get(data,"Name")));
+        var title=Text(Get(data,"OriginalTitle"));
+        if(string.IsNullOrWhiteSpace(title))title=Text(Get(data,"Name"));
+        var productionYear=(int)Number(Get(data,"ProductionYear"));
+        return new SimklMediaTarget(true,kind,seasonNumber,ids,title,
+            productionYear is >=1888 and <=2100 ? productionYear : null);
     }
 
     public async Task<int> AuthorizedMalIdAsync(HttpRequest caller, Guid catalogId,
@@ -1428,4 +1465,4 @@ public sealed record HomeResumeResponse(List<HomeResumeTile> items, List<HomeRes
 
 // Separate media identity for Simkl; no MAL IDs or NFO content are transferred.
 public sealed record SimklMediaTarget(bool Relevant, string Kind, int? SeasonNumber,
-    Dictionary<string,string> Ids, string Title);
+    Dictionary<string,string> Ids, string Title,int? Year=null);
