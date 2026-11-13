@@ -265,10 +265,11 @@
     const page=panel.closest('#itemDetailPage');if(!page)return;
     // Only MAL-backed anime detail pages. Do not overwrite Jellyfin's stored rating.
     page.classList.add('mf-detail-mal-rating');
-    // A successful MAL lookup with no list entry means this verified anime has
-    // never been added to the user's MAL list. Only here is null = unwatched;
-    // disconnected, failed and unverified states must remain unknown.
-    page.setAttribute('data-mf-mal-watch',entry===null?'unwatched':statusState(entry));
+    // This runs ONLY in the ready phase, after a successful MAL lookup for
+    // verified anime. An absent list entry can be returned as explicit null
+    // or as an omitted `entry` property (undefined). Both mean unwatched.
+    // Loading, disconnected, failed and unverified states never call here.
+    page.setAttribute('data-mf-mal-watch',entry==null?'unwatched':statusState(entry));
     let label=page.querySelector('.mf-detail-mal-badge');
     if(!label){
       label=el('span','mf-detail-mal-badge');

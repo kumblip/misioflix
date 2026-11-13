@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.43: różowa ramka nieobejrzanych anime w szczegółach; panel MAL tylko dla anime",
+  "description": "MisioFlix 0.4.44: poprawiona różowa ramka plakatu anime i sezonu przy braku wpisu MAL",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.43.0",
+  "version": "0.4.44.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

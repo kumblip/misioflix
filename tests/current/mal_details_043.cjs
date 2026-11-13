@@ -1,5 +1,5 @@
 'use strict';
-// Behavioral regression coverage of the actual v0.4.43 MAL detail functions.
+// Behavioral regression coverage of the current MAL detail functions.
 // Does not need Jellyfin, MyAnimeList, jsdom, or a network connection.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -11,7 +11,7 @@ const part = (from, to) => {
   return source.slice(a, b);
 };
 
-// 1. Exact production status/large-poster mapping; absent verified MAL entry is pink.
+// 1. Exact production status/large-poster mapping; missing verified MAL entries are pink.
 const statusSource = part('  const statusState=', '  const statusLabel=');
 const ratingSource = part('  function showDetailMalRating(', '  function showMalSaveToast(');
 const entryFields = entry => entry?.my_list_status || entry || {};
@@ -33,13 +33,14 @@ function posterStatus(entry) {
   return [page.attrs['data-mf-mal-watch'], page.label?.textContent];
 }
 assert.deepEqual(posterStatus(null), ['unwatched','★ Bez oceny · MAL']);
-assert.equal(posterStatus(undefined)[0], 'unknown', 'Missing/unverified data must not turn pink');
+assert.equal(posterStatus(undefined)[0], 'unwatched', 'Omitted entry after successful MAL read must turn pink');
 assert.equal(posterStatus({status:'plan_to_watch'})[0], 'unwatched');
 assert.equal(posterStatus({status:'dropped'})[0], 'unwatched');
 assert.equal(posterStatus({status:'watching'})[0], 'started');
 assert.equal(posterStatus({status:'on_hold'})[0], 'started');
 assert.equal(posterStatus({status:'completed',score:9})[0], 'watched');
 assert.equal(statusState({status:'unrecognized'}), 'unknown');
+assert.equal(statusState(undefined), 'unknown', 'Pending/failed MAL states are still unknown');
 
 // 2. Exact production async request sequence: non-anime never reaches MAL.
 const readSource = part('  function startDetailRead(', '  function mountDetails(');
@@ -86,6 +87,13 @@ async function checkReader(type, anime, entry, overlaysError=false) {
   assert.equal(unlisted.session.entry,null);
   assert(unlisted.calls.some(s=>s.includes('/api/mal/resolve?catalogId='+parent+'&seasonId='+id)),
     'Season MAL resolve must keep the parent SeriesId and season id');
+  // Some API serializers omit JSON keys whose value is null; the actual
+  // /item response can therefore have NO `entry` property at all.
+  const omitted = await checkReader('Series',true,undefined);
+  assert.equal(omitted.session.phase,'ready');
+  assert.equal(omitted.session.entry,undefined);
+  assert.equal(posterStatus(omitted.session.entry)[0],'unwatched',
+    'A successfully verified anime absent from MAL must have a pink detail poster');
   const watched = await checkReader('Series',true,{status:'completed',score:7});
   assert.equal(watched.session.phase,'ready');
   assert.equal(posterStatus(watched.session.entry)[0],'watched');
@@ -111,5 +119,5 @@ async function checkReader(type, anime, entry, overlaysError=false) {
   paint({...common,animeVerified:true,phase:'irrelevant'});
   assert.equal(panel.hidden,true, 'Non-anime must remain hidden');
   assert(source.includes("panel.hidden=true; // No loading flash"), 'Mounted panel must start hidden');
-  console.log('PASS 0.4.43: confirmed non-anime hidden, verified MAL null=pink, green/gold unchanged, SeasonId correct');
+  console.log('PASS 0.4.44: MAL null/omitted=pink only after verified read, green/gold unchanged, non-anime hidden');
 })().catch(e=>{console.error(e);process.exitCode=1;});

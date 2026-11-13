@@ -36,7 +36,7 @@ class MalMobile0440(unittest.TestCase):
         self.assertIn("toast.setAttribute('role','status')",MAL)
         self.assertIn('renderEntry(panel,result,ctx,false,false,',save)
     def test_detail_poster_colors_from_mal_only(self):
-        self.assertIn("page.setAttribute('data-mf-mal-watch',entry===null?'unwatched':statusState(entry))",MAL)
+        self.assertIn("page.setAttribute('data-mf-mal-watch',entry==null?'unwatched':statusState(entry))",MAL)
         self.assertIn("p.removeAttribute('data-mf-mal-watch')",MAL)
         for status,color in [('watched','#45b879'),('started','#e6a23c'),('unwatched','#f4a5ce')]:
             self.assertIn(f'[data-mf-mal-watch="{status}"]',CSS)
