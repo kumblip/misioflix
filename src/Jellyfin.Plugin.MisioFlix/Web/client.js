@@ -144,7 +144,6 @@
     }
     // Ratings are PERSONAL: do not use CommunityRating or the like button.
     const rawRating=card.getAttribute('data-mf-user-rating');
-    // MAL scores are whole numbers; preserve fractional ratings in old non-MAL fixtures.
     const rating=shortNumber(rawRating,kind!=='anime'||!Number.isInteger(Number(rawRating)));
     if(rating)result.push({value:rating,label:kind==='anime'?'Moja ocena MAL':'Moja ocena',cls:'rating',color:'#ee9fc9'});
     return result;
@@ -179,9 +178,7 @@
     }
     if(year){
       const format=(info&&kind!=='film')?` · ${info}`:'';
-      const yearBadge=makeEl('span','mf-native-year',year);
-      if(format)yearBadge.appendChild(makeEl('span','mf-native-format',format));
-      topLeft.appendChild(yearBadge);
+      topLeft.appendChild(makeEl('span','mf-native-year',year+format));
     }
     top.appendChild(topLeft);
     if(pawStats.length){

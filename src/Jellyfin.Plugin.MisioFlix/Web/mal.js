@@ -87,14 +87,17 @@
   }
   function decorateMalCards(){
     const uid=currentUser;if(!valid(uid))return;
-    const entries=loadIndex(uid),bindings=loadBindings(uid);
+    const snapshot=indexState(uid),entries=snapshot.entries,bindings=loadBindings(uid);
     let overlayChanged=false;
     for(const card of document.querySelectorAll('.mf-home-poster[data-mf-item-id], .card[data-mf-card="1"][data-mf-anime="1"]')){
       const isHome=card.classList.contains('mf-home-poster');
       const mediaId=compact(isHome?card.dataset.mfItemId:card.getAttribute('data-id'));
       const malId=Number((isHome?card.dataset.mfMalId:card.dataset.mfMalId)||bindings[mediaId]||0);
       const entry=malId>0?entries[malId]||loadCache(uid,malId)?.entry:null;
-      const state=statusState(entry);
+      // Only a COMPLETE personal MAL index can establish that a linked title is
+      // absent from the user's list. A missing item then means not yet watched;
+      // incomplete/offline data must stay unknown, not borrow Jellyfin play-state.
+      const state=entry?statusState(entry):(malId>0&&snapshot.full?'unwatched':'unknown');
       if(card.getAttribute('data-mf-watch')!==state){card.setAttribute('data-mf-watch',state);overlayChanged=true;}
       if(!isHome){
         const rating=entry?entryFields(entry).score:0;

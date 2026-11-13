@@ -1227,3 +1227,91 @@ html.misioflix-skin .mf-mal-toast {
   html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"][data-mf-watch="started"] .cardImageContainer {box-shadow:inset 0 0 0 2px #e6a23c!important}
   html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"][data-mf-watch="unwatched"] .cardImageContainer {box-shadow:inset 0 0 0 2px #f4a5ce!important}
 }
+
+/* v0.4.41 — Restore stable v0.4.39 native AnimePL card DOM; use only CSS
+   for stronger visible MAL outlines. These rules do NOT alter Jellyfin's
+   scrollSlider, virtualized list, card handlers, or React-managed hierarchy. */
+html.misioflix-skin .card[data-mf-anime="1"][data-mf-watch="unwatched"] {--mf-mal-card-border:#f4a5ce}
+html.misioflix-skin .card[data-mf-anime="1"][data-mf-watch="started"] {--mf-mal-card-border:#e6a23c}
+html.misioflix-skin .card[data-mf-anime="1"][data-mf-watch="watched"] {--mf-mal-card-border:#45b879}
+html.misioflix-skin .card[data-mf-anime="1"]:is([data-mf-watch="unwatched"],[data-mf-watch="started"],[data-mf-watch="watched"]) .cardScalable {
+  position:relative;
+  border-radius:13px 13px 0 0;
+  outline:2px solid var(--mf-mal-card-border)!important;
+  outline-offset:-2px;
+}
+/* Draw the state ON TOP of the artwork; the original poster/blurhash and
+   lazy-loading can otherwise cover inset outlines or box-shadows. */
+html.misioflix-skin .card[data-mf-anime="1"]:is([data-mf-watch="unwatched"],[data-mf-watch="started"],[data-mf-watch="watched"]) .cardScalable::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:6;
+  border:2px solid var(--mf-mal-card-border);
+  border-radius:13px 13px 0 0;
+  box-sizing:border-box;
+  pointer-events:none;
+}
+/* Season and similar cards use the exact same three personal MAL states as
+   AnimePL, including when they are embedded inside a details carousel. */
+html.misioflix-skin #itemDetailPage .card[data-mf-anime="1"][data-mf-watch="unknown"] .cardScalable::after,
+html.misioflix-skin .card[data-mf-anime="1"][data-mf-watch="unknown"] .cardScalable::after {content:none}
+
+@media(max-width:680px){
+  /* Smaller, legible badges on Android; keep numbers NEXT TO the paw rather
+     than placing text inside an SVG where a 2-digit value would be clipped. */
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-top {padding:4px 4px 0!important;gap:1px}
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-stats {
+    padding:2px 3px!important;gap:1px!important;border-radius:7px!important;
+    min-width:0!important;
+  }
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-stat {
+    gap:2px!important;min-width:0!important;
+  }
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-stat-number {
+    font-size:10px!important;line-height:1.03!important;
+  }
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-stat .mf-paw {
+    width:10px!important;height:10px!important;flex:0 0 10px!important;
+  }
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .cardText-first {
+    font-size:10.5px!important;line-height:1.25!important;
+  }
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-description {
+    font-size:9.75px!important;line-height:1.36!important;
+    -webkit-line-clamp:6!important;min-height:0!important;
+  }
+  /* Anime search uses the same visual scale as the native AnimePL cards. */
+  html.misioflix-skin .mf-home-search-grid .mf-home-poster[data-mf-item-id] .mf-home-kind {display:none!important}
+  html.misioflix-skin .mf-home-search-grid .mf-home-poster[data-mf-item-id] .mf-home-top-left {top:5px;left:5px;gap:2px}
+  html.misioflix-skin .mf-home-search-grid .mf-home-poster[data-mf-item-id] .mf-home-year {font-size:10px;padding:2px 4px}
+  html.misioflix-skin .mf-home-search-grid .mf-home-poster[data-mf-item-id] .mf-home-stats {
+    top:4px;right:4px;gap:1px;padding:2px 3px;border-radius:7px;min-width:0;
+  }
+  html.misioflix-skin .mf-home-search-grid .mf-home-poster[data-mf-item-id] .mf-home-stat,
+  html.misioflix-skin .mf-home-search-grid .mf-home-poster[data-mf-item-id] .mf-home-mal-score {
+    padding:0;margin:0;gap:2px;border:0;background:transparent;
+    font-size:10px;line-height:1.03;
+  }
+  html.misioflix-skin .mf-home-search-grid .mf-home-poster[data-mf-item-id] .mf-home-paw,
+  html.misioflix-skin .mf-home-search-grid .mf-home-poster[data-mf-item-id] .mf-mal-rating-paw {
+    width:10px;height:10px;flex:0 0 10px;
+  }
+  html.misioflix-skin .mf-home-search-grid .mf-home-poster[data-mf-item-id] .mf-home-genres {left:4px;right:4px;bottom:5px;gap:2px}
+  html.misioflix-skin .mf-home-search-grid .mf-home-poster[data-mf-item-id] .mf-home-genre {padding:2px 4px;font-size:9px}
+  html.misioflix-skin .mf-home-search-grid .mf-home-card:has(.mf-home-poster[data-mf-item-id]) .mf-home-card-body {padding:7px 8px;gap:4px;min-height:0}
+  html.misioflix-skin .mf-home-search-grid .mf-home-card:has(.mf-home-poster[data-mf-item-id]) .mf-home-card-title {
+    font-size:10.5px;line-height:1.25;min-height:2.5em;
+  }
+  html.misioflix-skin .mf-home-search-grid .mf-home-card:has(.mf-home-poster[data-mf-item-id]) .mf-home-card-desc {
+    font-size:9.75px;line-height:1.36;-webkit-line-clamp:6;max-height:8.16em;
+  }
+}
+@media(max-width:680px){
+  /* v0.4.39 year element contains "2006 · Seria TV" as one text node.
+     Retain that stable structure and display only the four-digit year on narrow cards. */
+  html.misioflix-skin.mf-modern-mixed-route .card[data-mf-anime="1"] .mf-native-year {
+    max-width:4.8ch!important;overflow:hidden!important;text-overflow:clip!important;
+    white-space:nowrap!important;font-size:10px!important;padding:2px 4px!important;
+  }
+}
