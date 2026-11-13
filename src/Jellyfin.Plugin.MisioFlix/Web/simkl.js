@@ -1,4 +1,4 @@
-/* MisioFlix Simkl module v0.4.50 — independent of MAL.
+/* MisioFlix Simkl module v0.4.52 — independent of MAL.
  * Server-side Jellyfin playback events mark watched after 75%; other writes manual.
  * User-separated NAS backup, offline export and local rewatch counters.
  */
@@ -14,7 +14,7 @@
   const client=()=>window.ApiClient||window.ConnectionManager?.getApiClient?.();
   const user=()=>compact(client()?.getCurrentUserId?.());
   const token=()=>{const api=client();const value=typeof api?.accessToken==='function'?api.accessToken():api?.accessToken;return typeof value==='string'?value:'';};
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.50", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.52", Token="${token().replace(/["\r\n]/g,'')}"`});
   async function request(route,method='GET',body){
     const controller=new AbortController();const timer=window.setTimeout(()=>controller.abort(),30000);
     try{
@@ -47,10 +47,116 @@
     lastSyncCheck.set(currentUser,Date.now());
     void request('/sync-check').then(data=>{if(data?.checkedOk)resetCardScores();}).catch(()=>{});
   }
+  // v0.4.52 — Independent Simkl frame state. Unlike MAL, this combines
+  // Simkl's personal list and Jellyfin's actual (non-NextUp) resume positions.
+  const cardStates=new Map();
+  let resumeForUser=new Set(),resumeSeasons=new Map(),resumeReadAt=0,resumeReadPromise=null;
+  function simklFrame(entry,fallback='',resuming=false){
+    const status=String(entry?.status||'').toLowerCase();
+    const alreadyWatched=status==='completed'||(!status&&fallback==='watched');
+    if(alreadyWatched)return resuming?'mixed':'watched';
+    if(resuming||status==='watching'||fallback==='started'||
+      (Number(entry?.watchedEpisodes)>0&&status!=='completed'))return 'started';
+    return 'unwatched';
+  }
+  function clearDetailFrames(){
+    document.querySelectorAll('#itemDetailPage.mf-simkl-detail-ready').forEach(page=>{
+      page.classList.remove('mf-simkl-detail-ready');
+      page.removeAttribute('data-mf-simkl-watch');
+      page.querySelector('.mf-simkl-detail-score')?.remove();
+    });
+  }
+  function updateFrameOnCard(card,entry,native,id){
+    const fallback=card.getAttribute('data-mf-watch')||'';
+    const watching=resumeForUser.has(id);
+    card.setAttribute('data-mf-simkl-watch',simklFrame(entry,fallback,watching));
+  }
+  function decorateDetailFrame(session){
+    const page=pageFor(session.id);
+    if(!page||!session.data?.relevant||session.phase!=='ready')return;
+    const data=session.data,entry=data.entry;
+    const type=session.episodeId?'Episode':session.seasonId?'Season':
+      data.kind==='movies'?'Movie':'Series';
+    if(!['Movie','Series','Season'].includes(type))return;
+    const mainId=session.catalogId;
+    const season=Number(data.seasonNumber);
+    const seasonWatched=Array.isArray(data.watchedEpisodeNumbers)?data.watchedEpisodeNumbers.length:0;
+    const seasonTotal=Array.isArray(data.episodeNumbers)?data.episodeNumbers.length:0;
+    const inProgress=resumeForUser.has(mainId) &&
+      (type!=='Season'||resumeSeasons.get(mainId)?.has(season)===true);
+    const fallback=type==='Season'
+      ?(seasonTotal>0&&seasonWatched===seasonTotal?'watched':seasonWatched>0?'started':'unwatched')
+      :String(page.dataset.mfSimklJellyfinWatch||'');
+    const seasonEntry=type==='Season' ? {
+      status:seasonTotal>0&&seasonWatched===seasonTotal?'completed':seasonWatched>0?'watching':'plantowatch',
+      watchedEpisodes:seasonWatched
+    } : entry;
+    page.classList.add('mf-simkl-detail-ready');
+    page.setAttribute('data-mf-simkl-watch',simklFrame(seasonEntry,fallback,inProgress));
+    // A personal score is NOT a Jellyfin community score; display beside
+    // native play/heart buttons only on the Movie/Series detail header.
+    const actions=page.querySelector('.mainDetailButtons');
+    let badge=page.querySelector('.mf-simkl-detail-score');
+    if(type==='Season'||!data.connected){badge?.remove();return;}
+    if(!actions)return;
+    if(!badge){badge=el('span','mf-simkl-detail-score');actions.prepend(badge);}
+    badge.replaceChildren();
+    const rating=Number(entry?.score);
+    const value=Number.isInteger(rating)&&rating>=1&&rating<=10?`${rating}/10`:'Bez oceny';
+    badge.append(el('span','mf-simkl-detail-score-number',value),simklPaw(),el('span','mf-simkl-detail-score-source','Simkl'));
+    badge.title='Moja ocena na Simkl — konto aktualnie zalogowanego użytkownika';
+  }
+  function updateAllFrames(){
+    if(!valid(currentUser))return;
+    decorateCardScores();
+    const session=sessions.get(`${currentUser}:${currentDetail}`);
+    if(session)decorateDetailFrame(session);
+  }
+  function refreshResume(force=false){
+    const id=currentUser;
+    if(!valid(id)||!token())return Promise.resolve();
+    if(resumeReadPromise)return resumeReadPromise;
+    if(!force&&Date.now()-resumeReadAt<65000)return Promise.resolve();
+    resumeReadAt=Date.now();
+    const run=(async()=>{
+      try{
+        const response=await fetch('/MisioFlix/api/resume',{headers:headers(),cache:'no-store'});
+        if(!response.ok)throw new Error(`Jellyfin resume: HTTP ${response.status}`);
+        const body=await response.json();
+        if(id!==currentUser)return;
+        const ids=new Set(),seasons=new Map();
+        for(const row of (Array.isArray(body?.items)?body.items:[])){
+          // NextUp is a suggestion, NOT an active playback position. Hidden
+          // Resume entries are deliberately excluded from "Oglądaj dalej".
+          if(row?.next_up===true||!(Number(row?.position_ticks)>0))continue;
+          const catalog=compact(row.catalog_id);
+          if(!valid(catalog))continue;
+          ids.add(catalog);
+          const season=Number(row.season);
+          if(Number.isInteger(season)&&season>=0){
+            if(!seasons.has(catalog))seasons.set(catalog,new Set());
+            seasons.get(catalog).add(season);
+          }
+        }
+        resumeForUser=ids;resumeSeasons=seasons;
+        updateAllFrames();
+      }catch{
+        // Keep last verified resume states rather than switching a green/gold
+        // frame to pink during temporary server errors.
+        if(id===currentUser)resumeReadAt=Date.now()-30000;
+      }
+    })();
+    resumeReadPromise=run.finally(()=>{if(resumeReadPromise===pending)resumeReadPromise=null;});
+    const pending=resumeReadPromise;
+    return pending;
+  }
   function resetUser(){
     const id=user();if(id===currentUser)return;
     currentUser=id;connection=null;connectionPromise=null;button=null;sessions.clear();generation++;
-    cardScores.clear();pendingScoreIds.clear();scoreRetryAfter=0;
+    cardScores.clear();cardStates.clear();pendingScoreIds.clear();scoreRetryAfter=0;
+    resumeForUser=new Set();resumeSeasons=new Map();resumeReadAt=0;resumeReadPromise=null;
+    clearDetailFrames();
+    document.querySelectorAll('[data-mf-simkl-watch]').forEach(node=>node.removeAttribute('data-mf-simkl-watch'));
     document.querySelectorAll('.mf-simkl-home-score,.mf-simkl-native-score').forEach(node=>node.remove());
     document.querySelectorAll('[data-mf-simkl-score]').forEach(node=>node.removeAttribute('data-mf-simkl-score'));
     panel?.remove();panel=null;currentDetail='';closeModal();
@@ -151,6 +257,7 @@
     if(!panel?.isConnected||session.id!==currentDetail||session.user!==currentUser)return;
     const content=panel.querySelector('.mf-simkl-content');content.replaceChildren();
     const data=session.data,entry=data.entry,kind=data.kind,season=data.seasonNumber;
+    decorateDetailFrame(session);
     const isSeason=kind==='shows'&&season!==null&&season!==undefined;
     const isEpisode=isSeason&&Number.isInteger(data.episodeNumber)&&data.episodeNumber>0;
     const seasonEpisodes=isSeason&&Array.isArray(data.episodeNumbers)
@@ -164,6 +271,7 @@
       if(!same())return;
       session.data=latest;session.at=Date.now();session.phase='ready';renderReady(session);
       resetCardScores();
+      void refreshResume(true);
     }
     // On an episode there is ONLY one field, on desktop and Android.
     // The dropdown itself commits; no other Simkl controls, rating or rewatch.
@@ -353,6 +461,15 @@
         const media=await response.json();
         if(!['Series','Season','Episode','Movie'].includes(media.Type))return;
         session.catalogId=['Season','Episode'].includes(media.Type)?compact(media.SeriesId):session.id;
+        if(['Movie','Series'].includes(media.Type)){
+          const state=media.UserData||{};
+          const played=state.Played===true;
+          const started=Number(state.PlaybackPositionTicks)>0 ||
+            (media.Type==='Series' && Number(state.UnplayedItemCount)>0 &&
+             Number(state.UnplayedItemCount)<Number(media.RecursiveItemCount||0));
+          pageFor(session.id)?.setAttribute('data-mf-simkl-jellyfin-watch',
+            played?'watched':started?'started':'unwatched');
+        }
         session.seasonId=media.Type==='Episode'?compact(media.SeasonId):media.Type==='Season'?session.id:'';
         session.episodeId=media.Type==='Episode'?session.id:'';
         if(media.Type==='Episode'&&!valid(session.seasonId))throw new Error('Brak identyfikatora sezonu dla odcinka.');
@@ -392,9 +509,9 @@
   }
   function syncDetails(){
     const id=detailId();const page=id?pageFor(id):null;
-    if(!id||!page){if(currentDetail){currentDetail='';panel=null;generation++;}return;}
+    if(!id||!page){if(currentDetail){clearDetailFrames();currentDetail='';panel=null;generation++;}return;}
     if(currentDetail===id&&panel?.isConnected&&panel.closest('#itemDetailPage')===page)return;
-    panel?.remove();panel=null;mount(page,id);
+    clearDetailFrames();panel?.remove();panel=null;mount(page,id);
   }
   // v0.4.51 — Simkl poster score renderer. OWN classes, separate from MAL.
   // Scores come only from the per-user NAS archive. The server authorizes every
@@ -403,7 +520,7 @@
   const pendingScoreIds=new Set();
   let scoreFetchBusy=false,scoreRetryAfter=0;
   function resetCardScores(){
-    cardScores.clear();pendingScoreIds.clear();scoreRetryAfter=0;
+    cardScores.clear();cardStates.clear();pendingScoreIds.clear();scoreRetryAfter=0;
     document.querySelectorAll('.mf-simkl-home-score,.mf-simkl-native-score').forEach(node=>node.remove());
     document.querySelectorAll('[data-mf-simkl-score]').forEach(node=>node.removeAttribute('data-mf-simkl-score'));
     schedule();
@@ -457,6 +574,7 @@
       const id=compact(native?card.getAttribute('data-id'):card.dataset.mfSimklId);
       if(!valid(id))continue;
       if(!cardScores.has(id)){pendingScoreIds.add(id);continue;}
+      updateFrameOnCard(card,cardStates.get(id),native,id);
       renderCardScore(card,cardScores.get(id),native);
     }
     if(pendingScoreIds.size&&!scoreFetchBusy&&Date.now()>=scoreRetryAfter)void fetchCardScores();
@@ -471,16 +589,18 @@
       const data=await request('/card-scores?ids='+encodeURIComponent(batch.join(',')));
       if(currentUser!==selectedUser)return;
       const ratings=data?.scores&&typeof data.scores==='object'?data.scores:{};
+      const states=data?.states&&typeof data.states==='object'?data.states:{};
       for(const id of batch){
         const value=Number(ratings[id]??ratings[id.toUpperCase()]??0);
         cardScores.set(id,Number.isInteger(value)&&value>=1&&value<=10?value:0);
+        cardStates.set(id,states[id]??states[id.toUpperCase()]??null);
       }
     }catch{
       if(currentUser===selectedUser){batch.forEach(id=>pendingScoreIds.add(id));scoreRetryAfter=Date.now()+30000;}
     }finally{scoreFetchBusy=false;schedule();}
   }
 
-  function tick(){timer=0;resetUser();mountHome();syncDetails();decorateCardScores();}
+  function tick(){timer=0;resetUser();mountHome();syncDetails();decorateCardScores();void refreshResume();}
   function schedule(){if(!timer)timer=window.setTimeout(tick,180);}
   function init(){
     const observer=new MutationObserver(changes=>{
@@ -491,6 +611,7 @@
     ['hashchange','pageshow','popstate'].forEach(evt=>window.addEventListener(evt,schedule));
     window.addEventListener('scroll',schedule,{passive:true,capture:true});
     window.addEventListener('focus',()=>{
+      void refreshResume(true);
       const session=sessions.get(`${currentUser}:${currentDetail}`);
       if(session&&Date.now()-session.at>30000){session.phase='idle';void read(session,true);}
     });

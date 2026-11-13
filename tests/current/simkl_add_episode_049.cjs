@@ -7,7 +7,7 @@ const path=require('node:path');
 const source=fs.readFileSync(path.resolve(__dirname,'../../src/Jellyfin.Plugin.MisioFlix/Web/simkl.js'),'utf8');
 const user='1234567890abcdef1234567890abcdef',series='a'.repeat(32),season='b'.repeat(32),episode='c'.repeat(32),movie='d'.repeat(32);
 class Node {
- constructor(tag){this.tagName=tag;this.className='';this.textContent='';this.children=[];this.listeners={};this.dataset={};this.isConnected=true;this.hidden=false;this.checked=false;this.value='';}
+ constructor(tag){this.tagName=tag;this.className='';this.classList={add:(name)=>{if(!this.className.split(' ').includes(name))this.className=(this.className+' '+name).trim();},remove:(name)=>{this.className=this.className.split(' ').filter(x=>x!==name).join(' ');}};this.textContent='';this.children=[];this.listeners={};this.dataset={};this.isConnected=true;this.hidden=false;this.checked=false;this.value='';}
  append(...items){for(const n of items){n.isConnected=true;this.children.push(n);}}
  replaceChildren(...items){this.children=[];this.append(...items);}
  remove(){this.isConnected=false;}

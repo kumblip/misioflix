@@ -45,16 +45,24 @@ public sealed class MisioFlixSimklController : ControllerBase
             var targets=await _catalog.AuthorizedSimklCardTargetsAsync(Request,ids,cancel).ConfigureAwait(false);
             var snapshot=(await _local.ReadAsync(user,cancel).ConfigureAwait(false)).Snapshot;
             var scores=new System.Collections.Generic.Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+            // The same Jellyfin-authorized batch also returns this user's Simkl
+            // list status. Statuses without scores are needed for pink/gold/green
+            // frames; no external IDs are ever supplied by the browser.
+            var states=new System.Collections.Generic.Dictionary<string,object>(StringComparer.OrdinalIgnoreCase);
             if(snapshot is not null)
                 foreach(var target in targets)
                 {
-                    var matches=snapshot.Items.Values.Where(entry=>entry.Kind==target.Value.Kind&&entry.Score is > 0 and <= 10&&
+                    var matches=snapshot.Items.Values.Where(entry=>entry.Kind==target.Value.Kind&&
                         target.Value.Ids.Any(pair=>entry.Ids.TryGetValue(pair.Key,out var other)&&
                             string.Equals(other,pair.Value,StringComparison.OrdinalIgnoreCase)))
                         .GroupBy(entry=>entry.Id).ToArray();
-                    if(matches.Length==1)scores[target.Key]=matches[0].First().Score!.Value;
+                    if(matches.Length!=1)continue;
+                    var found=matches[0].First();
+                    if(found.Score is > 0 and <= 10)scores[target.Key]=found.Score.Value;
+                    states[target.Key]=new {status=found.Status,
+                        watchedEpisodes=found.WatchedEpisodes,totalEpisodes=found.TotalEpisodes};
                 }
-            return Ok(new {scores});
+            return Ok(new {scores,states});
         }
         catch(Exception ex){return Failure(ex);}
     }

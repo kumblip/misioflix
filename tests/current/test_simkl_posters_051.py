@@ -18,14 +18,14 @@ MAL=(SRC/'Web/mal.js').read_text()
 class SimklPosters051(unittest.TestCase):
     def test_version_consistency(self):
         version=json.loads((ROOT/'meta.json').read_text())['version']
-        self.assertEqual(version,'0.4.51.0')
+        self.assertEqual(version,'0.4.52.0')
         self.assertIn(f'<AssemblyVersion>{version}</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
     def test_uses_personal_nas_backup_never_jellyfin_user_rating(self):
         self.assertIn('AuthorizedSimklCardTargetsAsync',CAT)
         self.assertIn('[HttpGet("card-scores")]',CONTROLLER)
         self.assertIn('_local.ReadAsync(user,cancel)',CONTROLLER)
-        self.assertIn('entry.Score is > 0 and <= 10',CONTROLLER)
+        self.assertIn('found.Score is > 0 and <= 10',CONTROLLER)
         self.assertNotIn('addStat(item.userRating',HOME)
         self.assertIn("if(kind==='anime'&&rating)",CLIENT)
         self.assertIn("request('/card-scores?ids='+encodeURIComponent(batch.join(',')))",SIMKL)
@@ -42,7 +42,7 @@ class SimklPosters051(unittest.TestCase):
     def test_per_user_cache_and_no_external_card_queries(self):
         self.assertIn('const selectedUser=currentUser;',SIMKL)
         self.assertIn('if(currentUser!==selectedUser)return;',SIMKL)
-        self.assertIn('cardScores.clear();pendingScoreIds.clear()',SIMKL)
+        self.assertIn('cardScores.clear();cardStates.clear();pendingScoreIds.clear()',SIMKL)
         self.assertIn('slice(0,36)',SIMKL)
         self.assertNotIn('await _simkl.ReadItemAsync',CONTROLLER.split('CardScores(',1)[1].split('[HttpGet("connection")]',1)[0])
 

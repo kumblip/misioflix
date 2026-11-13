@@ -166,3 +166,83 @@ html.misioflix-skin .mf-native-stats > .mf-simkl-native-score {padding:0 0 1px}
 /* Hide Jellyfin's own pink unplayed count when MisioFlix's total paws are present.
    Restrict to non-anime so MAL keeps its independent presentation. */
 html.misioflix-skin .card.mf-simkl-native-media:has(.mf-simkl-native-score) .countIndicator {display:none!important}
+
+
+/* v0.4.52 — independent Simkl poster and details frames (NO MAL selectors).
+   Colors match AnimePL visually but never share its watch classes or logic.
+   Left half = resumed (gold), right half = completed (green). */
+html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch="unwatched"],
+html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch="unwatched"],
+html.misioflix-skin #itemDetailPage.mf-simkl-detail-ready[data-mf-simkl-watch="unwatched"] {
+  --mf-simkl-frame:#f4a5ce;
+}
+html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch="started"],
+html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch="started"],
+html.misioflix-skin #itemDetailPage.mf-simkl-detail-ready[data-mf-simkl-watch="started"] {
+  --mf-simkl-frame:#e6a23c;
+}
+html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch="watched"],
+html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch="watched"],
+html.misioflix-skin #itemDetailPage.mf-simkl-detail-ready[data-mf-simkl-watch="watched"] {
+  --mf-simkl-frame:#45b879;
+}
+html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch="mixed"],
+html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch="mixed"],
+html.misioflix-skin #itemDetailPage.mf-simkl-detail-ready[data-mf-simkl-watch="mixed"] {
+  --mf-simkl-frame:linear-gradient(90deg,#e6a23c 0 50%,#45b879 50% 100%);
+}
+/* Existing Jellyfin frame rules use data-mf-watch. A non-anime Simkl
+   visual frame takes priority, WITHOUT overwriting that Jellyfin state. */
+html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch] {
+  outline:none!important;
+  box-shadow:none!important;
+}
+html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch]::before {
+  content:"";position:absolute;inset:0;z-index:8;pointer-events:none;
+  box-sizing:border-box;border:0!important;border-radius:inherit;padding:2px;
+  box-shadow:none!important;background:var(--mf-simkl-frame);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch] .cardImageContainer {
+  outline:0!important;box-shadow:none!important;
+}
+html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch] .cardScalable {
+  position:relative;outline:0!important;box-shadow:none!important;
+}
+html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch] .cardScalable::after {
+  content:"";position:absolute;inset:0;z-index:8;pointer-events:none;
+  box-sizing:border-box;border-radius:12px;padding:2px;
+  background:var(--mf-simkl-frame);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-simkl-detail-ready .mf-detail-poster-rail > .detailImageContainer {
+  position:relative;outline:none!important;box-shadow:none!important;border-radius:15px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-simkl-detail-ready .mf-detail-poster-rail > .detailImageContainer::after {
+  content:"";position:absolute;inset:0;z-index:8;pointer-events:none;
+  box-sizing:border-box;border-radius:15px;padding:3px;
+  background:var(--mf-simkl-frame);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+/* Personal Simkl rating beside the existing native play/heart actions. */
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-simkl-detail-score {
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  white-space:nowrap;flex:0 0 auto;min-height:32px;box-sizing:border-box;
+  padding:5px 9px;margin-right:8px;border:1px solid rgba(245,153,200,.45);
+  border-radius:9px;background:rgba(43,16,42,.8);color:#ffe0ef;
+  font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-simkl-detail-score .mf-simkl-score-paw {
+  width:14px;height:14px;flex:0 0 14px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-simkl-detail-score-source {
+  font-size:11px;font-weight:600;opacity:.9;
+}
+@media(max-width:700px){
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-simkl-detail-score {
+    min-height:29px;padding:4px 7px;margin-right:4px;font-size:12px;
+  }
+}
