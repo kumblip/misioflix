@@ -1,4 +1,4 @@
-"""v0.4.56 guardrails: Simkl movie/show-only versioned archive and offline queue.
+"""v0.4.57 guardrails: Simkl movie/show-only versioned archive and offline queue.
 Static contract tests complement, but do not replace, compiling C# and API tests.
 """
 from pathlib import Path
@@ -54,6 +54,6 @@ class Resilience056(unittest.TestCase):
   self.assertNotIn('mf-mal-',UI)
   self.assertNotIn('.mf-mal-',re.sub(r'/\*.*?\*/','',CSS,flags=re.S))
  def test_versions(self):
-  self.assertIn('"version": "0.4.56.0"',(ROOT/'meta.json').read_text('utf-8'))
-  self.assertIn('<AssemblyVersion>0.4.56.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf-8'))
+  self.assertIn('"version": "0.4.57.0"',(ROOT/'meta.json').read_text('utf-8'))
+  self.assertIn('<AssemblyVersion>0.4.57.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf-8'))
 if __name__=='__main__':unittest.main()

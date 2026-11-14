@@ -117,7 +117,7 @@ public sealed class MisioFlixSimklService
         string? bearer,object? payload,CancellationToken cancel,bool form=false)
     {
         using var request=new HttpRequestMessage(method,Api+route);
-        request.Headers.UserAgent.ParseAdd("MisioFlix/0.4.56 (Jellyfin)");
+        request.Headers.UserAgent.ParseAdd("MisioFlix/0.4.57 (Jellyfin)");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if(!string.IsNullOrWhiteSpace(bearer))request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",bearer);
         if(payload is Dictionary<string,string> pairs && form)
@@ -278,7 +278,7 @@ public sealed class MisioFlixSimklService
         // All API calls are scoped to the authenticated user token; no direct browser requests to Simkl.
         var sep=route.Contains('?')?"&":"?";
         var full=route+sep+"client_id="+Uri.EscapeDataString(credential.ClientId)+
-            "&app-name=misioflix&app-version=0.4.56";
+            "&app-name=misioflix&app-version=0.4.57";
         var(status,doc)=await SendAsync(method,full,credential.AccessToken,payload,cancel).ConfigureAwait(false);
         try{EnsureSuccess(status,doc);return doc;}catch{doc.Dispose();throw;}
     }
@@ -652,6 +652,26 @@ public sealed class MisioFlixSimklService
         },cancel).ConfigureAwait(false);
         _snapshots.TryRemove(user,out _); // reload local overlaid history on the next detail view
         await TryFlushPendingAsync(user,cancel).ConfigureAwait(false);
+    }
+    /// <summary>
+    /// Native Jellyfin checkmark (and its inverse). Persist the explicit user
+    /// decision in the same local per-user Simkl outbox as the season editor.
+    /// A disconnected Simkl account never prevents a local watched change.
+    /// </summary>
+    public async Task RecordJellyfinToggleAsync(string user,SimklMediaTarget target,
+        int? episode,bool watched,CancellationToken cancel)
+    {
+        if(!target.Relevant||target.Ids.Count==0||
+            (target.Kind=="shows"&&(!target.SeasonNumber.HasValue||!episode.HasValue)))return;
+        var key=MisioFlixSimklLocalStore.ManualEditKey(target.Kind,target.Ids)+
+            ":"+target.SeasonNumber+":"+episode;
+        await _local.QueueWatchAsync(user,new MisioFlixSimklLocalStore.PendingWatch{
+            Key=key,Kind=target.Kind,Ids=target.Ids,
+            Season=target.SeasonNumber,Episode=episode,Watched=watched,IsManual=true
+        },cancel).ConfigureAwait(false);
+        _snapshots.TryRemove(user,out _);
+        try {await TryFlushPendingAsync(user,cancel).ConfigureAwait(false);}
+        catch(Exception ex) when(ex is HttpRequestException or InvalidOperationException or TaskCanceledException){}
     }
     private sealed record PendingOperation(DateTimeOffset Time,
         MisioFlixSimklLocalStore.PendingWatch? Watch,

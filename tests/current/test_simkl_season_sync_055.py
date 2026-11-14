@@ -38,7 +38,7 @@ class Simkl055(unittest.TestCase):
   self.assertIn('if(selected!==currentUser||stamp!==seasonProgressStamp)return;',WEB)
   self.assertNotIn('mf-mal-',WEB)
  def test_playback_next_with_seconds_and_75_percent(self):
-  self.assertIn('Threshold=0.75',PLAY)
+  self.assertIn('Threshold=0.80',PLAY)
   self.assertIn('IsFollowingEpisode(state,next)',PLAY)
   self.assertIn('state.MaxTicks>0',PLAY)
   self.assertIn('!isStop',PLAY)

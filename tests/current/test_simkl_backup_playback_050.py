@@ -26,7 +26,7 @@ class Simkl050(unittest.TestCase):
   self.assertIn("request('/sync-check')",UI)
  def test_simkl_auto_playback_from_server(self):
   for token in ('ISessionManager','PlaybackStart+=Start','PlaybackProgress+=Progress','PlaybackStopped+=Stop',
-    'Threshold=0.75','state.Submitted=true','_active[key]=state','RecordPlaybackWatchedAsync'):
+    'Threshold=0.80','state.Submitted=true','_active[key]=state','RecordPlaybackWatchedAsync'):
    self.assertIn(token,MON)
   self.assertIn('services.AddHostedService<MisioFlixSimklPlaybackHostedService>();',REG)
   self.assertNotIn('window.video',MON)
@@ -91,6 +91,6 @@ class Simkl050(unittest.TestCase):
   self.assertNotIn('MisioFlixMalService',SERVICE)
   self.assertNotIn('mal.js',MON)
  def test_version(self):
-  self.assertIn('0.4.56.0',(ROOT/'meta.json').read_text('utf8'))
-  self.assertIn('0.4.56.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
+  self.assertIn('0.4.57.0',(ROOT/'meta.json').read_text('utf8'))
+  self.assertIn('0.4.57.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
 if __name__=='__main__':unittest.main()

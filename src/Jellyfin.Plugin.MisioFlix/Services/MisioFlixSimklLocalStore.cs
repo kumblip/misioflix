@@ -387,6 +387,9 @@ public sealed class MisioFlixSimklLocalStore
         try
         {
             var archive=await ReadUnsafe(user,cancel).ConfigureAwait(false);
+            // A checkbox click must be visible in the local archive even before
+            // the first successful Simkl fetch or during a prolonged outage.
+            archive.Snapshot??=new SnapshotData {CheckedAt=DateTimeOffset.MinValue};
             // The most recent intent wins. Repeated progress notifications do not grow the queue.
             if(!operation.IsManual&&archive.PendingWatches.Any(item=>item.Key==operation.Key&&item.IsManual))return;
             archive.PendingWatches.RemoveAll(item=>item.Key==operation.Key);

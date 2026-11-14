@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Channels;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Entities;
@@ -9,6 +10,7 @@ using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
+using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -16,7 +18,7 @@ namespace Jellyfin.Plugin.MisioFlix.Services;
 
 /// <summary>
 /// Jellyfin server playback events: works for web, Android and native clients.
-/// Threshold is >=75%, or the viewer's intentional consecutive-episode
+/// Threshold is >=80%, or the viewer's intentional consecutive-episode
 /// transition after playback actually advances (even by a few seconds).
 /// Errors are logged and queued, never thrown into Jellyfin's playback pipeline.
 /// </summary>
@@ -35,12 +37,20 @@ public sealed class MisioFlixSimklPlaybackHostedService : IHostedService
         public SimklMediaTarget Target=null!;
     }
     private readonly ISessionManager _sessions;
+    private readonly IUserDataManager _userData;
     private readonly ILibraryManager _library;
     private readonly MisioFlixSimklService _simkl;
     private readonly ILogger<MisioFlixSimklPlaybackHostedService> _logger;
     private readonly object _gate=new();
     private readonly Dictionary<string,Playing> _active=new(StringComparer.Ordinal);
-    private const double Threshold=0.75;
+    private const double Threshold=0.80;
+    // Jellyfin's native watched checkbox uses UserDataSaveReason.TogglePlayed.
+    // Keep these operations in the order received: an immediate uncheck must
+    // not be reordered ahead of a previous check by Task.Run scheduling.
+    private sealed record ManualWatch(string User,SimklMediaTarget Target,int? Episode,bool Watched);
+    private readonly Channel<ManualWatch> _manualQueue=Channel.CreateUnbounded<ManualWatch>(
+        new UnboundedChannelOptions {SingleReader=true,SingleWriter=false});
+    private Task? _manualWorker;
     // For episode transitions, do not infer "watched" from arbitrary episode
     // changes in the same series, such as S01E02 -> S01E15.
     private static bool IsFollowingEpisode(Playing previous,Playing next)=>
@@ -48,24 +58,64 @@ public sealed class MisioFlixSimklPlaybackHostedService : IHostedService
         (next.Season==previous.Season&&next.Episode==previous.Episode+1 ||
          next.Season==previous.Season+1&&next.Episode==1);
 
-    public MisioFlixSimklPlaybackHostedService(ISessionManager sessions,ILibraryManager library,
-        MisioFlixSimklService simkl,ILogger<MisioFlixSimklPlaybackHostedService> logger)
-    { _sessions=sessions;_library=library;_simkl=simkl;_logger=logger; }
+    public MisioFlixSimklPlaybackHostedService(ISessionManager sessions,IUserDataManager userData,
+        ILibraryManager library,MisioFlixSimklService simkl,
+        ILogger<MisioFlixSimklPlaybackHostedService> logger)
+    { _sessions=sessions;_userData=userData;_library=library;_simkl=simkl;_logger=logger; }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _sessions.PlaybackStart+=Start;
         _sessions.PlaybackProgress+=Progress;
         _sessions.PlaybackStopped+=Stop;
+        _userData.UserDataSaved+=OnUserDataSaved;
+        _manualWorker=Task.Run(DrainManualChangesAsync);
         return Task.CompletedTask;
     }
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
         _sessions.PlaybackStart-=Start;
         _sessions.PlaybackProgress-=Progress;
         _sessions.PlaybackStopped-=Stop;
+        _userData.UserDataSaved-=OnUserDataSaved;
+        _manualQueue.Writer.TryComplete();
+        if(_manualWorker is not null)
+        {
+            try {await _manualWorker.WaitAsync(cancellationToken).ConfigureAwait(false);}
+            catch(OperationCanceledException)
+            {_logger.LogWarning("MisioFlix Simkl: stop interrupted while draining native Jellyfin watched changes");}
+        }
         lock(_gate)_active.Clear();
-        return Task.CompletedTask;
+    }
+    private void OnUserDataSaved(object? sender,UserDataSaveEventArgs e)
+    {
+        // Ignore playback-generated saves: they have their own 80% and Next Up rules.
+        // Only explicit Jellyfin mark played/unplayed clicks belong here.
+        if(e.SaveReason!=UserDataSaveReason.TogglePlayed||e.UserId==Guid.Empty||
+            e.Item is null||e.UserData is null)return;
+        try
+        {
+            var media=Prepare(e.Item,requireRuntime:false);
+            if(media is null)return; // no AnimePL, unsupported media or missing IDs
+            _manualQueue.Writer.TryWrite(new ManualWatch(e.UserId.ToString("N"),
+                media.Target,media.Target.Kind=="shows"?media.Episode:null,e.UserData.Played));
+        }
+        catch(Exception ex){_logger.LogWarning(ex,"MisioFlix Simkl: cannot queue Jellyfin manual watched toggle");}
+    }
+    private async Task DrainManualChangesAsync()
+    {
+        await foreach(var change in _manualQueue.Reader.ReadAllAsync().ConfigureAwait(false))
+        {
+            try
+            {
+                await _simkl.RecordJellyfinToggleAsync(change.User,change.Target,
+                    change.Episode,change.Watched,CancellationToken.None).ConfigureAwait(false);
+            }
+            catch(Exception ex)
+            {
+                _logger.LogWarning(ex,"MisioFlix Simkl: native watched toggle failed for Jellyfin user {User}",change.User);
+            }
+        }
     }
     private static string Device(string user,PlaybackProgressEventArgs e)=>user+":"+
         (!string.IsNullOrWhiteSpace(e.DeviceId)?e.DeviceId:e.Session?.Id??"unknown");
@@ -84,10 +134,10 @@ public sealed class MisioFlixSimklPlaybackHostedService : IHostedService
         catch(Exception ex) when(ex is ArgumentException or NotSupportedException or PathTooLongException)
         {return true;} // fail closed: never upload an unverified anime-library item
     }
-    private Playing? Prepare(BaseItem item)
+    private Playing? Prepare(BaseItem item,bool requireRuntime=true)
     {
         var runtimeTicks=item.RunTimeTicks.GetValueOrDefault();
-        if(runtimeTicks<=0)return null;
+        if(requireRuntime&&runtimeTicks<=0)return null;
         BaseItem root;
         Guid seriesId=Guid.Empty;int season=0,episodeNumber=0;
         if(item is Episode ep)

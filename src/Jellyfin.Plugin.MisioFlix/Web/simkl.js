@@ -1,5 +1,5 @@
-/* MisioFlix Simkl module v0.4.56 — independent of MAL.
- * Server-side Jellyfin playback events mark watched after 75%; other writes manual.
+/* MisioFlix Simkl module v0.4.57 — independent of MAL.
+ * Server-side Jellyfin playback events mark watched after 80%; native Jellyfin ✓ also synchronizes.
  * User-separated NAS backup, offline export and local rewatch counters.
  */
 (() => {
@@ -14,7 +14,7 @@
   const client=()=>window.ApiClient||window.ConnectionManager?.getApiClient?.();
   const user=()=>compact(client()?.getCurrentUserId?.());
   const token=()=>{const api=client();const value=typeof api?.accessToken==='function'?api.accessToken():api?.accessToken;return typeof value==='string'?value:'';};
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.56", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.57", Token="${token().replace(/["\r\n]/g,'')}"`});
   async function request(route,method='GET',body){
     const controller=new AbortController();const timer=window.setTimeout(()=>controller.abort(),30000);
     try{
@@ -421,7 +421,7 @@
     function draw(c){
       body.replaceChildren(message);
       if(c?.connected){
-        note('Simkl jest połączony z tym użytkownikiem Jellyfin. Obejrzenie filmu lub odcinka po 75% automatycznie zapisuje historię. Pozostałe zmiany wymagają ręcznej edycji.');
+        note('Simkl jest połączony z tym użytkownikiem Jellyfin. Obejrzenie filmu lub odcinka po 80% lub przejściu do kolejnego odcinka automatycznie zapisuje historię. Zaznaczenie ✓ w Jellyfinie również synchronizuje obejrzenie. Oceny i pozostałe statusy edytujesz ręcznie.');
         body.append(el('p','mf-simkl-message',c.canWrite?'Dostęp do ręcznej edycji: aktywny.':'Brak uprawnienia media:write — połącz konto ponownie.'));
         body.append(action('Sprawdź status',async()=>{try{connection=null;draw(await getConnection(true));}catch(e){note(e.message);}}));
         addExport();
