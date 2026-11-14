@@ -311,6 +311,7 @@
         'data-mf-seasons','data-mf-episodes','data-mf-user-rating','data-mf-anime',
         'data-mf-overlay-ready','data-mf-watch','data-mf-mal-id','data-mf-primary-image',
         'data-mf-simkl-series','data-mf-simkl-season','data-mf-simkl-watch',
+        'data-mf-mal-series','data-mf-mal-season','data-mf-mal-frame',
         'data-mf-has-summary','data-mf-anime-poster','data-mf-redundant-year']){
         card.removeAttribute(attr);
       }
@@ -345,6 +346,9 @@
     // Simkl seasonal frame binding stays distinct from AnimePL and MAL.
     set('data-mf-simkl-series',data.anime?null:data.simklSeriesId);
     set('data-mf-simkl-season',data.anime?null:data.simklSeasonNumber);
+    // Separate, display-only MAL binding; no shared Simkl season classes or state.
+    set('data-mf-mal-series',data.anime?data.malSeriesId:null);
+    set('data-mf-mal-season',data.anime?data.malSeasonNumber:null);
     set('data-mf-user-rating',data.anime?null:data.userRating);
     set('data-mf-mal-id',data.anime?data.malId:null);
     set('data-mf-genres',Array.isArray(data.genres)?data.genres.slice(0,3).join('|'):'');
@@ -357,6 +361,7 @@
       // Only the logged-in MAL user's own list controls anime frames. Preserve
       // already-hydrated MAL status on re-renders of the SAME anime.
       if(before!==String(data.malId||'')){
+        card.removeAttribute('data-mf-mal-frame');
         card.setAttribute('data-mf-watch','unknown');
         card.removeAttribute('data-mf-user-rating');
       }
@@ -456,7 +461,8 @@
       for(const key of ['data-mf-mal-id','data-mf-item-id','data-mf-year','data-mf-format','data-mf-genres',
         'data-mf-seasons','data-mf-episodes','data-mf-user-rating',
         'data-mf-anime','data-mf-overlay-ready','data-mf-watch',
-        'data-mf-simkl-series','data-mf-simkl-season','data-mf-simkl-watch'])card.removeAttribute(key);
+        'data-mf-simkl-series','data-mf-simkl-season','data-mf-simkl-watch',
+        'data-mf-mal-series','data-mf-mal-season','data-mf-mal-frame'])card.removeAttribute(key);
       clearMixedCard(card);
       card.removeAttribute('data-mf-description');
       card.querySelector('.mf-native-overlay')?.remove();

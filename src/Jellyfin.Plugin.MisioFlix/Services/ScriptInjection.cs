@@ -79,6 +79,7 @@ public sealed class MisioFlixStartupFilter : IStartupFilter
                         "<script data-misioflix=\"details\" defer src=\"../MisioFlix/assets/details.js?v=" + version + "\"></script>" +
                         "<script data-misioflix=\"mal\" defer src=\"../MisioFlix/assets/mal.js?v=" + version + "\"></script>" +
                         "<link data-misioflix=\"mal-archive\" rel=\"stylesheet\" href=\"../MisioFlix/assets/mal-archive.css?v=" + version + "\">" +
+                        "<link data-misioflix=\"mal-frames\" rel=\"stylesheet\" href=\"../MisioFlix/assets/mal-frames.css?v=" + version + "\">" +
                         "<link data-misioflix=\"simkl\" rel=\"stylesheet\" href=\"../MisioFlix/assets/simkl.css?v=" + version + "\">" +
                         "<script data-misioflix=\"simkl\" defer src=\"../MisioFlix/assets/simkl.js?v=" + version + "\"></script>";
                     var at = input.LastIndexOf("</head>", StringComparison.OrdinalIgnoreCase);

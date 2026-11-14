@@ -52,6 +52,81 @@
     return 'unknown';
   };
   const statusLabel=status=>Object.fromEntries(statuses)[status]||'Nieznany';
+
+  // v0.4.61: ONLY a visual fourth MAL state. A completed MAL entry keeps its
+  // canonical 'watched' status; a separate attribute marks a real Jellyfin
+  // Continue Watching position for the CURRENT user. No MAL writes or counters.
+  let malResumeCatalogs=new Set(),malResumeSeasons=new Map();
+  let malResumeReadAt=0,malResumePromise=null;
+  function malHasActiveResume(catalogId,seasonNo=null){
+    const catalog=compact(catalogId);
+    if(!valid(catalog))return false;
+    if(seasonNo!==null && seasonNo!==undefined){
+      const number=Number(seasonNo);
+      return Number.isInteger(number)&&number>=0 && malResumeSeasons.get(catalog)?.has(number)===true;
+    }
+    return malResumeCatalogs.has(catalog);
+  }
+  function malCardResume(card,mediaId){
+    const series=compact(card.getAttribute('data-mf-mal-series')||'');
+    const raw=card.getAttribute('data-mf-mal-season');
+    return valid(series)&&raw!==null&&raw!==''
+      ?malHasActiveResume(series,raw):malHasActiveResume(mediaId);
+  }
+  function markMalCardFrame(card,state,mediaId){
+    // Never turn an unknown/unwatched/started MAL entry into a completed one.
+    const mixed=state==='watched'&&malCardResume(card,mediaId);
+    if(mixed)card.setAttribute('data-mf-mal-frame','mixed');
+    else card.removeAttribute('data-mf-mal-frame');
+  }
+  function updateVisibleDetailMalFrame(){
+    const session=detailSessions.get(`${currentUser}:${currentDetail}`);
+    if(!session||session.phase!=='ready'||session.animeVerified!==true)return;
+    const page=detailPage(session.id);
+    if(!page||!page.classList.contains('mf-detail-mal-rating'))return;
+    const mixed=statusState(session.entry)==='watched' &&
+      malHasActiveResume(session.catalogId,session.seasonId?session.seasonNumber:null);
+    if(mixed)page.setAttribute('data-mf-mal-frame','mixed');
+    else page.removeAttribute('data-mf-mal-frame');
+  }
+  async function refreshMalResume(){
+    const uid=currentUser;
+    if(!valid(uid)||!token()||malResumePromise||Date.now()-malResumeReadAt<60000)return;
+    // Avoid fetching for non-anime screens. Only visual decorations need it.
+    if(!document.querySelector('.mf-home-poster[data-mf-mal-id], .card[data-mf-anime="1"], #itemDetailPage.mf-detail-mal-rating'))return;
+    malResumeReadAt=Date.now();
+    const work=(async()=>{
+      try{
+        const response=await fetch('/MisioFlix/api/resume',{headers:headers(),cache:'no-store',credentials:'same-origin'});
+        if(!response.ok)throw new Error(`Jellyfin resume: HTTP ${response.status}`);
+        const body=await response.json();
+        if(uid!==currentUser)return;
+        const catalogs=new Set(),seasons=new Map();
+        for(const row of (Array.isArray(body?.items)?body.items:[])){
+          // NextUp is NOT an actual resume, nor are hidden entries returned
+          // in this visible list. Never infer a resume from percentages alone.
+          if(row?.next_up===true||!(Number(row?.position_ticks)>0))continue;
+          const id=compact(row?.catalog_id);
+          if(!valid(id))continue;
+          catalogs.add(id);
+          if(row?.season===null||row?.season===undefined||row?.season==='')continue;
+          const season=Number(row.season);
+          if(!Number.isInteger(season)||season<0)continue;
+          if(!seasons.has(id))seasons.set(id,new Set());
+          seasons.get(id).add(season);
+        }
+        malResumeCatalogs=catalogs;malResumeSeasons=seasons;
+        decorateMalCards();
+        updateVisibleDetailMalFrame();
+      }catch{
+        // Preserve the most recent confirmed resume states while Jellyfin is
+        // unavailable. Never alter MAL status, local backup or playback data.
+        if(uid===currentUser)malResumeReadAt=Date.now()-30000;
+      }
+    })();
+    malResumePromise=work;
+    try{await work;}finally{if(malResumePromise===work)malResumePromise=null;}
+  }
   function saveIndexEntry(uid,malId,entry){
     const state=indexState(uid),data=state.entries;if(entry)data[malId]=entry;else delete data[malId];storeIndex(uid,data,state.full);
     window.dispatchEvent(new Event('misioflix-mal-cache-changed'));
@@ -99,6 +174,7 @@
       // incomplete/offline data must stay unknown, not borrow Jellyfin play-state.
       const state=entry?statusState(entry):(malId>0&&snapshot.full?'unwatched':'unknown');
       if(card.getAttribute('data-mf-watch')!==state){card.setAttribute('data-mf-watch',state);overlayChanged=true;}
+      markMalCardFrame(card,state,mediaId);
       if(!isHome){
         const rating=entry?entryFields(entry).score:0;
         const displayed=rating>0?String(rating):'';
@@ -161,6 +237,8 @@
     const uid=compact(userId());
     if(uid===currentUser)return;
     currentUser=uid;connection=null;connectionPromise=null;homeButton=null;
+    malResumeCatalogs=new Set();malResumeSeasons=new Map();malResumeReadAt=0;malResumePromise=null;
+    document.querySelectorAll('[data-mf-mal-frame]').forEach(node=>node.removeAttribute('data-mf-mal-frame'));
     sessionValidated.clear();detailSessions.clear();detailGeneration++;indexRequestedUser='';
     detailPanel?.remove();clearHeaderForPreviousDetail();detailPanel=null;currentDetail='';currentDetailKey='';
     closeDialog();
@@ -330,7 +408,7 @@
     return arr.reverse().find(p=>p.isConnected&&p.dataset.mfDetailId===id&&p.getClientRects().length>0)||null;
   }
   function storeVisible(uid,malId,entry){saveCache(uid,malId,entry);saveIndexEntry(uid,malId,entry);sessionValidated.add(`${uid}:${malId}`);}
-  function showDetailMalRating(panel,entry){
+  function showDetailMalRating(panel,entry,ctx){
     const page=panel.closest('#itemDetailPage');if(!page)return;
     // Only MAL-backed anime detail pages. Do not overwrite Jellyfin's stored rating.
     page.classList.add('mf-detail-mal-rating');
@@ -339,6 +417,10 @@
     // or as an omitted `entry` property (undefined). Both mean unwatched.
     // Loading, disconnected, failed and unverified states never call here.
     page.setAttribute('data-mf-mal-watch',entry==null?'unwatched':statusState(entry));
+    const mixed=entry!=null && statusState(entry)==='watched' &&
+      malHasActiveResume(ctx.catalogId,ctx.seasonId?ctx.seasonNumber:null);
+    if(mixed)page.setAttribute('data-mf-mal-frame','mixed');
+    else page.removeAttribute('data-mf-mal-frame');
     let label=page.querySelector('.mf-detail-mal-badge');
     if(!label){
       label=el('span','mf-detail-mal-badge');
@@ -364,7 +446,7 @@
     if(!panel.isConnected||ctx.generation!==detailGeneration||detailId()!==ctx.pageId)return;
     const main=panel.querySelector('.mf-mal-content');main.replaceChildren();
     const data=entry?entryFields(entry):null;
-    showDetailMalRating(panel,entry);
+    showDetailMalRating(panel,entry,ctx);
     const view=el('div','mf-mal-readonly');view.setAttribute('aria-label','Moje dane MAL');
     // MAL's num_times_rewatched is already the count of REWATCHES.
     // Display it verbatim. Do not add the initial viewing to this field.
@@ -493,7 +575,8 @@
     if(session.phase==='irrelevant'||session.animeVerified!==true){panel.hidden=true;return;}
     panel.hidden=false;
     if(session.phase==='ready'){
-      const ctx={catalogId:session.catalogId,seasonId:session.seasonId,malId:session.malId,
+      const ctx={catalogId:session.catalogId,seasonId:session.seasonId,
+        seasonNumber:session.seasonNumber,malId:session.malId,
         generation:detailGeneration,pageId:session.id,userId:session.userId,sessionKey:session.key};
       renderEntry(panel,session.entry,ctx,session.fromCache);
       return;
@@ -549,7 +632,11 @@
           updateSession(session,'missing',seasonId?
             'Ten sezon nie ma MAL ID w season.nfo.':'Ten tytuł nie ma MAL ID w NFO.');return;
         }
-        Object.assign(session,{catalogId,seasonId,malId});
+        const numberRaw=metadata.Type==='Season'?
+          (metadata.IndexNumber??overlay.malSeasonNumber):null;
+        const seasonNumber=numberRaw!==null&&numberRaw!==undefined&&numberRaw!==''&&
+          Number.isInteger(Number(numberRaw))&&Number(numberRaw)>=0?Number(numberRaw):null;
+        Object.assign(session,{catalogId,seasonId,seasonNumber,malId});
         rememberBinding(uid,seasonId||catalogId,malId);
         updateSession(session,'loading','Sprawdzanie połączenia MyAnimeList…');
         const c=await connectionStatus();
@@ -612,6 +699,7 @@
   function clearHeaderForPreviousDetail(){
     document.querySelectorAll('#itemDetailPage.mf-detail-mal-rating').forEach(p=>{
       p.classList.remove('mf-detail-mal-rating');p.removeAttribute('data-mf-mal-watch');
+      p.removeAttribute('data-mf-mal-frame');
       p.querySelector('.mf-detail-mal-badge')?.remove();
     });
   }
@@ -631,6 +719,7 @@
     mountHomeButton();
     syncDetails();
     decorateMalCards();
+    void refreshMalResume(); // Display-only Jellyfin read; does not touch MAL.
     void archivePulse();
   }
   function schedule(){if(timer)return;timer=window.setTimeout(tick,180);}
@@ -642,7 +731,10 @@
         !(c.target?.nodeType===1 && c.target.closest('.mf-mal-detail-panel, .mf-mal-modal-overlay'))))schedule();
     });
     mo.observe(document.body,{childList:true,subtree:true});
-    ['hashchange','pageshow','popstate'].forEach(e=>window.addEventListener(e,schedule));
+    ['hashchange','pageshow','popstate'].forEach(e=>window.addEventListener(e,()=>{
+      // Recheck when returning from playback, including before the 60s TTL.
+      malResumeReadAt=0;schedule();
+    }));
     window.addEventListener('misioflix-mal-cache-changed',schedule);
     window.addEventListener('misioflix-mal-binding-ready',schedule);
     window.addEventListener('misioflix-mal-updated',()=>{

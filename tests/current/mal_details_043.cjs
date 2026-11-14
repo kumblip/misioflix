@@ -16,20 +16,21 @@ const statusSource = part('  const statusState=', '  const statusLabel=');
 const ratingSource = part('  function showDetailMalRating(', '  function showMalSaveToast(');
 const entryFields = entry => entry?.my_list_status || entry || {};
 const el = (_tag, cls, text) => ({className: cls, textContent: text || '', title: ''});
-const {statusState, showDetailMalRating} = new Function('entryFields','el',
-  `${statusSource}\n${ratingSource}\nreturn {statusState,showDetailMalRating};`)(entryFields,el);
+const {statusState, showDetailMalRating} = new Function('entryFields','el','malHasActiveResume',
+  `${statusSource}\n${ratingSource}\nreturn {statusState,showDetailMalRating};`)(entryFields,el,()=>false);
 function posterStatus(entry) {
   const page = {
     attrs: {}, label: null,
     classList: {add() {}},
     setAttribute(name, value) { this.attrs[name] = value; },
+    removeAttribute(name) { delete this.attrs[name]; },
     querySelector(selector) {
       if (selector === '.mf-detail-mal-badge') return this.label;
       return {appendChild: child => {this.label = child;}};
     }
   };
   const panel = {closest: () => page};
-  showDetailMalRating(panel, entry);
+  showDetailMalRating(panel, entry, {catalogId:'a'.repeat(32),seasonId:null,seasonNumber:null});
   return [page.attrs['data-mf-mal-watch'], page.label?.textContent];
 }
 assert.deepEqual(posterStatus(null), ['unwatched','★ Bez oceny · MAL']);

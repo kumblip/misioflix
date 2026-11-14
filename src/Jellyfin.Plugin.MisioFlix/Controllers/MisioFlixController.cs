@@ -42,6 +42,7 @@ public sealed class MisioFlixController : ControllerBase
             "details.js" => ("Web.details.js", "text/javascript; charset=utf-8"),
             "mal.js" => ("Web.mal.js", "text/javascript; charset=utf-8"),
             "mal-archive.css" => ("Web.mal-archive.css", "text/css; charset=utf-8"),
+            "mal-frames.css" => ("Web.mal-frames.css", "text/css; charset=utf-8"),
             "simkl.js" => ("Web.simkl.js", "text/javascript; charset=utf-8"),
             "simkl.css" => ("Web.simkl.css", "text/css; charset=utf-8"),
             "theme.css" => ("Web.theme.css", "text/css; charset=utf-8"),

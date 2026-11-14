@@ -423,7 +423,9 @@ public sealed class MisioFlixCatalogService
             // Use the matching authorized local item, never a guessed title.
             Guid seasonParentId = Guid.Empty;
             int? simklIndex = null;
-            if (type == "Season" && !anime)
+            // A season's exact Jellyfin parent/index can also be used by the
+            // independent, read-only MAL resume-frame decorator. No MAL writes.
+            if (type == "Season")
             {
                 if (!Guid.TryParse(Text(Get(item,"SeriesId")), out seasonParentId))
                 {
@@ -458,8 +460,10 @@ public sealed class MisioFlixCatalogService
                 // Only non-anime seasons: expose Jellyfin's exact parent ID and
                 // season index for the independently-styled Simkl resume border.
                 // Never infer a season number from a translated/display title.
-                simklSeriesId = seasonParentId != Guid.Empty ? seasonParentId.ToString("N") : null,
-                simklSeasonNumber = simklIndex,
+                simklSeriesId = !anime && seasonParentId != Guid.Empty ? seasonParentId.ToString("N") : null,
+                simklSeasonNumber = !anime ? simklIndex : null,
+                malSeriesId = anime && seasonParentId != Guid.Empty ? seasonParentId.ToString("N") : null,
+                malSeasonNumber = anime ? simklIndex : null,
                 userRating = PersonalRating(item),
                 malId = anime ? nfo?.MalId ?? (type=="Series" ? FirstSeasonMalId(libItem.Path) : null) : null,
                 watchStatus = type == "Series" && Get(Get(item,"UserData"),"UnplayedItemCount").ValueKind != JsonValueKind.Number
@@ -1491,6 +1495,9 @@ public sealed class OverlayInfo
     // Simkl-only season decoration data; anime is intentionally excluded.
     public string? simklSeriesId { get; set; }
     public int? simklSeasonNumber { get; set; }
+    // Read-only poster decoration for anime; never interpreted as Simkl data.
+    public string? malSeriesId { get; set; }
+    public int? malSeasonNumber { get; set; }
     public double? userRating { get; set; }
     public string watchStatus { get; set; } = string.Empty;
     public int? malId { get; set; }

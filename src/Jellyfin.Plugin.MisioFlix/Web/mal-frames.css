@@ -1,0 +1,51 @@
+/* MisioFlix 0.4.61 — READ-ONLY fourth MAL poster frame.
+ * Only after MAL says completed AND Jellyfin has a real resume position.
+ * MAL status, rating, counters, NFO and playback are never changed.
+ * Isolated from Simkl CSS, attributes and JavaScript.
+ */
+:root {--mf-mal-mixed-frame:linear-gradient(90deg,#e6a23c 0 50%,#45b879 50% 100%)}
+
+/* Home shelves and both anime search displays. The old solid green border
+   must be hidden under the new two-color masked 2px frame. */
+html.misioflix-skin .mf-home-poster[data-mf-mal-id][data-mf-mal-frame="mixed"][data-mf-watch="watched"] {
+  outline:0!important;box-shadow:none!important;
+}
+html.misioflix-skin .mf-home-poster[data-mf-mal-id][data-mf-mal-frame="mixed"][data-mf-watch="watched"]::before {
+  content:"";position:absolute;inset:0;z-index:8;pointer-events:none;
+  box-sizing:border-box;border:0!important;outline:0!important;box-shadow:none!important;
+  border-radius:inherit;padding:2px;background:var(--mf-mal-mixed-frame);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+
+/* Original Jellyfin AnimePL / anime season / similar cards. Never rebuild
+   React-owned cards and never use Simkl's state, classes or selectors. */
+html.misioflix-skin .card[data-mf-anime="1"][data-mf-mal-frame="mixed"][data-mf-watch="watched"] .cardImageContainer {
+  outline:0!important;box-shadow:none!important;
+}
+html.misioflix-skin .card[data-mf-anime="1"][data-mf-mal-frame="mixed"][data-mf-watch="watched"] .cardScalable {
+  position:relative;outline:0!important;box-shadow:none!important;
+}
+html.misioflix-skin .card[data-mf-anime="1"][data-mf-mal-frame="mixed"][data-mf-watch="watched"] .cardScalable::after {
+  content:"";position:absolute;inset:0;z-index:8;pointer-events:none;
+  box-sizing:border-box;border:0!important;border-radius:13px 13px 0 0;
+  padding:2px;background:var(--mf-mal-mixed-frame);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+
+/* Full detail (Series, Season or Movie): anchor the decoration to the MOVED
+   poster rather than the entire details pane (position:static in theme.css). */
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-mf-mal-watch="watched"][data-mf-mal-frame="mixed"]
+  .mf-detail-poster-rail > .detailImageContainer {
+  position:relative!important;isolation:isolate;
+  outline:0!important;box-shadow:none!important;border-radius:15px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-mf-mal-watch="watched"][data-mf-mal-frame="mixed"]
+  .mf-detail-poster-rail > .detailImageContainer::after {
+  content:"";position:absolute;inset:0;z-index:8;pointer-events:none;
+  box-sizing:border-box;border:0!important;border-radius:15px;
+  padding:3px;background:var(--mf-mal-mixed-frame);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
