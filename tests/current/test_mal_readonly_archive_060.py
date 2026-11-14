@@ -57,13 +57,19 @@ class ReadOnlyArchive060(unittest.TestCase):
         self.assertIn('mal-archive.css', REGISTRATOR)
         self.assertIn('mf-mal-archive', (SRC/'Web'/'mal-archive.css').read_text('utf8'))
     def test_separate_simkl_untouched(self):
-        import zipfile
-        with zipfile.ZipFile(ROOT.parent/'MisioFlix_Native_v0.4.59_METADATA_SAFE_GitHub_PELNE.zip') as z:
-            for name in ['src/Jellyfin.Plugin.MisioFlix/Web/simkl.js',
-                         'src/Jellyfin.Plugin.MisioFlix/Web/simkl.css',
-                         'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixSimklService.cs',
-                         'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixSimklLocalStore.cs']:
-                self.assertEqual((ROOT/name).read_bytes(), z.read(name))
+        # Snapshot of stable v0.4.59.0 source digests. CI only checks out
+        # the repository and must not depend on a ZIP stored outside it.
+        import hashlib
+        expected_sha256 = {
+            'src/Jellyfin.Plugin.MisioFlix/Web/simkl.js': '00ef66fa37fb2854984c968ecdebe194612db86b626acc1eea33d38fd8795f72',
+            'src/Jellyfin.Plugin.MisioFlix/Web/simkl.css': '5ef574a213c3d5f347f672670279aa1326f386cd32f1da58229dd6354bb263a4',
+            'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixSimklService.cs': 'ab31152c93a6ca697c96ac229fca913136011a2805bf6b42beaed56343442d75',
+            'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixSimklLocalStore.cs': 'af0ff76d3f2a8e07849df22db37ef6b83f7750b9d2b4bc1fbbb148777daaa117',
+        }
+        for name, expected in expected_sha256.items():
+            with self.subTest(file=name):
+                actual = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
+                self.assertEqual(actual, expected)
 
 if __name__ == '__main__':
     unittest.main()
