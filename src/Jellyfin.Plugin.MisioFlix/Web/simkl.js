@@ -1,4 +1,4 @@
-/* MisioFlix Simkl module v0.4.55 — independent of MAL.
+/* MisioFlix Simkl module v0.4.56 — independent of MAL.
  * Server-side Jellyfin playback events mark watched after 75%; other writes manual.
  * User-separated NAS backup, offline export and local rewatch counters.
  */
@@ -14,7 +14,7 @@
   const client=()=>window.ApiClient||window.ConnectionManager?.getApiClient?.();
   const user=()=>compact(client()?.getCurrentUserId?.());
   const token=()=>{const api=client();const value=typeof api?.accessToken==='function'?api.accessToken():api?.accessToken;return typeof value==='string'?value:'';};
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.55", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.56", Token="${token().replace(/["\r\n]/g,'')}"`});
   async function request(route,method='GET',body){
     const controller=new AbortController();const timer=window.setTimeout(()=>controller.abort(),30000);
     try{
@@ -374,6 +374,50 @@
         }catch(e){note(e.message);}
       }));
     }
+    function backupSection(){
+      const section=el('section','mf-simkl-backup-status');
+      section.append(el('h3','','Synchronizacja i kopie Simkl'));
+      const info=el('div','mf-simkl-backup-summary','Odczytywanie stanu lokalnej kopii…');
+      section.append(info);
+      const format=raw=>{
+        const date=new Date(raw||'');return !Number.isNaN(date.valueOf())?date.toLocaleString('pl-PL'):'Jeszcze nie wykonano';
+      };
+      const check=async()=>{
+        try{
+          const data=await request('/backup-status');
+          if(!section.isConnected)return;
+          info.replaceChildren(
+            el('div','','Połączenie: '+(data.connected?'Połączono':'Brak połączenia — kopia lokalna')),
+            el('div','','Ostatnia udana synchronizacja: '+format(data.lastSync)),
+            el('div','','Ostatni lokalny zapis: '+format(data.localSavedAt)),
+            el('div','','Zmiany oczekujące na wysłanie: '+Number(data.pending||0)),
+            el('div','','Kopie dzienne: '+Number(data.dailyCopies||0)+' / 30'),
+            el('div','','Kopie miesięczne: '+Number(data.monthlyCopies||0)+' / 12'),
+            el('div','','W archiwum: '+Number(data.movies||0)+' filmów, '+Number(data.shows||0)+' seriali')
+          );
+        }catch(error){info.textContent='Nie można odczytać stanu kopii: '+error.message;}
+      };
+      const file=el('input');file.type='file';file.accept='.json,application/json';file.hidden=true;
+      file.addEventListener('change',async()=>{
+        if(!file.files?.length)return;
+        if(!window.confirm('Przywrócić lokalną kopię filmów i seriali Simkl z tego pliku? Poprzednia baza zostanie zachowana jako wersja do cofnięcia. Nie zmieni to danych MAL ani logowania OAuth. Gdy Simkl odpowiada, po 72 godzinach ponownie stanie się źródłem danych.')){
+          file.value='';return;
+        }
+        const form=new FormData();form.append('file',file.files[0]);
+        info.textContent='Przywracanie kopii lokalnej…';
+        try{
+          const response=await fetch(API+'/import',{method:'POST',headers:headers(),credentials:'same-origin',cache:'no-store',body:form});
+          const data=await response.json().catch(()=>({}));
+          if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
+          sessions.clear();resetCardScores();invalidateSeasonProgress();schedule();
+          toast('✓ Przywrócono lokalną kopię filmów i seriali');
+          await check();
+        }catch(error){info.textContent='Przywracanie nie powiodło się: '+error.message;}
+        finally{file.value='';}
+      });
+      section.append(file,action('Przywróć kopię JSON',()=>file.click()));
+      void check();return section;
+    }
     function draw(c){
       body.replaceChildren(message);
       if(c?.connected){
@@ -381,6 +425,7 @@
         body.append(el('p','mf-simkl-message',c.canWrite?'Dostęp do ręcznej edycji: aktywny.':'Brak uprawnienia media:write — połącz konto ponownie.'));
         body.append(action('Sprawdź status',async()=>{try{connection=null;draw(await getConnection(true));}catch(e){note(e.message);}}));
         addExport();
+        body.append(backupSection());
         body.append(action('Rozłącz Simkl',async()=>{
           if(!window.confirm('Odłączyć Simkl dla tego użytkownika Jellyfin? Lista Simkl pozostanie bez zmian.'))return;
           try{await request('/disconnect','POST');connection={connected:false};sessions.clear();syncHomeButton();draw(connection);}
@@ -390,6 +435,7 @@
       }
       note('Połącz własne konto Simkl. Używany jest osobny kod PIN AUTH V2. Połączenie i lokalny backup należą tylko do tego użytkownika.');
       addExport();
+      body.append(backupSection());
       body.append(action('Rozpocznij łączenie Simkl',async()=>{
         try{
           const result=await request('/connect','POST');
@@ -458,12 +504,12 @@
         const wanted=status.value==='true';
         status.disabled=true;feedback.textContent='Zapisywanie…';
         try{
-          await request('/episode-history','POST',{catalogId:session.catalogId,
+          const saved=await request('/episode-history','POST',{catalogId:session.catalogId,
             seasonId:session.seasonId,episodeId:session.episodeId,watched:wanted});
           if(!same())return;
           session.data.episodeWatched=wanted;
           feedback.textContent='✓ Zapisano';
-          toast('✓ Zmieniono stan odcinka w Simkl');
+          toast(saved.queued?'✓ Zapisano na NAS — oczekuje na Simkl':'✓ Zmieniono stan odcinka w Simkl');
           try{await reload();}catch(e){feedback.textContent='Zapisano; lokalne odświeżenie później: '+e.message;}
         }catch(e){status.value=String(watched);feedback.textContent=e.message;}
         finally{status.disabled=false;}
@@ -531,9 +577,9 @@
         if(!window.confirm(`Czy na pewno ${watched?'oznaczyć jako obejrzane':'cofnąć obejrzenie'} wszystkie odcinki sezonu ${season} w Simkl? Pozostałe sezony nie zostaną zmienione.`))return;
         all.disabled=true;none.disabled=true;refresh.disabled=true;message.textContent='Zapisywanie historii sezonu…';
         try{
-          await writeSeason(watched,null);
+          const saved=await writeSeason(watched,null);
           if(!same())return;
-          toast('✓ Zapisano historię sezonu w Simkl');
+          toast(saved.queued?'✓ Zapisano lokalnie — oczekuje na Simkl':'✓ Zapisano historię sezonu w Simkl');
           await reload();
         }catch(e){message.textContent=e.message+' Odśwież widok później, jeżeli Simkl nie odpowiada.';}
         finally{all.disabled=false;none.disabled=false;refresh.disabled=false;}
@@ -561,10 +607,11 @@
           if(!window.confirm(`Zaktualizować tylko sezon ${season}? Oznaczysz ${add.length} odcinków jako obejrzane i cofniesz ${remove.length}.`))return;
           save.disabled=true;all.disabled=true;none.disabled=true;refresh.disabled=true;message.textContent='Zapisywanie odcinków…';
           try{
-            if(add.length)await writeSeason(true,add);
-            if(remove.length)await writeSeason(false,remove);
+            let saved={queued:false};
+            if(add.length)saved=await writeSeason(true,add);
+            if(remove.length)saved=await writeSeason(false,remove);
             if(!same())return;
-            toast('✓ Zapisano wybrane odcinki w Simkl');
+            toast(saved.queued?'✓ Zapisano lokalnie — oczekuje na Simkl':'✓ Zapisano wybrane odcinki w Simkl');
             await reload();
           }catch(e){message.textContent=e.message+' Część zmian mogła zostać zapisana — odśwież historię przed ponowną próbą.';}
           finally{save.disabled=false;all.disabled=false;none.disabled=false;refresh.disabled=false;}
@@ -594,11 +641,11 @@
       else if(!window.confirm('Zapisać wybrane zmiany w Simkl? To jedyna operacja, która modyfikuje Twoją listę Simkl.'))return;
       save.disabled=true;refresh.disabled=true;result.textContent='Zapisywanie w Simkl…';
       try{
-        await request('/update','POST',{catalogId:session.catalogId,seasonId:null,
+        const saved=await request('/update','POST',{catalogId:session.catalogId,seasonId:null,
           status:status.value,score:Number(score.value),changeStatus:changedStatus,changeScore:changedScore,
           createIfMissing:entry==null});
         if(!same())return;
-        toast('✓ Zapisano zmiany w Simkl');
+        toast(saved.queued?'✓ Zapisano lokalnie — oczekuje na Simkl':'✓ Zapisano zmiany w Simkl');
         try{await reload();}catch(e){result.textContent='Zapisano, ale odświeżenie nie powiodło się: '+e.message;}
       }catch(e){result.textContent=e.message;}finally{save.disabled=false;refresh.disabled=false;}
     });

@@ -1,0 +1,13 @@
+'use strict';
+const fs=require('fs');const path=require('path');const assert=require('assert');
+const root=path.resolve(__dirname,'../../src/Jellyfin.Plugin.MisioFlix');
+const js=fs.readFileSync(path.join(root,'Web/simkl.js'),'utf8');
+const css=fs.readFileSync(path.join(root,'Web/simkl.css'),'utf8');
+assert(js.includes('backupSection()'));
+assert(js.includes("request('/backup-status')"));
+assert(js.includes("file.accept='.json,application/json'"));
+assert(js.includes("form.append('file',file.files[0])"));
+assert(js.includes("saved.queued?'✓ Zapisano lokalnie"));
+assert(!js.includes('mf-mal-'));
+assert(!css.replace(/\/\*[\s\S]*?\*\//g,'').includes('.mf-mal-'));
+console.log('PASS v0.4.56: movie/show backup UI, queue state and MAL isolation');

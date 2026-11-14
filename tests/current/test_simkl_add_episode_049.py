@@ -24,12 +24,12 @@ class NewItemsAndEpisodes049(unittest.TestCase):
   self.assertIn('createIfMissing:entry==null',UI)
   self.assertIn('CreateIfMissing',CTL)
   update=SVC.split('public async Task<SimklEntry?> UpdateAsync',1)[1]
-  self.assertIn('if(edit.CreateIfMissing)',update)
-  self.assertIn('if(!edit.ChangeStatus||!ValidStatus(edit.Status,target.Kind))',update)
+  self.assertIn('if(edit.CreateIfMissing&&',update)
+  self.assertIn('if(!edit.ChangeStatus||!ValidStatus(edit.Status,edit.Kind))',update)
   self.assertIn('identity["title"]',update)
   self.assertIn('identity["year"]',update)
   self.assertIn('long.Parse(x.Value,CultureInfo.InvariantCulture)',update)
-  self.assertLess(update.index('if(edit.CreateIfMissing)'),update.index('if(edit.ChangeScore)'))
+  self.assertLess(update.index('if(edit.CreateIfMissing&&'),update.index('if(edit.ChangeScore)'))
  def test_episode_ui_does_not_change_other_levels(self):
   self.assertIn("if(!['Series','Season','Episode','Movie'].includes(media.Type))return;",UI)
   episode=UI.split('if(isEpisode){',1)[1].split('if(isSeason){',1)[0]
@@ -41,8 +41,8 @@ class NewItemsAndEpisodes049(unittest.TestCase):
   self.assertIn("['true','Obejrzany']",episode)
   self.assertIn('return;',episode)
  def test_isolation_and_version(self):
-  self.assertIn('0.4.55.0',(ROOT/'meta.json').read_text('utf8'))
-  self.assertIn('0.4.55.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
+  self.assertIn('0.4.56.0',(ROOT/'meta.json').read_text('utf8'))
+  self.assertIn('0.4.56.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
   self.assertNotIn('/scrobble/',SVC)
   self.assertNotIn('mf-mal-',UI)
   self.assertIn('AnimeRoot',CAT)

@@ -33,7 +33,7 @@ class SimklIsolated046(unittest.TestCase):
 
     def test_scopes_and_app_identifiers(self):
         self.assertIn('"client_id="+Uri.EscapeDataString(credential.ClientId)',SERVICE)
-        self.assertIn('app-name=misioflix&app-version=0.4.50',SERVICE)
+        self.assertIn('app-name=misioflix&app-version=0.4.56',SERVICE)
         self.assertIn('media:write',SERVICE)
         self.assertIn('ClientId()',SERVICE)
 
@@ -83,10 +83,10 @@ class SimklIsolated046(unittest.TestCase):
         self.assertIn('if(input.SeasonId.HasValue)return BadRequest',ROUTES)
 
     def test_rating_first_status_last(self):
-        edit=SERVICE.split('public async Task<SimklEntry?> UpdateAsync',1)[1]
-        self.assertLess(edit.index('if(edit.ChangeScore)'),edit.index('if(edit.ChangeStatus)'))
-        self.assertIn('target.Kind',edit)
-        self.assertIn('EnsureWriteAcknowledged(response.RootElement,target.Kind,removal:edit.Score==0)',edit)
+        edit=SERVICE.split('private async Task SendManualEditAsync',1)[1].split('public async Task<bool> SyncIfDueAsync',1)[0]
+        self.assertLess(edit.index('if(edit.ChangeScore)'),edit.index('if(edit.ChangeStatus &&'))
+        self.assertIn('edit.Kind',edit)
+        self.assertIn('EnsureWriteAcknowledged(response.RootElement,edit.Kind,removal:edit.Score==0',edit)
 
     def test_write_ack_has_array_and_counts(self):
         self.assertIn('confirmed.ValueKind==JsonValueKind.Array?confirmed.GetArrayLength()',SERVICE)
@@ -139,7 +139,7 @@ class SimklIsolated046(unittest.TestCase):
         self.assertNotIn('mf-simkl-native-score',mal)
 
     def test_version_beta(self):
-        self.assertIn('0.4.55.0',(ROOT/'meta.json').read_text())
-        self.assertIn('<AssemblyVersion>0.4.55.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertIn('0.4.56.0',(ROOT/'meta.json').read_text())
+        self.assertIn('<AssemblyVersion>0.4.56.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__':unittest.main()

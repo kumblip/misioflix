@@ -24,6 +24,13 @@ public sealed class MisioFlixSimklService
 {
     private const string Api = "https://api.simkl.com";
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromDays(3);
+    private sealed class SimklRateLimitException : HttpRequestException
+    {
+        public TimeSpan Delay { get; }
+        public SimklRateLimitException(TimeSpan delay)
+            : base("Simkl ograniczył liczbę żądań (HTTP 429).",null,HttpStatusCode.TooManyRequests)
+            =>Delay=delay;
+    }
     private readonly HttpClient _http;
     private readonly string _folder;
     private readonly MisioFlixSimklLocalStore _local;
@@ -75,6 +82,7 @@ public sealed class MisioFlixSimklService
     }
     private SemaphoreSlim AuthLock(string user)=>_authLocks.GetOrAdd(user,_=>new SemaphoreSlim(1,1));
     private SemaphoreSlim SyncLock(string user)=>_syncLocks.GetOrAdd(user,_=>new SemaphoreSlim(1,1));
+    public void DropSnapshotCache(string user)=>_snapshots.TryRemove(user,out _);
     private async Task<Credential?> ReadCredential(string user, CancellationToken cancel)
     {
         var path=PathFor(user);
@@ -109,7 +117,7 @@ public sealed class MisioFlixSimklService
         string? bearer,object? payload,CancellationToken cancel,bool form=false)
     {
         using var request=new HttpRequestMessage(method,Api+route);
-        request.Headers.UserAgent.ParseAdd("MisioFlix/0.4.50 (Jellyfin)");
+        request.Headers.UserAgent.ParseAdd("MisioFlix/0.4.56 (Jellyfin)");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if(!string.IsNullOrWhiteSpace(bearer))request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",bearer);
         if(payload is Dictionary<string,string> pairs && form)
@@ -117,6 +125,14 @@ public sealed class MisioFlixSimklService
         else if(payload is not null)
             request.Content=new StringContent(JsonSerializer.Serialize(payload),Encoding.UTF8,"application/json");
         using var response=await _http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,cancel).ConfigureAwait(false);
+        if(response.StatusCode==HttpStatusCode.TooManyRequests)
+        {
+            var header=response.Headers.RetryAfter;
+            var delay=header?.Delta??(header?.Date-DateTimeOffset.UtcNow)??TimeSpan.FromMinutes(5);
+            if(delay<TimeSpan.FromSeconds(15))delay=TimeSpan.FromSeconds(15);
+            if(delay>TimeSpan.FromHours(2))delay=TimeSpan.FromHours(2);
+            throw new SimklRateLimitException(delay);
+        }
         await using var stream=await response.Content.ReadAsStreamAsync(cancel).ConfigureAwait(false);
         JsonDocument doc;
         try {doc=await JsonDocument.ParseAsync(stream,cancellationToken:cancel).ConfigureAwait(false);}
@@ -262,7 +278,7 @@ public sealed class MisioFlixSimklService
         // All API calls are scoped to the authenticated user token; no direct browser requests to Simkl.
         var sep=route.Contains('?')?"&":"?";
         var full=route+sep+"client_id="+Uri.EscapeDataString(credential.ClientId)+
-            "&app-name=misioflix&app-version=0.4.50";
+            "&app-name=misioflix&app-version=0.4.56";
         var(status,doc)=await SendAsync(method,full,credential.AccessToken,payload,cancel).ConfigureAwait(false);
         try{EnsureSuccess(status,doc);return doc;}catch{doc.Dispose();throw;}
     }
@@ -309,6 +325,13 @@ public sealed class MisioFlixSimklService
                     kind=="shows"?Count(row,"watched_episodes_count"):null,
                     kind=="shows"?Count(row,"total_episodes_count"):null,
                     ext,Get(media,"title"),Get(ids,"slug"),seasonHistory);
+                // A title added while offline initially has a synthetic local: key.
+                // Once Simkl supplies its real ID, discard the placeholder to avoid
+                // ambiguous matches and duplicate backup entries.
+                foreach(var localKey in state.Items.Keys.Where(k=>k.StartsWith("local:",StringComparison.Ordinal)&&
+                    state.Items[k].Kind==kind&&ext.Any(pair=>state.Items[k].Ids.TryGetValue(pair.Key,out var oldId)&&
+                        string.Equals(oldId,pair.Value,StringComparison.OrdinalIgnoreCase))).ToArray())
+                    state.Items.Remove(localKey);
                 state.Items[key]=entryValue;
             }
         }
@@ -502,31 +525,14 @@ public sealed class MisioFlixSimklService
                 chosen.Any(n=>n<1||n>9999||!allowedEpisodes.Contains(n)))
                 throw new ArgumentException("Wybrane odcinki nie należą do tego sezonu w bibliotece Jellyfin.");
         }
-        var credential=await ValidCredentialAsync(user,cancel).ConfigureAwait(false);
-        if(!credential.Scope.Split(' ',StringSplitOptions.RemoveEmptyEntries).Contains("media:write"))
-            throw new InvalidOperationException("Połącz ponownie Simkl z uprawnieniem media:write.");
-        var season=new Dictionary<string,object>{{"number",target.SeasonNumber.Value}};
-        if(chosen is not null)season["episodes"]=chosen.Select(n=>new{number=n}).ToArray();
-        var show=new Dictionary<string,object>{{"ids",target.Ids},{"seasons",new[]{season}}};
-        var route=edit.Watched?"/sync/history":"/sync/history/remove";
-        using var response=await ApiAsync(user,HttpMethod.Post,route,
-            new {shows=new[]{show}},cancel).ConfigureAwait(false);
-        // History endpoints acknowledge via added.episodes / deleted.episodes.
-        // A zero count can mean an idempotent repeat, but *not_found* is an error.
-        var root=response.RootElement;
-        if(root.ValueKind!=JsonValueKind.Object)throw new HttpRequestException("Brak potwierdzenia zmiany historii sezonu.");
-        if(root.TryGetProperty("not_found",out var missing)&&missing.ValueKind==JsonValueKind.Object)
-            foreach(var key in new[]{"shows","episodes"})
-                if(missing.TryGetProperty(key,out var rows)&&rows.ValueKind==JsonValueKind.Array&&rows.GetArrayLength()>0)
-                    throw new InvalidOperationException("Simkl nie rozpoznał sezonu lub części odcinków. Sprawdź numerację w serwisie Simkl.");
-        if(!root.TryGetProperty(edit.Watched?"added":"deleted",out var acknowledgment)||
-            acknowledgment.ValueKind!=JsonValueKind.Object||Count(acknowledgment,"episodes") is null)
-            throw new HttpRequestException("Simkl nie potwierdził zmiany historii odcinków.");
-        // Keep the costly initial episode baseline: next explicit read uses
-        // /sync/activities + date_from to update only changed show episodes.
+        // Local-first: an unavailable Simkl must never prevent the user from
+        // marking individual episodes or the whole selected season.
         await _local.ApplyManualHistoryAsync(user,target,
-            chosen??allowedEpisodes,edit.Watched,cancel).ConfigureAwait(false);
+            chosen??allowedEpisodes,edit.Watched,cancel,wholeSeason:chosen is null).ConfigureAwait(false);
         _snapshots.TryRemove(user,out _);
+        try{await TryFlushPendingAsync(user,cancel).ConfigureAwait(false);}
+        catch(Exception ex) when(ex is HttpRequestException or InvalidOperationException or TaskCanceledException){}
+
     }
 
     public async Task<SimklEntry?> UpdateAsync(string user,SimklMediaTarget target,SimklEdit edit,CancellationToken cancel)
@@ -537,58 +543,77 @@ public sealed class MisioFlixSimklService
         if(edit.ChangeStatus&&!ValidStatus(edit.Status,target.Kind))throw new ArgumentException("Niedozwolony status Simkl.");
         if(edit.ChangeScore&&(!edit.Score.HasValue||edit.Score.Value is <0 or >10))
             throw new ArgumentException("Ocena Simkl musi mieścić się w zakresie 0–10.");
-        var token=await ValidCredentialAsync(user,cancel).ConfigureAwait(false);
-        if(!token.Scope.Split(' ',StringSplitOptions.RemoveEmptyEntries).Contains("media:write"))
-            throw new InvalidOperationException("Połącz ponownie Simkl z uprawnieniem media:write.");
-        var payloadIds=target.Ids.ToDictionary(x=>x.Key,x=>
-            x.Key=="imdb" ? (object)x.Value : long.Parse(x.Value,CultureInfo.InvariantCulture));
-        // Simkl identifies NEW watchlist items more reliably with title and year.
-        // This metadata comes from authorized Jellyfin records, never the browser.
-        var identity=new Dictionary<string,object>{{"ids",payloadIds}};
-        if(!string.IsNullOrWhiteSpace(target.Title))identity["title"]=target.Title;
-        if(target.Year.HasValue)identity["year"]=target.Year.Value;
-        if(edit.CreateIfMissing)
-        {
-            if(!edit.ChangeStatus||!ValidStatus(edit.Status,target.Kind))
-                throw new ArgumentException("Dodanie do Simkl wymaga wybrania statusu.");
-            // Create the watchlist record FIRST, even if the rating is set to 0.
-            // Do not mark unwatched episodes as watched: only the watchlist changes.
-            var create=new Dictionary<string,object>(identity){{"to",edit.Status!}};
-            using var created=await ApiAsync(user,HttpMethod.Post,"/sync/add-to-list",
-                new Dictionary<string,object>{{target.Kind,new[]{create}}},cancel).ConfigureAwait(false);
-            EnsureWriteAcknowledged(created.RootElement,target.Kind);
-            _snapshots.TryRemove(user,out _);
-        }
-        // Ratings can auto-move items into Watching/Completed. Therefore apply
-        // the selected status LAST. Do not submit unchanged fields.
-        if(edit.ChangeScore)
-        {
-            var payload=new Dictionary<string,object>{{"ids",payloadIds}};
-            if(edit.Score>0)payload["rating"]=edit.Score.Value;
-            var endpoint=edit.Score>0?"/sync/ratings":"/sync/ratings/remove";
-            using var response=await ApiAsync(user,HttpMethod.Post,endpoint,
-                new Dictionary<string,object>{{target.Kind,new[]{payload}}},cancel).ConfigureAwait(false);
-            EnsureWriteAcknowledged(response.RootElement,target.Kind,removal:edit.Score==0);
-        }
-        if(edit.ChangeStatus)
-        {
-            if(!edit.CreateIfMissing || edit.ChangeScore)
-            {
-            var element=new Dictionary<string,object>(identity){{"to",edit.Status!}};
-            using var response=await ApiAsync(user,HttpMethod.Post,"/sync/add-to-list",
-                new Dictionary<string,object>{{target.Kind,new[]{element}}},cancel).ConfigureAwait(false);
-            EnsureWriteAcknowledged(response.RootElement,target.Kind);
-            }
-        }
-        // No global cache flush. The next user-triggered read checks activity
-        // deltas, including rating-only changes; nothing is sent on playback.
-        // Explicit save should display authoritative results, not the old cache.
+        var operation=new MisioFlixSimklLocalStore.PendingEdit {
+            Key=MisioFlixSimklLocalStore.ManualEditKey(target.Kind,target.Ids),
+            Kind=target.Kind,
+            Ids=new Dictionary<string,string>(target.Ids,StringComparer.OrdinalIgnoreCase),
+            Title=target.Title,Year=target.Year,Status=edit.Status,Score=edit.Score,
+            ChangeStatus=edit.ChangeStatus,ChangeScore=edit.ChangeScore,
+            CreateIfMissing=edit.CreateIfMissing
+        };
+        // Durable local commit BEFORE any network I/O. Only movies/shows enter
+        // this backup, never Simkl's anime category or AnimePL/MAL.
+        await _local.QueueManualEditAsync(user,operation,cancel).ConfigureAwait(false);
         if(edit.ChangeStatus)
             await _local.DiscardPendingForTitleAsync(user,target,cancel).ConfigureAwait(false);
-        await _local.MarkForRefreshAsync(user,cancel).ConfigureAwait(false);
-        if(_snapshots.TryGetValue(user,out var current))current.CheckedAt=DateTimeOffset.MinValue;
+        _snapshots.TryRemove(user,out _);
+        try{await TryFlushPendingAsync(user,cancel).ConfigureAwait(false);}
+        catch(Exception ex) when(ex is HttpRequestException or InvalidOperationException or TaskCanceledException){}
         return null;
     }
+
+    private async Task SendManualEditAsync(string user,MisioFlixSimklLocalStore.PendingEdit edit,CancellationToken cancel)
+    {
+        var credential=await ValidCredentialAsync(user,cancel).ConfigureAwait(false);
+        if(!credential.Scope.Split(' ',StringSplitOptions.RemoveEmptyEntries).Contains("media:write"))
+            throw new InvalidOperationException("Konto Simkl nie ma uprawnienia media:write.");
+        var ids=edit.Ids.ToDictionary(x=>x.Key,x=>x.Key=="imdb"?(object)x.Value:
+            long.Parse(x.Value,CultureInfo.InvariantCulture));
+        var identity=new Dictionary<string,object>{{"ids",ids}};
+        if(!string.IsNullOrWhiteSpace(edit.Title))identity["title"]=edit.Title;
+        if(edit.Year.HasValue)identity["year"]=edit.Year.Value;
+        // An earlier HTTP response may have been lost AFTER Simkl processed the
+        // operation. Verify the real remote state before repeating it.
+        SimklEntry? observed=null;
+        if(edit.Attempts>0)
+        {
+            using var listing=await ApiAsync(user,HttpMethod.Get,"/sync/all-items/"+edit.Kind+
+                "?extended=full",null,cancel).ConfigureAwait(false);
+            var remote=new SyncSnapshot();
+            MergeRows(remote,listing.RootElement);
+            observed=Match(remote,new SimklMediaTarget(true,edit.Kind,null,edit.Ids,edit.Title??"",edit.Year));
+            if(observed is not null&&
+                (!edit.ChangeStatus||observed.Status==edit.Status)&&
+                (!edit.ChangeScore||(edit.Score is >0?observed.Score==edit.Score:observed.Score is null or 0)))
+                return;
+        }
+        if(edit.CreateIfMissing&&(observed is null||observed.Status!=edit.Status))
+        {
+            if(!edit.ChangeStatus||!ValidStatus(edit.Status,edit.Kind))
+                throw new ArgumentException("Dodanie do listy wymaga statusu.");
+            using var create=await ApiAsync(user,HttpMethod.Post,"/sync/add-to-list",
+                new Dictionary<string,object>{{edit.Kind,new[]{new Dictionary<string,object>(identity){{"to",edit.Status!}}}}},
+                cancel).ConfigureAwait(false);
+            EnsureWriteAcknowledged(create.RootElement,edit.Kind);
+        }
+        // Rating first: Simkl may change list status when receiving a rating.
+        if(edit.ChangeScore)
+        {
+            var rating=new Dictionary<string,object>{{"ids",ids}};
+            if(edit.Score>0)rating["rating"]=edit.Score.Value;
+            using var response=await ApiAsync(user,HttpMethod.Post,edit.Score>0?"/sync/ratings":"/sync/ratings/remove",
+                new Dictionary<string,object>{{edit.Kind,new[]{rating}}},cancel).ConfigureAwait(false);
+            EnsureWriteAcknowledged(response.RootElement,edit.Kind,removal:edit.Score==0);
+        }
+        if(edit.ChangeStatus && (!edit.CreateIfMissing||edit.ChangeScore))
+        {
+            using var response=await ApiAsync(user,HttpMethod.Post,"/sync/add-to-list",
+                new Dictionary<string,object>{{edit.Kind,new[]{new Dictionary<string,object>(identity){{"to",edit.Status!}}}}},
+                cancel).ConfigureAwait(false);
+            EnsureWriteAcknowledged(response.RootElement,edit.Kind);
+        }
+    }
+
     /// <summary>Triggered by an active user's first entry after a restart or
     /// at least 72 hours since last successful remote snapshot.</summary>
     public async Task<bool> SyncIfDueAsync(string user,CancellationToken cancel)
@@ -596,7 +621,7 @@ public sealed class MisioFlixSimklService
         var archive=await _local.ReadAsync(user,cancel).ConfigureAwait(false);
         var credential=await ConnectionAsync(user,cancel).ConfigureAwait(false);
         if(!credential.Connected)return archive.Snapshot is not null;
-        if(archive.PendingWatches.Count>0)
+        if(archive.PendingWatches.Count>0||archive.PendingEdits.Count>0)
             await TryFlushPendingAsync(user,cancel).ConfigureAwait(false);
         if(archive.Snapshot is not null&&
             archive.Snapshot.CheckedAt>DateTimeOffset.UtcNow-CacheLifetime)return true;
@@ -618,9 +643,9 @@ public sealed class MisioFlixSimklService
     {
         if(!target.Relevant||target.Ids.Count==0||
             (target.Kind=="shows"&&(!target.SeasonNumber.HasValue||!episode.HasValue)))return;
-        var connected=await ConnectionAsync(user,cancel).ConfigureAwait(false);
-        if(!connected.Connected||!connected.CanWrite)return;
-        var key=target.Kind+":"+string.Join(";",target.Ids.OrderBy(p=>p.Key).Select(p=>p.Key+"="+p.Value))+
+        // Confirmed local playback is saved even when Simkl is temporarily offline.
+        // It will be sent when the user's connection is available again.
+        var key=MisioFlixSimklLocalStore.ManualEditKey(target.Kind,target.Ids)+
             ":"+target.SeasonNumber+":"+episode;
         await _local.QueueWatchAsync(user,new MisioFlixSimklLocalStore.PendingWatch{
             Key=key,Kind=target.Kind,Ids=target.Ids,Season=target.SeasonNumber,Episode=episode,Watched=true
@@ -628,49 +653,72 @@ public sealed class MisioFlixSimklService
         _snapshots.TryRemove(user,out _); // reload local overlaid history on the next detail view
         await TryFlushPendingAsync(user,cancel).ConfigureAwait(false);
     }
+    private sealed record PendingOperation(DateTimeOffset Time,
+        MisioFlixSimklLocalStore.PendingWatch? Watch,
+        MisioFlixSimklLocalStore.PendingEdit? Edit);
     private readonly ConcurrentDictionary<string,DateTimeOffset> _retryAt = new();
     public async Task TryFlushPendingAsync(string user,CancellationToken cancel)
     {
         if(_retryAt.TryGetValue(user,out var until)&&until>DateTimeOffset.UtcNow)return;
+        if(!(await ConnectionAsync(user,cancel).ConfigureAwait(false)).Connected)return;
         await SyncLock(user).WaitAsync(cancel).ConfigureAwait(false);
         try
         {
             var archive=await _local.ReadAsync(user,cancel).ConfigureAwait(false);
-            foreach(var op in archive.PendingWatches.Take(100))
+            var operations=archive.PendingWatches.Select(x=>new PendingOperation(x.CreatedAt,x,null))
+                .Concat(archive.PendingEdits.Select(x=>new PendingOperation(x.CreatedAt,null,x)))
+                .OrderBy(x=>x.Time).Take(100).ToArray();
+            foreach(var op in operations)
             {
+                var opId=op.Edit?.OperationId??op.Watch?.OperationId??"";
                 try
                 {
-                    var ids=op.Ids.ToDictionary(p=>p.Key,p=>p.Key=="imdb"?(object)p.Value:
-                        long.Parse(p.Value,CultureInfo.InvariantCulture));
-                    var item=new Dictionary<string,object>{{"ids",ids}};
-                    if(op.Kind=="shows")
+                    if(op.Edit is not null)
                     {
-                        if(!op.Season.HasValue||!op.Episode.HasValue)continue;
-                        item["seasons"]=new[]{new{number=op.Season.Value,episodes=new[]{new{number=op.Episode.Value}}}};
+                        await SendManualEditAsync(user,op.Edit,cancel).ConfigureAwait(false);
+                        await _local.CompleteManualEditAsync(user,op.Edit.Key,opId,cancel).ConfigureAwait(false);
                     }
-                    var route=op.Watched?"/sync/history":"/sync/history/remove";
-                    using var result=await ApiAsync(user,HttpMethod.Post,route,
-                        new Dictionary<string,object>{{op.Kind,new[]{item}}},cancel).ConfigureAwait(false);
-                    var root=result.RootElement;
-                    if(root.TryGetProperty("not_found",out var missing)&&missing.ValueKind==JsonValueKind.Object &&
-                        missing.EnumerateObject().Any(x=>x.Value.ValueKind==JsonValueKind.Array&&x.Value.GetArrayLength()>0))
-                        throw new InvalidOperationException("Simkl nie odnalazł pozycji do zapisania historii.");
-                    if(!root.TryGetProperty(op.Watched?"added":"deleted",out _))
-                        throw new HttpRequestException("Brak potwierdzenia zapisu historii w Simkl.");
-                    await _local.CompleteWatchAsync(user,op.Key,cancel).ConfigureAwait(false);
+                    else if(op.Watch is { } watch)
+                    {
+                        var ids=watch.Ids.ToDictionary(p=>p.Key,p=>p.Key=="imdb"?(object)p.Value:
+                            long.Parse(p.Value,CultureInfo.InvariantCulture));
+                        var item=new Dictionary<string,object>{{"ids",ids}};
+                        if(watch.Kind=="shows")
+                        {
+                            if(!watch.Season.HasValue)continue;
+                            if(watch.Episode.HasValue)
+                                item["seasons"]=new[]{new{number=watch.Season.Value,episodes=new[]{new{number=watch.Episode.Value}}}};
+                            else // Whole-season request: Simkl resolves its complete episode list.
+                                item["seasons"]=new[]{new{number=watch.Season.Value}};
+                        }
+                        var route=watch.Watched?"/sync/history":"/sync/history/remove";
+                        using var result=await ApiAsync(user,HttpMethod.Post,route,
+                            new Dictionary<string,object>{{watch.Kind,new[]{item}}},cancel).ConfigureAwait(false);
+                        var root=result.RootElement;
+                        if(root.TryGetProperty("not_found",out var missing)&&missing.ValueKind==JsonValueKind.Object &&
+                            missing.EnumerateObject().Any(x=>x.Value.ValueKind==JsonValueKind.Array&&x.Value.GetArrayLength()>0))
+                            throw new InvalidOperationException("Simkl nie odnalazł pozycji do zapisania historii.");
+                        if(!root.TryGetProperty(watch.Watched?"added":"deleted",out _))
+                            throw new HttpRequestException("Brak potwierdzenia zapisu historii w Simkl.");
+                        await _local.CompleteWatchAsync(user,watch.Key,opId,cancel).ConfigureAwait(false);
+                    }
                     await _local.MarkForRefreshAsync(user,cancel).ConfigureAwait(false);
                     _retryAt.TryRemove(user,out _);
-                    if(_snapshots.TryGetValue(user,out var snap))snap.CheckedAt=DateTimeOffset.MinValue;
+                    if(_snapshots.TryGetValue(user,out var snapshot))snapshot.CheckedAt=DateTimeOffset.MinValue;
                 }
                 catch(Exception ex) when(ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
                 {
-                    // Keep the durable outbox. A future active request retries after a cooldown.
-                    _retryAt[user]=DateTimeOffset.UtcNow.AddMinutes(5);
+                    await _local.NoteAttemptAsync(user,opId,ex.Message,cancel).ConfigureAwait(false);
+                    // Respect Retry-After on HTTP 429; use bounded exponential
+                    // backoff for ambiguous network failures and invalid responses.
+                    var previous=op.Edit?.Attempts??op.Watch?.Attempts??0;
+                    var delay=ex is SimklRateLimitException limited ? limited.Delay:
+                        TimeSpan.FromMinutes(Math.Min(60,Math.Pow(2,Math.Min(6,previous))));
+                    _retryAt[user]=DateTimeOffset.UtcNow.Add(delay);
                     break;
                 }
             }
         }
         finally{SyncLock(user).Release();}
     }
-
 }

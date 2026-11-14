@@ -275,3 +275,10 @@ html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="watched"]
 html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="mixed"] {
   --mf-simkl-episode-frame:linear-gradient(90deg,#e6a23c 0 50%,#45b879 50% 100%);
 }
+
+/* v0.4.56: Local Simkl movie/show backup diagnostics. Fully isolated from MAL. */
+html.misioflix-skin .mf-simkl-backup-status {display:flex;flex-direction:column;gap:9px;padding:12px;border-radius:10px;border:1px solid rgba(244,165,206,.38);background:rgba(37,16,35,.6)}
+html.misioflix-skin .mf-simkl-backup-status h3 {font-size:15px;margin:0;color:#ffe3f0}
+html.misioflix-skin .mf-simkl-backup-summary {display:grid;grid-template-columns:minmax(0,1fr);gap:5px;font-size:12px;color:#f2deed;overflow-wrap:anywhere}
+html.misioflix-skin .mf-simkl-backup-status button {align-self:flex-start}
+@media(max-width:650px){html.misioflix-skin .mf-simkl-backup-status {padding:9px}html.misioflix-skin .mf-simkl-backup-status button {width:100%}}

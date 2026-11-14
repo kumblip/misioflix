@@ -205,7 +205,8 @@ public sealed class MisioFlixSimklController : ControllerBase
             await _simkl.UpdateSeasonAsync(await CurrentUser(cancel),target,
                 new MisioFlixSimklService.SimklSeasonEdit(input.Watched,new[]{episodeNumber}),
                 new[]{episodeNumber},cancel).ConfigureAwait(false);
-            return Ok(new{saved=true});
+            var state=await _local.StatusAsync(await CurrentUser(cancel),cancel).ConfigureAwait(false);
+            return Ok(new{saved=true,queued=state.PendingChanges>0,pending=state.PendingChanges});
         }
         catch(Exception ex){return Failure(ex);}
     }
@@ -224,7 +225,8 @@ public sealed class MisioFlixSimklController : ControllerBase
             await _simkl.UpdateSeasonAsync(await CurrentUser(cancel),target,
                 new MisioFlixSimklService.SimklSeasonEdit(input.Watched,input.EpisodeNumbers),allowed,cancel)
                 .ConfigureAwait(false);
-            return Ok(new{saved=true});
+            var state=await _local.StatusAsync(await CurrentUser(cancel),cancel).ConfigureAwait(false);
+            return Ok(new{saved=true,queued=state.PendingChanges>0,pending=state.PendingChanges});
         }
         catch(Exception ex){return Failure(ex);}
     }
@@ -242,7 +244,8 @@ public sealed class MisioFlixSimklController : ControllerBase
             await _simkl.UpdateAsync(await CurrentUser(cancel),target,
                 new MisioFlixSimklService.SimklEdit(input.Status,input.Score,input.ChangeStatus,input.ChangeScore,input.CreateIfMissing),cancel)
                 .ConfigureAwait(false);
-            return Ok(new{saved=true});
+            var state=await _local.StatusAsync(await CurrentUser(cancel),cancel).ConfigureAwait(false);
+            return Ok(new{saved=true,queued=state.PendingChanges>0,pending=state.PendingChanges});
         }
         catch(Exception ex){return Failure(ex);}
     }    [HttpGet("sync-check")]
@@ -270,6 +273,43 @@ public sealed class MisioFlixSimklController : ControllerBase
             if(input.Count is <0 or >100000)return BadRequest(new{error="Nieprawidłowy licznik ponownych obejrzeń"});
             var count=await _local.SetRewatchAsync(await CurrentUser(cancel),input.CatalogId,input.SeasonId,input.Count,cancel);
             return Ok(new{saved=true,rewatches=count,localOnly=true});
+        }
+        catch(Exception ex){return Failure(ex);}
+    }
+    [HttpGet("backup-status")]
+    public async Task<IActionResult> BackupStatus(CancellationToken cancel)
+    {
+        NoCache();try
+        {
+            var user=await CurrentUser(cancel).ConfigureAwait(false);
+            var status=await _local.StatusAsync(user,cancel).ConfigureAwait(false);
+            var connected=await _simkl.ConnectionAsync(user,cancel).ConfigureAwait(false);
+            return Ok(new {
+                connected=connected.Connected,
+                lastSync=status.LastSync,
+                localSavedAt=status.LastLocalSave,
+                pending=status.PendingChanges,
+                dailyCopies=status.DailyCopies,
+                monthlyCopies=status.MonthlyCopies,
+                movies=status.Movies,
+                shows=status.Shows
+            });
+        }
+        catch(Exception ex){return Failure(ex);}
+    }
+    [HttpPost("import")]
+    [RequestSizeLimit(34_000_000)]
+    public async Task<IActionResult> Import([FromForm] IFormFile file,CancellationToken cancel)
+    {
+        NoCache();try
+        {
+            if(file is null||file.Length<2||file.Length>32*1024*1024)
+                return BadRequest(new{error="Wybierz poprawną kopię JSON (maksymalnie 32 MB)."});
+            var user=await CurrentUser(cancel).ConfigureAwait(false);
+            await using var stream=file.OpenReadStream();
+            await _local.ImportAsync(user,stream,cancel).ConfigureAwait(false);
+            _simkl.DropSnapshotCache(user);
+            return Ok(new{restored=true,localOnly=true});
         }
         catch(Exception ex){return Failure(ex);}
     }

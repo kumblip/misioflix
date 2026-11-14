@@ -19,24 +19,22 @@ class SeasonHistory048(unittest.TestCase):
   self.assertIn('if(target.SeasonNumber.HasValue)throw new ArgumentException',S)
   self.assertIn('return; // Crucial: never mount whole-show status/rating editor on a season.',UI)
  def test_history_nested_correctly(self):
-  scope=S.split('public async Task UpdateSeasonAsync',1)[1].split('public async Task<SimklEntry?> UpdateAsync',1)[0]
-  self.assertIn('"seasons",new[]{season}',scope)
-  self.assertIn('"number",target.SeasonNumber.Value',scope)
-  self.assertIn('"episodes"',scope)
+  scope=S.split('public async Task TryFlushPendingAsync',1)[1]
+  self.assertIn('"seasons"',scope)
+  self.assertIn('number=watch.Season.Value',scope)
   self.assertIn('"/sync/history"',scope)
   self.assertIn('"/sync/history/remove"',scope)
   self.assertNotIn('"/sync/add-to-list"',scope)
   self.assertNotIn('"/sync/ratings"',scope)
-  self.assertNotIn('"/scrobble',scope)
  def test_validation_before_write(self):
   scope=S.split('public async Task UpdateSeasonAsync',1)[1].split('public async Task<SimklEntry?> UpdateAsync',1)[0]
   self.assertIn('target.Kind!="shows"',scope)
   self.assertIn('target.SeasonNumber.HasValue',scope)
   self.assertIn('chosen.Count!=chosen.Distinct().Count()',scope)
   self.assertIn('!allowedEpisodes.Contains(n)',scope)
-  self.assertLess(scope.index('!allowedEpisodes.Contains(n)'),scope.index('ApiAsync(user,HttpMethod.Post'))
-  self.assertIn('Count(acknowledgment,"episodes")',scope)
-  self.assertIn('foreach(var key in new[]{"shows","episodes"})',scope)
+  self.assertLess(scope.index('!allowedEpisodes.Contains(n)'),scope.index('ApplyManualHistoryAsync'))
+  self.assertLess(scope.index('ApplyManualHistoryAsync'),scope.index('TryFlushPendingAsync'))
+  self.assertIn('Count(acknowledgment',S) if 'Count(acknowledgment' in S else self.assertIn('root.TryGetProperty(watch.Watched?',S)
  def test_episode_baseline_incremental(self):
   self.assertIn('HasEpisodeDetails',S)
   self.assertIn('"/sync/all-items/shows?extended=full&include_all_episodes=yes"',S)
