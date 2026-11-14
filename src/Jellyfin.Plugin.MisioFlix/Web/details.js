@@ -413,50 +413,41 @@
     page.querySelector('.mf-detail-cast-button')?.setAttribute('aria-expanded','false');
     void loadQuick(page,id,grid.querySelector('.mf-detail-poster-rail'),serial);
   }
-  // v0.4.58: Jellyfin 12 Modern sometimes closes "Edit metadata" without
-  // mounting the native editor after our detail-layout relocation. Do not
-  // replace the original menu or intercept its click: only recover if the
-  // original handler has genuinely done nothing. Other menu items are untouched.
+  // v0.4.59: Jellyfin 12 opens Edit metadata as a native dialog, not a
+  // route.  The removed #/edititemmetadata path returned Page Not Found.
+  // Let Jellyfin's own itemContextMenu do the editing.  If its asynchronously
+  // loaded dialog still cannot open, use the EXISTING Metadata Manager route
+  // that is linked in the user's admin drawer; never invent an editor route.
   function nativeMetadataDialogVisible() {
-    return [...document.querySelectorAll('[role="dialog"],dialog[open],.MuiDialog-root,.dialogContainer .dialog')]
-      .filter(node => node.isConnected && !node.hidden && node.getClientRects().length > 0);
+    return [...document.querySelectorAll(
+      '.dialogContainer .formDialog, .MuiDialog-root, [role="dialog"], dialog[open]'
+    )].some(node => node.isConnected && !node.hidden && node.getClientRects().length > 0);
   }
   function isNativeEditMetadataMenuItem(target) {
     if (!target || typeof target.closest !== 'function') return false;
-    const item=target.closest('[role="menuitem"],.MuiMenuItem-root,.actionSheetMenuItem,button');
+    const item=target.closest('.actionSheetMenuItem, [role="menuitem"], .MuiMenuItem-root');
     if (!item || !item.getClientRects().length) return false;
-    // The native icon may contribute textContent such as "edit"; match only
-    // this one named action, never "Edit images" / "Identify" / "Refresh".
+    // Jellyfin itself identifies this command with data-id="edit".
+    const command=item.getAttribute?.('data-id') || item.dataset?.id || '';
+    if (command) return command === 'edit';
+    // Allow other supported menu renderers with no data-id, but only the
+    // exact Edit metadata command (never Edit images or Identify).
     const label=String(item.textContent || '').replace(/\s+/g,' ').trim();
-    return label.length < 140 && /(?:edytuj\s+metadane|edit\s+metadata)/i.test(label);
-  }
-  function openNativeMetadataRoute(id) {
-    const path='edititemmetadata.html?id='+encodeURIComponent(id);
-    // Use Jellyfin's own admin router when it is exposed by the host.
-    try {
-      if (typeof window.Dashboard?.navigate === 'function') {
-        window.Dashboard.navigate(path);
-        return;
-      }
-    } catch(error) {
-      console.warn('[MisioFlix] Native metadata router unavailable',error);
-    }
-    // Legacy dashboard route is a fallback, not a bespoke metadata editor.
-    window.location.hash='#!/'+path;
+    return /^(?:edytuj metadane|edit metadata)$/i.test(label);
   }
   function recoverNativeMetadataEdit(event) {
     const id=itemRoute();
     if (!id || !isNativeEditMetadataMenuItem(event.target)) return;
-    const initialUrl=window.location.href;
-    const visibleBefore=new Set(nativeMetadataDialogVisible());
-    // Native Jellyfin receives the click first. Defer any intervention until
-    // its asynchronous editor has had time to mount, or its route to change.
+    const initialHash=window.location.hash;
+    const originalDialogVisible=nativeMetadataDialogVisible();
+    // Do not short-circuit Jellyfin's own dynamic import of metadataEditor.
+    // A short 950-ms timer was racing with that import on slower devices.
     window.setTimeout(() => {
-      if (window.location.href !== initialUrl || itemRoute() !== id) return;
-      if (nativeMetadataDialogVisible().some(node => !visibleBefore.has(node))) return;
-      console.warn('[MisioFlix] Recovering native Jellyfin Edit metadata navigation');
-      openNativeMetadataRoute(id);
-    },950);
+      if (window.location.hash !== initialHash || itemRoute() !== id) return;
+      if (nativeMetadataDialogVisible() || originalDialogVisible) return;
+      console.warn('[MisioFlix] Native metadata dialog not visible; opening built-in Metadata Manager');
+      window.location.hash='#/metadata';
+    },3000);
   }
   function schedule() {
     if(timer) return;
