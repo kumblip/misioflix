@@ -413,6 +413,51 @@
     page.querySelector('.mf-detail-cast-button')?.setAttribute('aria-expanded','false');
     void loadQuick(page,id,grid.querySelector('.mf-detail-poster-rail'),serial);
   }
+  // v0.4.58: Jellyfin 12 Modern sometimes closes "Edit metadata" without
+  // mounting the native editor after our detail-layout relocation. Do not
+  // replace the original menu or intercept its click: only recover if the
+  // original handler has genuinely done nothing. Other menu items are untouched.
+  function nativeMetadataDialogVisible() {
+    return [...document.querySelectorAll('[role="dialog"],dialog[open],.MuiDialog-root,.dialogContainer .dialog')]
+      .filter(node => node.isConnected && !node.hidden && node.getClientRects().length > 0);
+  }
+  function isNativeEditMetadataMenuItem(target) {
+    if (!target || typeof target.closest !== 'function') return false;
+    const item=target.closest('[role="menuitem"],.MuiMenuItem-root,.actionSheetMenuItem,button');
+    if (!item || !item.getClientRects().length) return false;
+    // The native icon may contribute textContent such as "edit"; match only
+    // this one named action, never "Edit images" / "Identify" / "Refresh".
+    const label=String(item.textContent || '').replace(/\s+/g,' ').trim();
+    return label.length < 140 && /(?:edytuj\s+metadane|edit\s+metadata)/i.test(label);
+  }
+  function openNativeMetadataRoute(id) {
+    const path='edititemmetadata.html?id='+encodeURIComponent(id);
+    // Use Jellyfin's own admin router when it is exposed by the host.
+    try {
+      if (typeof window.Dashboard?.navigate === 'function') {
+        window.Dashboard.navigate(path);
+        return;
+      }
+    } catch(error) {
+      console.warn('[MisioFlix] Native metadata router unavailable',error);
+    }
+    // Legacy dashboard route is a fallback, not a bespoke metadata editor.
+    window.location.hash='#!/'+path;
+  }
+  function recoverNativeMetadataEdit(event) {
+    const id=itemRoute();
+    if (!id || !isNativeEditMetadataMenuItem(event.target)) return;
+    const initialUrl=window.location.href;
+    const visibleBefore=new Set(nativeMetadataDialogVisible());
+    // Native Jellyfin receives the click first. Defer any intervention until
+    // its asynchronous editor has had time to mount, or its route to change.
+    window.setTimeout(() => {
+      if (window.location.href !== initialUrl || itemRoute() !== id) return;
+      if (nativeMetadataDialogVisible().some(node => !visibleBefore.has(node))) return;
+      console.warn('[MisioFlix] Recovering native Jellyfin Edit metadata navigation');
+      openNativeMetadataRoute(id);
+    },950);
+  }
   function schedule() {
     if(timer) return;
     timer=window.setTimeout(()=>{timer=0;update();},160);
@@ -437,6 +482,7 @@
     },true);
     // Capture before the native delegated Jellyfin router handles genre links.
     document.addEventListener('click',onGenreClick,true);
+    document.addEventListener('click',recoverNativeMetadataEdit,true);
     for(const name of ['hashchange','pageshow','popstate']) window.addEventListener(name,()=>{
       const next = window.location.hash || '#/home';
       if (/^#\/details(?:\?|$)/i.test(next) && next !== lastKnownHash &&
