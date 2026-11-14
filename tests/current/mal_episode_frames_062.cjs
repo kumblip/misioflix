@@ -8,6 +8,7 @@ code=code.replace('  function tick(){',`  window.__malEpisodeTest={
     setUser:id=>{currentUser=id;},
     setSession:s=>{currentDetail=s.id;detailSessions.set(s.key,s);},
     resume:ids=>{malResumeEpisodes=new Set(ids);},
+    refreshResume:()=>{malResumeReadAt=0;return refreshMalResume();},
     render:decorateMalEpisodeFrames,
     index:malSeasonEpisodeIndex,
     clear:clearMalEpisodeFrames
@@ -38,8 +39,10 @@ const row1=makeRow(ids[0],'1. Odcinek 1'),row2=makeRow(null,'2. Odcinek 2'),row3
 const rows=[row1,row2,row3,row4,foreign];
 const area={querySelectorAll(selector){assert(selector.includes('.listItem'));return rows;}};
 const page={isConnected:true,dataset:{mfDetailId:season},getClientRects:()=>[1],
+ classList:{contains:()=>false},
  querySelector:selector=>selector==='.mf-detail-series-sections'?area:null};
 const doc={readyState:'loading',addEventListener(){},
+ querySelector:selector=>selector.includes('#itemDetailPage.mf-detail-mal-rating')?page:null,
  createElement(tag){return {className:'',tagName:tag,setAttribute(name,value){this[name]=value;}};},
  querySelectorAll(selector){
    if(selector==='#itemDetailPage.mf-detail-compact')return [page];
@@ -50,6 +53,13 @@ const browser={ApiClient:{getCurrentUserId:()=>user,accessToken:()=> 'token'},lo
  setTimeout:()=>1,clearTimeout(){},addEventListener(){},dispatchEvent(){}};
 let reads=0;
 const fetch=async(url,options)=>{
+ if(url==='/MisioFlix/api/resume'){
+   assert.equal(options.cache,'no-store');
+   return {ok:true,json:async()=>({items:[
+     {catalog_id:series,id:ids[1],season:1,position_ticks:1500000,next_up:false},
+     {catalog_id:series,id:ids[3],season:1,position_ticks:0,next_up:true}
+   ],hidden:[]})};
+ }
  assert(url.includes(`Shows/${series}/Episodes?`));
  assert(url.includes(`SeasonId=${season}`));
  assert(url.includes('EnableUserData=true'));
@@ -77,7 +87,13 @@ vm.runInNewContext(code,{document:doc,window:browser,location:browser.location,f
  t.render();assert.equal(reads,1,'Repeated DOM render does not refetch');
  s.entry={my_list_status:{status:'completed'}};t.resume([ids[1]]);t.render();
  assert.equal(row2.state,'mixed','Completed MAL season + resumed episode -> split frame');
- assert.equal(row4.state,'unwatched','MAL completion alone must not mark Jellyfin-unplayed individual episodes green');
+ assert.equal(row4.state,'watched','MAL completed season must mark Jellyfin-unplayed episodes green VISUALLY');
+ assert.equal(row1.state,'watched','Already-played episode is still green');
+ assert.equal(row3.state,'watched','Previously resumed watched episode returns green without resume');
+ t.resume([]); await t.refreshResume();t.render();
+ assert.equal(row2.state,'mixed','Actual Jellyfin /api/resume entry paints only the matching MAL-completed episode gold/green');
+ assert.equal(row4.state,'watched','A NextUp suggestion must never change MAL-completed episode from green');
+ assert.equal(row1.state,'watched','Other MAL-completed episodes remain green');
  t.clear();for(const row of rows.slice(0,4)){
    assert.equal(row.state,undefined);assert.equal(row.children.length,0);
  }
@@ -86,5 +102,5 @@ vm.runInNewContext(code,{document:doc,window:browser,location:browser.location,f
  assert(css.includes('.mf-detail-series-sections .mf-mal-episode-row'));
  assert(css.includes('pointer-events:none'));
  assert(!css.includes('mf-simkl-episode-row'));
- console.log('PASS v0.4.62: MAL anime episode rows all four frames, exact season, no network writes or Simkl state');
+ console.log('PASS v0.4.63: MAL completed wins on all season episodes; real resumed ID -> split; NextUp ignored, read-only');
 })().catch(error=>{console.error(error);process.exitCode=1;});

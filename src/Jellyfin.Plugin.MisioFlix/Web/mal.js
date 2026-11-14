@@ -109,6 +109,9 @@
           const id=compact(row?.catalog_id);
           if(!valid(id))continue;
           catalogs.add(id);
+          // Visual-only: track the exact episode that Jellyfin reports as
+          // genuinely resumable. Never treat a generic NextUp as progress.
+          if(valid(row?.id))episodes.add(compact(row.id));
           if(row?.season===null||row?.season===undefined||row?.season==='')continue;
           const season=Number(row.season);
           if(!Number.isInteger(season)||season<0)continue;
@@ -129,9 +132,11 @@
     try{await work;}finally{if(malResumePromise===work)malResumePromise=null;}
   }
   // v0.4.62: purely VISUAL frames on native ANIME season episode rows.
-  // MAL has no per-episode watched history: Jellyfin's Played flag decides
-  // individual green/pink rows. MAL completion only upgrades an actual
-  // resumed episode to gold/green, never other unwatched episodes.
+  // MAL has no per-episode watched history: a MAL entry explicitly marked
+  // completed is authoritative for *all episodes of that resolved MAL season*.
+  // For partially completed MAL entries only Jellyfin's individual Played
+  // flags provide known per-episode completion; never infer watched episode
+  // numbers from a mere aggregate MAL counter.
   // No MAL writes, no Jellyfin watched writes and no Simkl classes/state.
   const malEpisodeIndexes=new Map();
   function clearMalEpisodeFrames(){
@@ -185,8 +190,11 @@
     return result?Number(result[1]):null;
   }
   function malEpisodeVisualState({played,malCompleted,resumed}){
-    if(resumed)return played===true||malCompleted===true?'mixed':'started';
-    return played===true?'watched':'unwatched';
+    // A fully completed MAL season marks every episode visually completed,
+    // even if Jellyfin's own Played flag is still false. No server writes.
+    const watched=malCompleted===true||played===true;
+    if(resumed)return watched?'mixed':'started';
+    return watched?'watched':'unwatched';
   }
   function decorateMalEpisodeFrames(){
     const session=detailSessions.get(`${currentUser}:${currentDetail}`);
