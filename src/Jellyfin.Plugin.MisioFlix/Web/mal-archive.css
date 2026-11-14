@@ -1,0 +1,9 @@
+/* MAL-only archival controls; never shares selectors or state with Simkl. */
+html.misioflix-skin .mf-mal-archive{border-top:1px solid rgba(244,158,206,.32);margin-top:12px;padding-top:12px;display:flex;flex-direction:column;gap:9px}
+html.misioflix-skin .mf-mal-archive-title{font-size:15px;font-weight:700;color:#fff1f8;margin:0}
+html.misioflix-skin .mf-mal-archive-description,html.misioflix-skin .mf-mal-archive-status{font-size:12px;line-height:1.5;color:#ead0df;margin:0}
+html.misioflix-skin .mf-mal-archive-choice{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#f4d4e5}
+html.misioflix-skin .mf-mal-archive-select{box-sizing:border-box;width:100%;max-width:100%;padding:9px;background:#271629;color:#fff;border:1px solid #98617d;border-radius:8px;font:inherit}
+html.misioflix-skin .mf-mal-archive-controls{display:flex;flex-wrap:wrap;gap:8px}
+html.misioflix-skin .mf-mal-archive-controls button{flex:1 1 155px;min-width:0}
+html.misioflix-skin .mf-mal-archive-status[role=status]{overflow-wrap:anywhere}

@@ -261,6 +261,29 @@ public sealed class MisioFlixMalService
     }
 
     public bool Connected(string userId) => File.Exists(TokenPath(userId));
+    // Public MAL profile ID only, never an OAuth credential. Used to keep archives
+    // separate even if a Jellyfin account is re-linked to another MAL identity.
+    public int LinkedMalAccountId(string userId)
+    {
+        try
+        {
+            var path = TokenPath(userId);
+            if (!File.Exists(path)) return 0;
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            return doc.RootElement.TryGetProperty("MalUserId", out var id) &&
+                id.TryGetInt32(out var value) && value > 0 ? value : 0;
+        }
+        catch (IOException) { return 0; }
+        catch (JsonException) { return 0; }
+    }
+
+
+    // File names in the top-level MAL folder are Jellyfin user GUIDs, not archive files.
+    public IEnumerable<string> LinkedUsers() => !Directory.Exists(_folder) ? Array.Empty<string>() :
+        Directory.EnumerateFiles(_folder, "*.json").Select(Path.GetFileNameWithoutExtension)
+            .Where(name => !string.IsNullOrWhiteSpace(name) && Guid.TryParseExact(name, "N", out _))
+            .Select(name => name!);
+
 
     public async Task<MalConnection> GetConnectionAsync(string userId, CancellationToken cancel, bool refreshProfile = false)
     {
@@ -448,6 +471,62 @@ public sealed class MisioFlixMalService
             }
             ListCache[user] = new CachedList(DateTimeOffset.UtcNow.AddMinutes(3), entries);
             return entries;
+        }
+        finally { gate.Release(); }
+    }
+
+    // Full, independent, read-only archive of the MAL account. The shorter three-minute
+    // list cache is deliberately NOT used: backup correctness requires all pages and statuses.
+    public sealed record MalArchivePull(int MalUserId, string Username,
+        Dictionary<int, JsonElement> Entries);
+
+    public async Task<MalArchivePull> FetchFullArchiveAsync(string userId, CancellationToken cancel)
+    {
+        var user = UserId(userId);
+        var gate = ListLock(user);
+        await gate.WaitAsync(cancel).ConfigureAwait(false);
+        try
+        {
+            var access = await AccessAsync(user, cancel).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("Konto MAL nie jest połączone");
+            var identity = await IdentifyAsync(access, cancel).ConfigureAwait(false);
+            var entries = new Dictionary<int, JsonElement>();
+            const int batch = 1000;
+            // Request explicit nested MAL list fields so scores, rewatch counters,
+            // progress, dates, notes, and tags survive in the downloaded archive.
+            // Do not invent 0 values for properties the MAL API omits.
+            var fields = Uri.EscapeDataString(
+                "list_status{status,score,num_episodes_watched,num_times_rewatched,is_rewatching,start_date,finish_date,priority,rewatch_value,tags,comments,updated_at},num_episodes,media_type,start_date");
+            // No status filter: include planned, watching, completed, on_hold and dropped.
+            // nsfw=true prevents the API's optional content filtering from hiding entries.
+            for (var offset = 0; offset < 200000; offset += batch)
+            {
+                using var page = await SendJsonAsync(HttpMethod.Get,
+                    $"users/@me/animelist?fields={fields}&nsfw=true&limit={batch}&offset={offset}",
+                    access, null, cancel).ConfigureAwait(false);
+                var root = page.RootElement;
+                if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+                    throw new JsonException("Nieprawidłowa strona listy MAL");
+                foreach (var item in data.EnumerateArray())
+                {
+                    if (!item.TryGetProperty("node", out var node) ||
+                        !node.TryGetProperty("id", out var element) || !element.TryGetInt32(out var id) || id <= 0 ||
+                        !item.TryGetProperty("list_status", out var state) || state.ValueKind != JsonValueKind.Object)
+                        throw new JsonException("Niekompletny wpis listy MAL: przerwano backup");
+                    if (!entries.TryAdd(id, item.Clone()))
+                        throw new JsonException("Powtórzony identyfikator MAL na stronach listy");
+                }
+                var hasNext = root.TryGetProperty("paging", out var paging) &&
+                    paging.ValueKind == JsonValueKind.Object &&
+                    paging.TryGetProperty("next", out var next) &&
+                    next.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(next.GetString());
+                if (!hasNext) return new MalArchivePull(identity.Id, identity.Username, entries);
+                if (data.GetArrayLength() == 0)
+                    throw new JsonException("MAL wskazuje kolejną stronę, ale zwrócił pustą stronę");
+                await Task.Delay(1200, cancel).ConfigureAwait(false);
+            }
+            throw new InvalidOperationException("Lista MAL przekroczyła limit stron; kopia nie została zastąpiona");
         }
         finally { gate.Release(); }
     }

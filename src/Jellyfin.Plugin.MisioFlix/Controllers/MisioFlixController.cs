@@ -17,11 +17,14 @@ public sealed class MisioFlixController : ControllerBase
 {
     private readonly MisioFlixCatalogService _catalog;
     private readonly MisioFlixMalService _mal;
+    private readonly MisioFlixMalArchiveService _malArchive;
 
-    public MisioFlixController(MisioFlixCatalogService catalog,MisioFlixMalService mal)
+    public MisioFlixController(MisioFlixCatalogService catalog,MisioFlixMalService mal,
+        MisioFlixMalArchiveService malArchive)
     {
         _catalog = catalog;
         _mal = mal;
+        _malArchive = malArchive;
     }
 
     [HttpGet("api/health")]
@@ -38,6 +41,7 @@ public sealed class MisioFlixController : ControllerBase
             "home.js" => ("Web.home.js", "text/javascript; charset=utf-8"),
             "details.js" => ("Web.details.js", "text/javascript; charset=utf-8"),
             "mal.js" => ("Web.mal.js", "text/javascript; charset=utf-8"),
+            "mal-archive.css" => ("Web.mal-archive.css", "text/css; charset=utf-8"),
             "simkl.js" => ("Web.simkl.js", "text/javascript; charset=utf-8"),
             "simkl.css" => ("Web.simkl.css", "text/css; charset=utf-8"),
             "theme.css" => ("Web.theme.css", "text/css; charset=utf-8"),
@@ -246,6 +250,42 @@ public sealed class MisioFlixController : ControllerBase
         catch(InvalidOperationException e){return BadRequest(new{error=e.Message});}
     }
 
+    // MAL archive: read-only endpoints. Downloading a historical JSON NEVER imports it
+    // into Jellyfin, never writes MAL, and never reads another Jellyfin user's backup.
+    [HttpGet("api/mal/archive/status")]
+    [Authorize]
+    public async Task<IActionResult> MalArchiveStatus(CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        try
+        {
+            var user = await _catalog.GetAuthenticatedUserIdAsync(Request, cancel).ConfigureAwait(false);
+            return Ok(_malArchive.GetInfo(user));
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (IOException) { return StatusCode(503, new { error = "Nie można odczytać archiwum MAL" }); }
+    }
+
+    [HttpGet("api/mal/archive/download")]
+    [Authorize]
+    public async Task<IActionResult> MalArchiveDownload([FromQuery] string? kind,
+        [FromQuery] string? key, CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        try
+        {
+            var user = await _catalog.GetAuthenticatedUserIdAsync(Request, cancel).ConfigureAwait(false);
+            var file = await _malArchive.DownloadAsync(user, kind ?? "", key ?? "", cancel)
+                .ConfigureAwait(false);
+            return file is null ? NotFound() : File(file.Value.Content, "application/json", file.Value.Name);
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (IOException) { return StatusCode(503, new { error = "Nie można pobrać kopii MAL" }); }
+    }
+
     // Lightweight connection check for the home banner: never loads the MAL list.
     [HttpGet("api/mal/connection")]
     [Authorize]
@@ -256,6 +296,7 @@ public sealed class MisioFlixController : ControllerBase
         try
         {
             var user = await _catalog.GetAuthenticatedUserIdAsync(Request, cancel).ConfigureAwait(false);
+            _malArchive.CheckDue(user);
             var connection = await _mal.GetConnectionAsync(user, cancel, refreshProfile:false).ConfigureAwait(false);
             return Ok(new { connected = connection.Connected, username = connection.Connected ? connection.Username : null });
         }
@@ -421,6 +462,9 @@ public sealed class MisioFlixController : ControllerBase
             var entry=await _mal.UpdateAsync(user,malId,
                 new MalUpdate(input.Status,input.Score,input.EpisodesWatched,input.TimesRewatched),cancel)
                 .ConfigureAwait(false);
+            // Only AFTER explicit successful edit: GET a complete fresh backup.
+            // Never delays or turns a successful MAL edit into an error.
+            _malArchive.CheckDue(user, force:true);
             return Ok(entry);
         }
         catch(UnauthorizedAccessException){return Forbid();}

@@ -193,6 +193,73 @@
     homeButton=b;syncHomeButton();
     if(!connection&&!connectionPromise)void connectionStatus().catch(()=>{if(b.isConnected){b.textContent='MAL — ustawienia';b.title='Nie można sprawdzić połączenia MAL';}});
   }
+  // Archive is download-only. Never expose an importer or a writer for backup JSON.
+  let lastArchivePulse=0,archivePulseUser='';
+  async function archiveDownload(kind,key){
+    const path=`/archive/download?kind=${encodeURIComponent(kind)}&key=${encodeURIComponent(key)}`;
+    const response=await fetch(API+path,{cache:'no-store',credentials:'same-origin',headers:headers()});
+    if(!response.ok)throw new Error(`Nie można pobrać kopii MAL (HTTP ${response.status})`);
+    const file=await response.blob();
+    const url=URL.createObjectURL(file);
+    const a=el('a');a.href=url;a.download=`misioflix-mal-${kind}-${key}.json`;
+    document.body.append(a);a.click();a.remove();
+    // Do not revoke before the browser starts saving the JSON.
+    window.setTimeout(()=>URL.revokeObjectURL(url),30000);
+  }
+  async function archivePulse(){
+    const uid=userId();if(!valid(uid)||!token())return;
+    if(archivePulseUser===uid&&Date.now()-lastArchivePulse<90000)return;
+    archivePulseUser=uid;lastArchivePulse=Date.now();
+    try{await request('/archive/status');}catch{ /* Offline MAL must not block Jellyfin */ }
+  }
+  async function renderArchive(container){
+    const section=el('section','mf-mal-archive');
+    section.append(el('h3','mf-mal-archive-title','Lokalne kopie MyAnimeList'));
+    section.append(el('p','mf-mal-archive-description',
+      'Pełna lista MAL jest archiwizowana na NAS-ie co 72 godziny. Kopie służą wyłącznie do pobrania na urządzenie — nie zmieniają konta MAL.'));
+    const status=el('p','mf-mal-archive-status','Sprawdzanie kopii…');status.setAttribute('role','status');
+    const selectLabel=el('label','mf-mal-archive-choice','Wybierz plik JSON');
+    const select=el('select','mf-mal-archive-select');selectLabel.append(select);
+    const controls=el('div','mf-mal-archive-controls');
+    const download=el('button','mf-mal-action','Pobierz wybraną kopię');download.type='button';
+    const check=el('button','mf-mal-action-secondary','Sprawdź stan kopii');check.type='button';
+    controls.append(download,check);section.append(status,selectLabel,controls);container.append(section);
+    async function load(){
+      if(!section.isConnected)return;
+      check.disabled=true;status.textContent='Sprawdzanie lokalnego archiwum…';
+      try{
+        const data=await request('/archive/status');
+        const files=Array.isArray(data.files||data.Files)?(data.files||data.Files):[];
+        select.replaceChildren();
+        for(const file of files){
+          const kind=file.kind||file.Kind, key=file.key||file.Key;
+          if(!['current','daily','monthly'].includes(kind)||!key)continue;
+          const opt=el('option','',file.filename||file.Filename||`${kind} ${key}`);
+          opt.value=`${kind}:${key}`;select.append(opt);
+        }
+        download.disabled=!select.options.length;
+        const when=data.lastSuccessUtc||data.LastSuccessUtc;
+        const count=Number(data.items??data.Items??0);
+        const daily=Number(data.dailyCopies??data.DailyCopies??0);
+        const monthly=Number(data.monthlyCopies??data.MonthlyCopies??0);
+        status.textContent=when
+          ? `${count} anime na liście · Ostatnia pełna kopia: ${new Date(when).toLocaleString('pl-PL')} · ${daily} dziennych, ${monthly} miesięcznych.`
+          : 'Pełna kopia jeszcze nie powstała. MisioFlix pobierze ją automatycznie po połączeniu z MAL.';
+        const error=data.lastError||data.LastError;
+        if(error)status.textContent+=` ${error}`;
+      }catch(e){status.textContent=e.message||'Lokalne archiwum niedostępne';}
+      finally{check.disabled=false;}
+    }
+    check.addEventListener('click',load);
+    download.addEventListener('click',async()=>{
+      const [kind,key]=select.value.split(':');if(!kind||!key)return;
+      download.disabled=true;
+      try{await archiveDownload(kind,key);status.textContent='Plik JSON został przekazany do pobrania.';}
+      catch(e){status.textContent=e.message||'Nie można pobrać kopii';}
+      finally{download.disabled=false;}
+    });
+    await load();
+  }
   function closeDialog(){dialog?.remove();dialog=null;}
   async function openDialog(){
     if(dialog)return;
@@ -209,6 +276,8 @@
       if(c?.connected){
         note(`Połączono jako ${c.username||'użytkownik MAL'}. Połączenie dotyczy tylko tego użytkownika Jellyfin.`);
         body.append(action('Odśwież status',async()=>{try{connection=null;draw(await connectionStatus(true));}catch(e){note(e.message);}}));
+        // Independent, one-way MAL archive. No import/back-sync controls.
+        void renderArchive(body);
         body.append(action('Rozłącz MAL',async()=>{
           if(!window.confirm('Odłączyć MAL od tego konta Jellyfin? Dane na MAL pozostaną nienaruszone.'))return;
           try{await request('/disconnect','POST');clearCache(currentUser);sessionValidated.clear();connection={connected:false};syncHomeButton();draw(connection);window.dispatchEvent(new Event('misioflix-mal-updated'));}
@@ -562,6 +631,7 @@
     mountHomeButton();
     syncDetails();
     decorateMalCards();
+    void archivePulse();
   }
   function schedule(){if(timer)return;timer=window.setTimeout(tick,180);}
   function init(){
