@@ -49,3 +49,23 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-
   -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
   -webkit-mask-composite:xor;mask-composite:exclude;
 }
+
+/* v0.4.62 — MAL episode frames INSIDE an anime season's native episode list.
+ * Independent from Simkl episode classes, JavaScript and databases.
+ * Each frame surrounds one episode row, not the entire season or poster. */
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating
+  .mf-detail-series-sections .mf-mal-episode-row {
+  position:relative!important;isolation:isolate;border-radius:12px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating
+  .mf-detail-series-sections .mf-mal-episode-row > .mf-mal-episode-frame {
+  position:absolute;inset:0;z-index:5;pointer-events:none;
+  box-sizing:border-box;border-radius:inherit;padding:2px;
+  background:var(--mf-mal-episode-border);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+html.misioflix-skin .mf-mal-episode-row[data-mf-mal-episode-watch="unwatched"] {--mf-mal-episode-border:#f4a5ce}
+html.misioflix-skin .mf-mal-episode-row[data-mf-mal-episode-watch="started"] {--mf-mal-episode-border:#e6a23c}
+html.misioflix-skin .mf-mal-episode-row[data-mf-mal-episode-watch="watched"] {--mf-mal-episode-border:#45b879}
+html.misioflix-skin .mf-mal-episode-row[data-mf-mal-episode-watch="mixed"] {--mf-mal-episode-border:var(--mf-mal-mixed-frame)}

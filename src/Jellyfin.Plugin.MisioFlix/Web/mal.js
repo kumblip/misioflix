@@ -56,7 +56,7 @@
   // v0.4.61: ONLY a visual fourth MAL state. A completed MAL entry keeps its
   // canonical 'watched' status; a separate attribute marks a real Jellyfin
   // Continue Watching position for the CURRENT user. No MAL writes or counters.
-  let malResumeCatalogs=new Set(),malResumeSeasons=new Map();
+  let malResumeCatalogs=new Set(),malResumeSeasons=new Map(),malResumeEpisodes=new Set();
   let malResumeReadAt=0,malResumePromise=null;
   function malHasActiveResume(catalogId,seasonNo=null){
     const catalog=compact(catalogId);
@@ -101,7 +101,7 @@
         if(!response.ok)throw new Error(`Jellyfin resume: HTTP ${response.status}`);
         const body=await response.json();
         if(uid!==currentUser)return;
-        const catalogs=new Set(),seasons=new Map();
+        const catalogs=new Set(),seasons=new Map(),episodes=new Set();
         for(const row of (Array.isArray(body?.items)?body.items:[])){
           // NextUp is NOT an actual resume, nor are hidden entries returned
           // in this visible list. Never infer a resume from percentages alone.
@@ -115,8 +115,9 @@
           if(!seasons.has(id))seasons.set(id,new Set());
           seasons.get(id).add(season);
         }
-        malResumeCatalogs=catalogs;malResumeSeasons=seasons;
+        malResumeCatalogs=catalogs;malResumeSeasons=seasons;malResumeEpisodes=episodes;
         decorateMalCards();
+        decorateMalEpisodeFrames();
         updateVisibleDetailMalFrame();
       }catch{
         // Preserve the most recent confirmed resume states while Jellyfin is
@@ -126,6 +127,98 @@
     })();
     malResumePromise=work;
     try{await work;}finally{if(malResumePromise===work)malResumePromise=null;}
+  }
+  // v0.4.62: purely VISUAL frames on native ANIME season episode rows.
+  // MAL has no per-episode watched history: Jellyfin's Played flag decides
+  // individual green/pink rows. MAL completion only upgrades an actual
+  // resumed episode to gold/green, never other unwatched episodes.
+  // No MAL writes, no Jellyfin watched writes and no Simkl classes/state.
+  const malEpisodeIndexes=new Map();
+  function clearMalEpisodeFrames(){
+    document.querySelectorAll('.mf-mal-episode-row').forEach(row=>{
+      row.classList.remove('mf-mal-episode-row');
+      row.removeAttribute('data-mf-mal-episode-watch');
+      row.querySelector(':scope > .mf-mal-episode-frame')?.remove();
+    });
+  }
+  function malSeasonEpisodeIndex(session){
+    const key=`${session.userId}:${session.seasonId}`;
+    const old=malEpisodeIndexes.get(key);
+    if(old && ((old.items && Date.now()-old.at<30000)||old.promise||Date.now()<old.retryAt))return old;
+    const cache={items:null,at:0,retryAt:0,promise:null};
+    malEpisodeIndexes.set(key,cache);
+    const params=new URLSearchParams({UserId:session.userId,SeasonId:session.seasonId,
+      EnableUserData:'true',IsMissing:'false',StartIndex:'0',Limit:'500'});
+    const relative=`Shows/${session.catalogId}/Episodes?${params}`;
+    const api=apiClient();
+    const url=typeof api?.getUrl==='function'?api.getUrl(relative):'/'+relative;
+    cache.promise=fetch(url,{headers:headers(),cache:'no-store',credentials:'same-origin'})
+      .then(async response=>{
+        if(!response.ok)throw new Error(`Jellyfin Episodes HTTP ${response.status}`);
+        const body=await response.json();
+        if(currentUser!==session.userId)return null;
+        const items=new Map();
+        for(const item of (Array.isArray(body?.Items)?body.Items:[])){
+          const id=compact(item?.Id),number=Number(item?.IndexNumber);
+          if(valid(id)&&Number.isInteger(number)&&number>0)
+            items.set(id,{number,played:item?.UserData?.Played===true});
+        }
+        cache.items=items;cache.at=Date.now();schedule();return items;
+      }).catch(()=>{cache.retryAt=Date.now()+30000;return null;})
+        .finally(()=>{cache.promise=null;});
+    return cache;
+  }
+  function malEpisodeRowId(row){
+    const possibilities=[row.getAttribute('data-id'),row.getAttribute('data-itemid'),
+      row.getAttribute('data-item-id'),row.querySelector('[data-id]')?.getAttribute('data-id'),
+      row.querySelector('[data-itemid]')?.getAttribute('data-itemid')];
+    for(const value of possibilities)if(valid(value))return compact(value);
+    for(const link of row.querySelectorAll('a[href]')){
+      const match=String(link.getAttribute('href')||'').match(/(?:[?&#]|%3[fF])id=([0-9a-f-]{32,36})(?:[&#]|$)/i);
+      if(match&&valid(match[1]))return compact(match[1]);
+    }
+    return '';
+  }
+  function malEpisodeRowNumber(row){
+    const title=row.querySelector('.listItemBodyText,.listItemName,.cardText-first,.episodeCardTitle');
+    const result=String(title?.textContent||'').match(/^\s*(\d+)\s*[.·:–-]\s*\S/);
+    return result?Number(result[1]):null;
+  }
+  function malEpisodeVisualState({played,malCompleted,resumed}){
+    if(resumed)return played===true||malCompleted===true?'mixed':'started';
+    return played===true?'watched':'unwatched';
+  }
+  function decorateMalEpisodeFrames(){
+    const session=detailSessions.get(`${currentUser}:${currentDetail}`);
+    if(!session||session.userId!==currentUser||session.animeVerified!==true||
+       session.phase!=='ready'||!valid(session.seasonId)||!valid(session.catalogId))return;
+    const page=detailPage(session.id);
+    const area=page?.querySelector('.mf-detail-series-sections');
+    if(!area)return;
+    const episodeData=malSeasonEpisodeIndex(session);
+    if(!episodeData.items)return; // asynchronous read, never invent episode IDs
+    const idByNumber=new Map([...episodeData.items].map(([id,info])=>[info.number,id]));
+    const completed=statusState(session.entry)==='watched';
+    for(const row of area.querySelectorAll('.listItem,.episodeCard')){
+      let episodeId=malEpisodeRowId(row),info=episodeData.items.get(episodeId);
+      // Fall back to the number ONLY when the row has no GUID. Never relabel a
+      // known item belonging to a different series or a related-items section.
+      if(!info&&!valid(episodeId)){
+        const number=malEpisodeRowNumber(row);
+        episodeId=idByNumber.get(number)||'';
+        info=episodeData.items.get(episodeId);
+      }
+      if(!info)continue;
+      const state=malEpisodeVisualState({played:info.played,malCompleted:completed,
+        resumed:malResumeEpisodes.has(episodeId)});
+      row.classList.add('mf-mal-episode-row');
+      row.setAttribute('data-mf-mal-episode-watch',state);
+      if(!row.querySelector(':scope > .mf-mal-episode-frame')){
+        const frame=el('span','mf-mal-episode-frame');
+        frame.setAttribute('aria-hidden','true');
+        row.append(frame);
+      }
+    }
   }
   function saveIndexEntry(uid,malId,entry){
     const state=indexState(uid),data=state.entries;if(entry)data[malId]=entry;else delete data[malId];storeIndex(uid,data,state.full);
@@ -237,7 +330,8 @@
     const uid=compact(userId());
     if(uid===currentUser)return;
     currentUser=uid;connection=null;connectionPromise=null;homeButton=null;
-    malResumeCatalogs=new Set();malResumeSeasons=new Map();malResumeReadAt=0;malResumePromise=null;
+    malResumeCatalogs=new Set();malResumeSeasons=new Map();malResumeEpisodes=new Set();malResumeReadAt=0;malResumePromise=null;
+    malEpisodeIndexes.clear();clearMalEpisodeFrames();
     document.querySelectorAll('[data-mf-mal-frame]').forEach(node=>node.removeAttribute('data-mf-mal-frame'));
     sessionValidated.clear();detailSessions.clear();detailGeneration++;indexRequestedUser='';
     detailPanel?.remove();clearHeaderForPreviousDetail();detailPanel=null;currentDetail='';currentDetailKey='';
@@ -706,10 +800,11 @@
   function syncDetails(){
     const id=detailId();const page=id?detailPage(id):null;
     if(!id||!page){
-      if(currentDetail){detailGeneration++;currentDetail='';currentDetailKey='';detailPanel=null;clearHeaderForPreviousDetail();}
+      if(currentDetail){clearMalEpisodeFrames();detailGeneration++;currentDetail='';currentDetailKey='';detailPanel=null;clearHeaderForPreviousDetail();}
       return;
     }
     if(currentDetail===id&&detailPanel?.isConnected&&detailPanel.closest('#itemDetailPage')===page)return;
+    clearMalEpisodeFrames();
     if(detailPanel?.isConnected)detailPanel.remove();
     clearHeaderForPreviousDetail();
     mountDetails(page,id);
@@ -719,6 +814,7 @@
     mountHomeButton();
     syncDetails();
     decorateMalCards();
+    decorateMalEpisodeFrames();
     void refreshMalResume(); // Display-only Jellyfin read; does not touch MAL.
     void archivePulse();
   }
@@ -735,6 +831,21 @@
       // Recheck when returning from playback, including before the 60s TTL.
       malResumeReadAt=0;schedule();
     }));
+    document.addEventListener('click',event=>{
+      const target=event.target?.nodeType===1?event.target:null;
+      const row=target?.closest?.('#itemDetailPage .mf-detail-series-sections .mf-mal-episode-row');
+      if(!row||!target.closest('button,[role="button"]'))return;
+      const session=detailSessions.get(`${currentUser}:${currentDetail}`);
+      if(!session?.seasonId)return;
+      // Re-read Jellyfin metadata after the native button acts. This only
+      // refreshes the visual state; it does not invoke a watched/MAL mutation.
+      window.setTimeout(()=>{
+        const index=malEpisodeIndexes.get(`${session.userId}:${session.seasonId}`);
+        if(index)index.at=0;
+        malResumeReadAt=0;
+        schedule();
+      },800);
+    },true);
     window.addEventListener('misioflix-mal-cache-changed',schedule);
     window.addEventListener('misioflix-mal-binding-ready',schedule);
     window.addEventListener('misioflix-mal-updated',()=>{
