@@ -16,8 +16,8 @@ namespace Jellyfin.Plugin.MisioFlix.Services;
 
 /// <summary>
 /// Jellyfin server playback events: works for web, Android and native clients.
-/// Threshold is >=75%, or genuine consecutive-episode autoplay after at least
-/// one minute of playback (not merely opening and skipping an episode).
+/// Threshold is >=75%, or the viewer's intentional consecutive-episode
+/// transition after playback actually advances (even by a few seconds).
 /// Errors are logged and queued, never thrown into Jellyfin's playback pipeline.
 /// </summary>
 public sealed class MisioFlixSimklPlaybackHostedService : IHostedService
@@ -41,6 +41,12 @@ public sealed class MisioFlixSimklPlaybackHostedService : IHostedService
     private readonly object _gate=new();
     private readonly Dictionary<string,Playing> _active=new(StringComparer.Ordinal);
     private const double Threshold=0.75;
+    // For episode transitions, do not infer "watched" from arbitrary episode
+    // changes in the same series, such as S01E02 -> S01E15.
+    private static bool IsFollowingEpisode(Playing previous,Playing next)=>
+        previous.SeriesId!=Guid.Empty&&previous.SeriesId==next.SeriesId&&
+        (next.Season==previous.Season&&next.Episode==previous.Episode+1 ||
+         next.Season==previous.Season+1&&next.Episode==1);
 
     public MisioFlixSimklPlaybackHostedService(ISessionManager sessions,ILibraryManager library,
         MisioFlixSimklService simkl,ILogger<MisioFlixSimklPlaybackHostedService> logger)
@@ -146,14 +152,13 @@ public sealed class MisioFlixSimklPlaybackHostedService : IHostedService
                     if(isStop&&state is not null&&state.ItemId!=next.ItemId)continue;
                     if(state is null||state.ItemId!=next.ItemId)
                     {
-                        // Moving directly to another episode of the *same* series
-                        // confirms that the prior episode was watched. Do not count a
-                        // brief click/skip as watching.
-                        if(state is not null&&!state.Submitted&&next.SeriesId!=Guid.Empty&&
-                            next.SeriesId==state.SeriesId&&next.ItemId!=state.ItemId&&
+                        // "Next episode" is a deliberate action. A few seconds of
+                        // genuine playback suffice; do not require 5% or one minute.
+                        // Do not complete an arbitrary jump to a distant episode.
+                        if(state is not null&&!state.Submitted&&!isStop&&
+                            IsFollowingEpisode(state,next)&&state.ItemId!=next.ItemId&&
                             DateTimeOffset.UtcNow-state.LastActivity<TimeSpan.FromMinutes(10)&&
-                            state.MaxTicks>=TimeSpan.FromMinutes(1).Ticks&&
-                            state.RuntimeTicks>0&&state.MaxTicks>=(long)(state.RuntimeTicks*0.05))
+                            state.MaxTicks>0)
                         {state.Submitted=true;toSend=state;}
                         state=next;_active[key]=state;
                     }

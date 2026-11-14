@@ -67,6 +67,45 @@ public sealed class MisioFlixSimklController : ControllerBase
         catch(Exception ex){return Failure(ex);}
     }
 
+    /// <summary>
+    /// Per-season watched counts for visible non-anime Series cards. Verify the
+    /// current user's Jellyfin permissions before matching local Simkl IDs.
+    /// No network call to Simkl and no write to Jellyfin or MAL.
+    /// </summary>
+    [HttpGet("season-progress")]
+    public async Task<IActionResult> SeasonProgress([FromQuery]string? ids,CancellationToken cancel)
+    {
+        NoCache();
+        try
+        {
+            var user=await CurrentUser(cancel).ConfigureAwait(false);
+            var targets=await _catalog.AuthorizedSimklCardTargetsAsync(Request,ids,cancel).ConfigureAwait(false);
+            var snapshot=(await _local.ReadAsync(user,cancel).ConfigureAwait(false)).Snapshot;
+            var progress=new System.Collections.Generic.Dictionary<string,object>(StringComparer.OrdinalIgnoreCase);
+            foreach(var target in targets)
+            {
+                if(target.Value.Kind!="shows")continue;
+                var matched=snapshot?.Items.Values.Where(entry=>entry.Kind=="shows"&&
+                    target.Value.Ids.Any(pair=>entry.Ids.TryGetValue(pair.Key,out var other)&&
+                        string.Equals(other,pair.Value,StringComparison.OrdinalIgnoreCase)))
+                    .GroupBy(entry=>entry.Id).ToArray();
+                // Ambiguous provider IDs must not paint unrelated seasons.
+                var entry=matched is { Length:1 }?matched[0].First():null;
+                var watched=new System.Collections.Generic.Dictionary<int,int>();
+                if(entry?.WatchedSeasons is not null)
+                    foreach(var season in entry.WatchedSeasons)
+                        watched[season.Key]=season.Value.Where(n=>n>0).Distinct().Count();
+                // Missing watchlist entry means zero watched. A matched show
+                // without an episode-history map is unknown, not all-unwatched.
+                var known=snapshot?.HasEpisodeDetails==true&&
+                    (matched is { Length:0 }||entry?.WatchedSeasons is not null);
+                progress[target.Key]=new {known,watched};
+            }
+            return Ok(new{progress});
+        }
+        catch(Exception ex){return Failure(ex);}
+    }
+
     [HttpGet("connection")]
     public async Task<IActionResult> Connection(CancellationToken cancel)
     {
@@ -211,8 +250,12 @@ public sealed class MisioFlixSimklController : ControllerBase
     {
         NoCache();try
         {
-            var checkedOk=await _simkl.SyncIfDueAsync(await CurrentUser(cancel),cancel).ConfigureAwait(false);
-            return Ok(new{checkedOk});
+            var user=await CurrentUser(cancel).ConfigureAwait(false);
+            var before=(await _local.ReadAsync(user,cancel).ConfigureAwait(false)).Snapshot?.CheckedAt;
+            var checkedOk=await _simkl.SyncIfDueAsync(user,cancel).ConfigureAwait(false);
+            var after=(await _local.ReadAsync(user,cancel).ConfigureAwait(false)).Snapshot?.CheckedAt;
+            return Ok(new{checkedOk,refreshed=checkedOk&&after.HasValue&&
+                (!before.HasValue||after.Value>before.Value)});
         }
         catch(Exception ex){return Failure(ex);}
     }

@@ -35,10 +35,13 @@ class Simkl050(unittest.TestCase):
   self.assertIn('state.MaxTicks>=(long)(Threshold*state.RuntimeTicks)',MON)
   self.assertIn('!ep.ParentIndexNumber.HasValue',MON)
  def test_autoplay_episode_follows_same_series_and_real_watch(self):
-  self.assertIn('next.SeriesId==state.SeriesId',MON)
-  self.assertIn('next.ItemId!=state.ItemId',MON)
-  self.assertIn('TimeSpan.FromMinutes(1)',MON)
-  self.assertIn('next.SeriesId!=Guid.Empty',MON)
+  self.assertIn('previous.SeriesId==next.SeriesId',MON)
+  self.assertIn('IsFollowingEpisode(state,next)',MON)
+  self.assertIn('next.Episode==previous.Episode+1',MON)
+  self.assertIn('next.Season==previous.Season+1&&next.Episode==1',MON)
+  self.assertIn('state.MaxTicks>0',MON)
+  self.assertNotIn('state.RuntimeTicks*0.05',MON)
+  self.assertNotIn('TimeSpan.FromMinutes(1).Ticks',MON)
  def test_anime_and_missing_identifiers_never_upload(self):
   self.assertIn('IsAnime(item,root)',MON)
   self.assertIn('AnimeRoot',MON)
@@ -88,6 +91,6 @@ class Simkl050(unittest.TestCase):
   self.assertNotIn('MisioFlixMalService',SERVICE)
   self.assertNotIn('mal.js',MON)
  def test_version(self):
-  self.assertIn('0.4.54.0',(ROOT/'meta.json').read_text('utf8'))
-  self.assertIn('0.4.54.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
+  self.assertIn('0.4.55.0',(ROOT/'meta.json').read_text('utf8'))
+  self.assertIn('0.4.55.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
 if __name__=='__main__':unittest.main()

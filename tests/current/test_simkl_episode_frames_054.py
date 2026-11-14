@@ -30,7 +30,7 @@ class EpisodeFrames054(unittest.TestCase):
             self.assertIn(f'data-mf-simkl-episode-watch="{state}"',CSS)
             self.assertIn(color,CSS)
     def test_cleanup_on_user_change_and_route(self):
-        self.assertIn('episodeIndex.clear();clearEpisodeFrames();clearDetailFrames();',JS)
+        self.assertIn('episodeIndex.clear();invalidateSeasonProgress();clearEpisodeFrames();clearDetailFrames();',JS)
         self.assertIn('clearEpisodeFrames();clearDetailFrames();panel?.remove()',JS)
 
 if __name__=='__main__':unittest.main()

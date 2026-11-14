@@ -139,7 +139,7 @@ class SimklIsolated046(unittest.TestCase):
         self.assertNotIn('mf-simkl-native-score',mal)
 
     def test_version_beta(self):
-        self.assertIn('0.4.54.0',(ROOT/'meta.json').read_text())
-        self.assertIn('<AssemblyVersion>0.4.54.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertIn('0.4.55.0',(ROOT/'meta.json').read_text())
+        self.assertIn('<AssemblyVersion>0.4.55.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__':unittest.main()

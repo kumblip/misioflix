@@ -1,4 +1,4 @@
-/* MisioFlix Simkl module v0.4.54 — independent of MAL.
+/* MisioFlix Simkl module v0.4.55 — independent of MAL.
  * Server-side Jellyfin playback events mark watched after 75%; other writes manual.
  * User-separated NAS backup, offline export and local rewatch counters.
  */
@@ -14,7 +14,7 @@
   const client=()=>window.ApiClient||window.ConnectionManager?.getApiClient?.();
   const user=()=>compact(client()?.getCurrentUserId?.());
   const token=()=>{const api=client();const value=typeof api?.accessToken==='function'?api.accessToken():api?.accessToken;return typeof value==='string'?value:'';};
-  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.54", Token="${token().replace(/["\r\n]/g,'')}"`});
+  const headers=()=>({Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-simkl", Version="0.4.55", Token="${token().replace(/["\r\n]/g,'')}"`});
   async function request(route,method='GET',body){
     const controller=new AbortController();const timer=window.setTimeout(()=>controller.abort(),30000);
     try{
@@ -40,12 +40,28 @@
   let generation=0,timer=0;
   const sessions=new Map();
   const lastSyncCheck=new Map();
+  let syncCheckBusy=false,connectionRetryAt=0;
+  // Route transitions check freshness against the local 72h timestamp. The
+  // server talks to Simkl only when due; normal navigation never blocks.
   function maybeScheduledSync(){
-    if(!connection?.connected||!valid(currentUser))return;
-    const last=lastSyncCheck.get(currentUser)||0;
-    if(Date.now()-last<60*60*1000)return;
-    lastSyncCheck.set(currentUser,Date.now());
-    void request('/sync-check').then(data=>{if(data?.checkedOk)resetCardScores();}).catch(()=>{});
+    if(!connection?.connected||!valid(currentUser)||syncCheckBusy)return;
+    const id=currentUser,route=location.hash||'#/home',now=Date.now();
+    const routeKey=id+':'+route;
+    const last=lastSyncCheck.get(routeKey)||0;
+    if(now-last<60000)return; // Avoid repeated checks caused by DOM redraws.
+    lastSyncCheck.set(routeKey,now);
+    // Keep the tiny navigation throttle bounded even on long browsing sessions.
+    if(lastSyncCheck.size>300)for(const [k,t] of lastSyncCheck)
+      if(now-t>60*60*1000)lastSyncCheck.delete(k);
+    syncCheckBusy=true;
+    void request('/sync-check').then(data=>{
+      if(currentUser!==id)return;
+      if(data?.refreshed){
+        resetCardScores(); // also invalidates all cached season-progress counts
+        const session=sessions.get(`${currentUser}:${currentDetail}`);
+        if(session&&session.phase==='ready'){session.phase='idle';void read(session,true);}
+      }
+    }).catch(()=>{}).finally(()=>{syncCheckBusy=false;});
   }
   // v0.4.52 — Independent Simkl frame state. Unlike MAL, this combines
   // Simkl's personal list and Jellyfin's actual (non-NextUp) resume positions.
@@ -53,6 +69,27 @@
   let resumeForUser=new Set(),resumeSeasons=new Map(),resumeEpisodes=new Set(),resumeReadAt=0,resumeReadPromise=null;
   // Only for current user. Episode frames are never inferred from a show-wide status.
   const episodeIndex=new Map();
+  // Bounded, separately authorized read of each visible series' season history.
+  const seasonProgress=new Map(),pendingSeasonSeries=new Set();
+  let seasonProgressBusy=false,seasonProgressRetryAt=0,seasonProgressStamp=0;
+  function invalidateSeasonProgress(){
+    seasonProgressStamp++;seasonProgress.clear();pendingSeasonSeries.clear();seasonProgressRetryAt=0;
+  }
+  async function fetchSeasonProgress(){
+    if(seasonProgressBusy||!valid(currentUser)||!token()||Date.now()<seasonProgressRetryAt)return;
+    const batch=[...pendingSeasonSeries].slice(0,36);
+    if(!batch.length)return;
+    batch.forEach(id=>pendingSeasonSeries.delete(id));
+    const selected=currentUser,stamp=seasonProgressStamp;seasonProgressBusy=true;
+    try{
+      const result=await request('/season-progress?ids='+encodeURIComponent(batch.join(',')));
+      if(selected!==currentUser||stamp!==seasonProgressStamp)return;
+      const values=result?.progress&&typeof result.progress==='object'?result.progress:{};
+      for(const id of batch)seasonProgress.set(id,values[id]??values[id.toUpperCase()]??{known:false});
+    }catch{
+      if(selected===currentUser&&stamp===seasonProgressStamp){batch.forEach(id=>pendingSeasonSeries.add(id));seasonProgressRetryAt=Date.now()+30000;}
+    }finally{seasonProgressBusy=false;schedule();}
+  }
   function simklFrame(entry,fallback='',resuming=false){
     const status=String(entry?.status||'').toLowerCase();
     const alreadyWatched=status==='completed'||(!status&&fallback==='watched');
@@ -92,8 +129,23 @@
       card.removeAttribute('data-mf-simkl-score');
       const resuming=resumeSeasons.get(parent)?.has(season)===true;
       const fallback=card.getAttribute('data-mf-watch')||'';
-      card.setAttribute('data-mf-simkl-watch',simklFrame(null,fallback,resuming));
+      if(!seasonProgress.has(parent))pendingSeasonSeries.add(parent);
+      const history=seasonProgress.get(parent);
+      const total=Number(card.getAttribute('data-mf-episodes'));
+      const watched=Number(history?.watched?.[String(season)]||0);
+      if(history?.known===true&&Number.isInteger(total)&&total>0){
+        const completed=watched>=total;
+        card.setAttribute('data-mf-simkl-watch',
+          completed?(resuming?'mixed':'watched'):
+          (resuming||watched>0?'started':'unwatched'));
+      }else{
+        // No authoritative per-episode data yet: preserve the proven native
+        // fallback. Never silently mark a whole show completed.
+        card.setAttribute('data-mf-simkl-watch',simklFrame(null,fallback,resuming));
+      }
     }
+    if(pendingSeasonSeries.size&&!seasonProgressBusy&&Date.now()>=seasonProgressRetryAt)
+      void fetchSeasonProgress();
   }
   // Season details display native Jellyfin episode list rows. Read exact episode
   // identities once per season; never infer watched status from neighbouring rows.
@@ -266,10 +318,10 @@
   }
   function resetUser(){
     const id=user();if(id===currentUser)return;
-    currentUser=id;connection=null;connectionPromise=null;button=null;sessions.clear();generation++;
+    currentUser=id;connection=null;connectionPromise=null;connectionRetryAt=0;button=null;sessions.clear();generation++;
     cardScores.clear();cardStates.clear();pendingScoreIds.clear();scoreRetryAfter=0;
     resumeForUser=new Set();resumeSeasons=new Map();resumeEpisodes=new Set();resumeReadAt=0;resumeReadPromise=null;
-    episodeIndex.clear();clearEpisodeFrames();clearDetailFrames();
+    episodeIndex.clear();invalidateSeasonProgress();clearEpisodeFrames();clearDetailFrames();
     document.querySelectorAll('[data-mf-simkl-watch]').forEach(node=>node.removeAttribute('data-mf-simkl-watch'));
     document.querySelectorAll('.mf-simkl-home-score,.mf-simkl-native-score').forEach(node=>node.remove());
     document.querySelectorAll('.mf-simkl-season-media').forEach(node=>node.classList.remove('mf-simkl-season-media'));
@@ -282,6 +334,7 @@
     if(connectionPromise&&!force)return connectionPromise;
     const id=currentUser;
     const pending=request('/connection').then(data=>{if(id===currentUser){connection=data;syncHomeButton();maybeScheduledSync();}return data;})
+      .catch(error=>{if(id===currentUser)connectionRetryAt=Date.now()+60000;throw error;})
       .finally(()=>{if(id===currentUser)connectionPromise=null;});
     connectionPromise=pending;return pending;
   }
@@ -638,6 +691,7 @@
   let scoreFetchBusy=false,scoreRetryAfter=0;
   function resetCardScores(){
     cardScores.clear();cardStates.clear();pendingScoreIds.clear();scoreRetryAfter=0;
+    invalidateSeasonProgress();
     document.querySelectorAll('.mf-simkl-home-score,.mf-simkl-native-score').forEach(node=>node.remove());
     document.querySelectorAll('[data-mf-simkl-score]').forEach(node=>node.removeAttribute('data-mf-simkl-score'));
     schedule();
@@ -723,6 +777,13 @@
 
   function tick(){
     timer=0;resetUser();mountHome();syncDetails();decorateCardScores();decorateSeasonFrames();
+    // Browsing libraries, collections, a movie, a show, an episode, or a
+    // season all trigger the same cheap local 72h freshness check.
+    if(valid(currentUser)&&token()){
+      if(connection?.connected)maybeScheduledSync();
+      else if(!connection&&!connectionPromise&&Date.now()>=connectionRetryAt)
+        void getConnection().catch(()=>{});
+    }
     const session=sessions.get(`${currentUser}:${currentDetail}`);
     if(session)void decorateEpisodeFrames(session);
     void refreshResume();
