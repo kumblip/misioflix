@@ -11,13 +11,13 @@ SIMKL=(WEB/'simkl.js').read_text('utf8')
 
 class MalEpisodeFrames062(unittest.TestCase):
     def test_version_and_original_skins_retained(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.69.0')
-        self.assertIn('AssemblyVersion>0.4.69.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.70.0')
+        self.assertIn('AssemblyVersion>0.4.70.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
         self.assertIn('assets/mal-frames.css?v=',(SRC/'Services/ScriptInjection.cs').read_text())
     def test_read_only_and_native_per_episode_jellyfin_source(self):
         section=MAL[MAL.index('const malEpisodeIndexes=new Map();'):MAL.index('function saveIndexEntry(')]
         self.assertIn("EnableUserData:'true'",section)
-        self.assertIn('SeasonId:session.seasonId',section)
+        self.assertIn("params.set('SeasonId',session.seasonId)",section)
         self.assertIn('item?.UserData?.Played===true',section)
         self.assertIn('malResumeEpisodes.has(episodeId)',section)
         self.assertIn("statusState(session.entry)==='watched'",section)
@@ -27,12 +27,14 @@ class MalEpisodeFrames062(unittest.TestCase):
         self.assertNotIn('POST',section)
         self.assertNotIn('mf-simkl-',section)
     def test_every_state_and_only_season_episode_rows(self):
-        for state,color in [('unwatched','#f4a5ce'),('started','#e6a23c'),('watched','#45b879'),('mixed','var(--mf-mal-mixed-frame)')]:
+        for state,color in [('unwatched','#f4a5ce'),('started','#e6a23c'),('watched','#45b879'),('mixed','--mf-mal-episode-left:#45b879')]:
             self.assertIn(f'data-mf-mal-episode-watch="{state}"',CSS)
             self.assertIn(color,CSS)
         self.assertIn('.mf-detail-series-sections .mf-mal-episode-row',CSS)
         self.assertIn('pointer-events:none',CSS)
-        self.assertIn('mask-composite:exclude',CSS)
+        self.assertIn('width:4px',CSS)
+        self.assertIn('height:4px',CSS)
+        self.assertIn('::after',CSS)
         self.assertNotIn('mf-simkl-episode-row',CSS)
     def test_cleanup_and_lifecycle(self):
         self.assertIn('malEpisodeIndexes.clear();clearMalEpisodeFrames();',MAL)

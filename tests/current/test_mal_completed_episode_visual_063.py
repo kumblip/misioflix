@@ -10,7 +10,7 @@ class CompletedMalEpisodeVisual063(unittest.TestCase):
         self.assertIn('const watched=malCompleted===true||played===true;',block)
         self.assertIn("return watched?'watched':'unwatched'",block)
         self.assertIn("statusState(session.entry)==='watched'",block)
-        self.assertIn('SeasonId:session.seasonId',MAL)
+        self.assertIn("params.set('SeasonId',session.seasonId)",MAL)
         self.assertIn('session.animeVerified!==true',block)
     def test_resume_is_exact_ongoing_episode(self):
         block=MAL[MAL.index('async function refreshMalResume()'):MAL.index('const malEpisodeIndexes=new Map();')]

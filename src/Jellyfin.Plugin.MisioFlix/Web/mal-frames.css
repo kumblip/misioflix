@@ -50,25 +50,36 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-
   -webkit-mask-composite:xor;mask-composite:exclude;
 }
 
-/* v0.4.62 — MAL episode frames INSIDE an anime season's native episode list.
- * Independent from Simkl episode classes, JavaScript and databases.
- * Each frame surrounds one episode row, not the entire season or poster. */
+/* v0.4.70 — episode-only status strips. Preserve the native Jellyfin
+ * row and player; the visual marker is the sole extra DOM child.
+ * Pink/gold/green: LEFT only. Mixed: GREEN left and GOLD bottom. */
 html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating
-  .mf-detail-series-sections .mf-mal-episode-row {
+  .mf-detail-series-sections .mf-mal-episode-row,
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating
+  .mf-mal-episode-row {
   position:relative!important;isolation:isolate;border-radius:12px;
 }
 html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating
-  .mf-detail-series-sections .mf-mal-episode-row > .mf-mal-episode-frame {
+  .mf-mal-episode-row > .mf-mal-episode-frame {
   position:absolute;inset:0;z-index:5;pointer-events:none;
-  box-sizing:border-box;border-radius:inherit;padding:2px;
-  background:var(--mf-mal-episode-border);
-  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
-  -webkit-mask-composite:xor;mask-composite:exclude;
+  box-sizing:border-box;border-radius:inherit;
+  padding:0!important;background:none!important;
+  -webkit-mask:none!important;mask:none!important;
 }
-html.misioflix-skin .mf-mal-episode-row[data-mf-mal-episode-watch="unwatched"] {--mf-mal-episode-border:#f4a5ce}
-html.misioflix-skin .mf-mal-episode-row[data-mf-mal-episode-watch="started"] {--mf-mal-episode-border:#e6a23c}
-html.misioflix-skin .mf-mal-episode-row[data-mf-mal-episode-watch="watched"] {--mf-mal-episode-border:#45b879}
-html.misioflix-skin .mf-mal-episode-row[data-mf-mal-episode-watch="mixed"] {--mf-mal-episode-border:var(--mf-mal-mixed-frame)}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating
+  .mf-mal-episode-row > .mf-mal-episode-frame::before {
+  content:"";position:absolute;left:0;top:0;bottom:0;width:4px;
+  background:var(--mf-mal-episode-left);border-radius:12px 0 0 12px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating
+  .mf-mal-episode-row[data-mf-mal-episode-watch="mixed"] > .mf-mal-episode-frame::after {
+  content:"";position:absolute;left:0;right:0;bottom:0;height:4px;
+  background:#e6a23c;border-radius:0 0 12px 12px;
+}
+html.misioflix-skin .mf-mal-episode-row[data-mf-mal-episode-watch="unwatched"] {--mf-mal-episode-left:#f4a5ce}
+html.misioflix-skin .mf-mal-episode-row[data-mf-mal-episode-watch="started"] {--mf-mal-episode-left:#e6a23c}
+html.misioflix-skin .mf-mal-episode-row[data-mf-mal-episode-watch="watched"] {--mf-mal-episode-left:#45b879}
+html.misioflix-skin .mf-mal-episode-row[data-mf-mal-episode-watch="mixed"] {--mf-mal-episode-left:#45b879}
 
 /* v0.4.64: MAL rating inline BEFORE the year in the native details metadata.
    Separate from Simkl; rating is display-only and never writes to MAL. */

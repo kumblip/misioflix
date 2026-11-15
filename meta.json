@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.69 RC: anime library /mixed year badge shows year only; details and other libraries retain original metadata",
+  "description": "MisioFlix 0.4.70 RC: native episode status strips on left; mixed green left + gold bottom; MAL series view supported",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.69.0",
+  "version": "0.4.70.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

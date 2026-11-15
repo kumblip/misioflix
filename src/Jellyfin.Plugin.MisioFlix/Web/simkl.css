@@ -254,27 +254,36 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-simkl-detail-score-sou
   }
 }
 
-/* v0.4.54 — Episode-level Simkl frames on native season episode rows.
-   This is NOT a series/season frame and never uses MAL selectors. */
+/* v0.4.70: independent Simkl episode strips on native season rows.
+ * Only the visual child is styled, never a full border around the row.
+ * Mixed: GREEN left, GOLD bottom. No MAL selectors or writes. */
 html.misioflix-skin #itemDetailPage.mf-detail-compact
-  .mf-detail-series-sections .mf-simkl-episode-row {
-  position:relative!important;isolation:isolate;
-  border-radius:12px;
+  .mf-detail-series-sections .mf-simkl-episode-row,
+html.misioflix-skin #itemDetailPage.mf-detail-compact
+  .mf-simkl-episode-row {
+  position:relative!important;isolation:isolate;border-radius:12px;
 }
 html.misioflix-skin #itemDetailPage.mf-detail-compact
-  .mf-detail-series-sections .mf-simkl-episode-row > .mf-simkl-episode-frame {
+  .mf-simkl-episode-row > .mf-simkl-episode-frame {
   position:absolute;inset:0;z-index:5;pointer-events:none;
-  box-sizing:border-box;border-radius:inherit;padding:2px;
-  background:var(--mf-simkl-episode-frame);
-  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
-  -webkit-mask-composite:xor;mask-composite:exclude;
+  box-sizing:border-box;border-radius:inherit;
+  padding:0!important;background:none!important;
+  -webkit-mask:none!important;mask:none!important;
 }
-html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="unwatched"] {--mf-simkl-episode-frame:#f4a5ce}
-html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="started"] {--mf-simkl-episode-frame:#e6a23c}
-html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="watched"] {--mf-simkl-episode-frame:#45b879}
-html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="mixed"] {
-  --mf-simkl-episode-frame:linear-gradient(90deg,#e6a23c 0 50%,#45b879 50% 100%);
+html.misioflix-skin #itemDetailPage.mf-detail-compact
+  .mf-simkl-episode-row > .mf-simkl-episode-frame::before {
+  content:"";position:absolute;left:0;top:0;bottom:0;width:4px;
+  background:var(--mf-simkl-episode-left);border-radius:12px 0 0 12px;
 }
+html.misioflix-skin #itemDetailPage.mf-detail-compact
+  .mf-simkl-episode-row[data-mf-simkl-episode-watch="mixed"] > .mf-simkl-episode-frame::after {
+  content:"";position:absolute;left:0;right:0;bottom:0;height:4px;
+  background:#e6a23c;border-radius:0 0 12px 12px;
+}
+html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="unwatched"] {--mf-simkl-episode-left:#f4a5ce}
+html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="started"] {--mf-simkl-episode-left:#e6a23c}
+html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="watched"] {--mf-simkl-episode-left:#45b879}
+html.misioflix-skin .mf-simkl-episode-row[data-mf-simkl-episode-watch="mixed"] {--mf-simkl-episode-left:#45b879}
 
 /* v0.4.56: Local Simkl movie/show backup diagnostics. Fully isolated from MAL. */
 html.misioflix-skin .mf-simkl-backup-status {display:flex;flex-direction:column;gap:9px;padding:12px;border-radius:10px;border:1px solid rgba(244,165,206,.38);background:rgba(37,16,35,.6)}

@@ -147,13 +147,14 @@
     });
   }
   function malSeasonEpisodeIndex(session){
-    const key=`${session.userId}:${session.seasonId}`;
+    const key=`${session.userId}:${session.seasonId||session.catalogId}`;
     const old=malEpisodeIndexes.get(key);
     if(old && ((old.items && Date.now()-old.at<30000)||old.promise||Date.now()<old.retryAt))return old;
     const cache={items:null,at:0,retryAt:0,promise:null};
     malEpisodeIndexes.set(key,cache);
-    const params=new URLSearchParams({UserId:session.userId,SeasonId:session.seasonId,
+    const params=new URLSearchParams({UserId:session.userId,
       EnableUserData:'true',IsMissing:'false',StartIndex:'0',Limit:'500'});
+    if(valid(session.seasonId))params.set('SeasonId',session.seasonId);
     const relative=`Shows/${session.catalogId}/Episodes?${params}`;
     const api=apiClient();
     const url=typeof api?.getUrl==='function'?api.getUrl(relative):'/'+relative;
@@ -165,9 +166,23 @@
         const items=new Map();
         for(const item of (Array.isArray(body?.Items)?body.Items:[])){
           const id=compact(item?.Id),number=Number(item?.IndexNumber);
-          if(valid(id)&&Number.isInteger(number)&&number>0)
+          if(valid(id)&&Number.isInteger(number)&&number>0){
             items.set(id,{number,played:item?.UserData?.Played===true});
+          }
         }
+        // On a series page never apply one MAL entry's completed status to
+        // episodes from several distinct seasons. Per-episode Jellyfin flags
+        // remain valid, even when that same screen shows multiple seasons.
+        const seasonIds=new Set();
+        for(const item of (Array.isArray(body?.Items)?body.Items:[])){
+          if(valid(item?.Id)){
+            const sid=compact(item?.SeasonId);
+            if(valid(sid))seasonIds.add(sid);
+            else if(Number.isInteger(Number(item?.ParentIndexNumber)))
+              seasonIds.add('number:'+Number(item.ParentIndexNumber));
+          }
+        }
+        cache.multipleSeasons=seasonIds.size!==1;
         cache.items=items;cache.at=Date.now();schedule();return items;
       }).catch(()=>{cache.retryAt=Date.now()+30000;return null;})
         .finally(()=>{cache.promise=null;});
@@ -199,14 +214,21 @@
   function decorateMalEpisodeFrames(){
     const session=detailSessions.get(`${currentUser}:${currentDetail}`);
     if(!session||session.userId!==currentUser||session.animeVerified!==true||
-       session.phase!=='ready'||!valid(session.seasonId)||!valid(session.catalogId))return;
+       session.phase!=='ready'||!valid(session.catalogId))return;
     const page=detailPage(session.id);
     const area=page?.querySelector('.mf-detail-series-sections');
     if(!area)return;
     const episodeData=malSeasonEpisodeIndex(session);
     if(!episodeData.items)return; // asynchronous read, never invent episode IDs
-    const idByNumber=new Map([...episodeData.items].map(([id,info])=>[info.number,id]));
-    const completed=statusState(session.entry)==='watched';
+    const idByNumber=new Map();
+    for(const [id,info] of episodeData.items){
+      // A series view can contain episode 1 in several seasons. In that case
+      // no title-only fallback is safe: require an actual Jellyfin GUID.
+      if(idByNumber.has(info.number))idByNumber.set(info.number,'');
+      else idByNumber.set(info.number,id);
+    }
+    const completed=statusState(session.entry)==='watched' &&
+      (valid(session.seasonId)||!episodeData.multipleSeasons);
     for(const row of area.querySelectorAll('.listItem,.episodeCard')){
       let episodeId=malEpisodeRowId(row),info=episodeData.items.get(episodeId);
       // Fall back to the number ONLY when the row has no GUID. Never relabel a
@@ -853,11 +875,11 @@
       const row=target?.closest?.('#itemDetailPage .mf-detail-series-sections .mf-mal-episode-row');
       if(!row||!target.closest('button,[role="button"]'))return;
       const session=detailSessions.get(`${currentUser}:${currentDetail}`);
-      if(!session?.seasonId)return;
+      if(!session?.catalogId)return;
       // Re-read Jellyfin metadata after the native button acts. This only
       // refreshes the visual state; it does not invoke a watched/MAL mutation.
       window.setTimeout(()=>{
-        const index=malEpisodeIndexes.get(`${session.userId}:${session.seasonId}`);
+        const index=malEpisodeIndexes.get(`${session.userId}:${session.seasonId||session.catalogId}`);
         if(index)index.at=0;
         malResumeReadAt=0;
         schedule();

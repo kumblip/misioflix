@@ -24,9 +24,10 @@ class EpisodeFrames054(unittest.TestCase):
         self.assertNotIn('mf-simkl-episode-row',MAL)
         self.assertNotIn('.mf-mal-',re.sub(r'/\*.*?\*/','',CSS,flags=re.S))
         self.assertIn('pointer-events:none',CSS)
-        self.assertIn('mask-composite:exclude',CSS)
+        self.assertIn('width:4px',CSS)
+        self.assertIn('height:4px',CSS)
     def test_states_are_own_classes(self):
-        for state, color in [('unwatched','#f4a5ce'),('started','#e6a23c'),('watched','#45b879'),('mixed','linear-gradient(90deg')]:
+        for state, color in [('unwatched','#f4a5ce'),('started','#e6a23c'),('watched','#45b879'),('mixed','--mf-simkl-episode-left:#45b879')]:
             self.assertIn(f'data-mf-simkl-episode-watch="{state}"',CSS)
             self.assertIn(color,CSS)
     def test_cleanup_on_user_change_and_route(self):
