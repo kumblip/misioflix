@@ -1447,3 +1447,33 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-
   html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContainer > .detailPagePrimaryContent {grid-column:1;grid-row:5}
   html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer.mf-detail-grid > .detailPageSecondaryContainer.mf-detail-series-sections {grid-column:1;grid-row:6}
 }
+
+/* v0.4.68 — MisioFlix-owned quick/MAL/Simkl rail stays immediately under
+ * the NATIVE poster, independent of the height of seasons, episode lists,
+ * collections or Similar on the right. Never reparent native Jellyfin DOM. */
+@media (min-width:851px) {
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer.mf-detail-grid {
+    position:relative!important;
+  }
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer.mf-detail-grid.mf-detail-rail-anchored {
+    min-height:var(--mf-rail-min-height,0px)!important;
+  }
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer.mf-detail-grid.mf-detail-rail-anchored > .detailPagePrimaryContainer > .mf-detail-poster-rail {
+    position:absolute!important;
+    grid-column:auto!important;grid-row:auto!important;
+    top:var(--mf-rail-y,0px)!important;
+    left:var(--mf-rail-x,0px)!important;
+    width:var(--mf-rail-width,var(--mf-detail-poster))!important;
+    max-width:var(--mf-rail-width,var(--mf-detail-poster))!important;
+    margin:0!important;min-width:0!important;
+    align-self:start;
+  }
+}
+@media (max-width:850px) {
+  /* Normal single-column flow: poster → quick play → MAL/Simkl → metadata. */
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer.mf-detail-grid > .detailPagePrimaryContainer > .mf-detail-poster-rail {
+    position:static!important;left:auto!important;top:auto!important;
+    grid-column:1!important;grid-row:3!important;
+    width:100%!important;max-width:min(100%,330px)!important;
+  }
+}

@@ -1,4 +1,4 @@
-/* MisioFlix 0.4.67 — non-reparenting compact layout for Jellyfin 12.4 details.
+/* MisioFlix 0.4.68 — non-reparenting details + independently anchored poster panel.
  * The native image, ribbon, metadata and secondary sections stay in place;
  * a CSS grid and a few owned nodes create the approved presentation.
  * The native player, item ID, user status, URL and media files stay untouched.
@@ -25,6 +25,13 @@
   let nativeEditItem = '';
   let nativeEditDialogSeen = false;
   let nativeEditObserver = null;
+  // Geometry is applied to MisioFlix-owned UI only. Never detach/reparent
+  // Jellyfin's poster, sliders, cards, sections or player to arrange the rail.
+  let railResizeObserver = null;
+  let trackedRailPage = null;
+  let trackedRailImage = null;
+  let trackedRailElement = null;
+  let railFrame = 0;
 
   const create = (tag, cls, value) => {
     const el = document.createElement(tag);
@@ -294,6 +301,72 @@
     slot.replaceChildren();
   }
 
+  // The primary details and the native sections have independent heights.
+  // A single CSS grid row cannot keep the left rail immediately below the
+  // poster while the right column contains arbitrarily tall seasons/episodes.
+  // Anchor ONLY our own rail to the image's actual measured bottom; leave
+  // Jellyfin-owned nodes in their original DOM positions for the native editor.
+  function positionPosterRail(page) {
+    if (!page?.isConnected || !page.classList.contains('mf-detail-compact')) return;
+    const wrapper=page.querySelector('.detailPageWrapperContainer.mf-detail-grid');
+    const image=page.querySelector('.detailPagePrimaryContainer > .detailImageContainer');
+    const rail=page.querySelector('.detailPagePrimaryContainer > .mf-detail-poster-rail');
+    if (!wrapper || !image || !rail) return;
+    if (window.matchMedia?.('(max-width:850px)').matches) {
+      wrapper.classList.remove('mf-detail-rail-anchored');
+      for (const name of ['--mf-rail-x','--mf-rail-y','--mf-rail-width','--mf-rail-min-height'])
+        wrapper.style.removeProperty(name);
+      return;
+    }
+    const frame=wrapper.getBoundingClientRect();
+    const poster=image.getBoundingClientRect();
+    if (poster.width < 40 || poster.height < 40) return;
+    const x=poster.left-frame.left;
+    const y=poster.bottom-frame.top+14;
+    // Anchor under the real poster, including asymmetric art and window zoom.
+    wrapper.style.setProperty('--mf-rail-x',x.toFixed(2)+'px');
+    wrapper.style.setProperty('--mf-rail-y',y.toFixed(2)+'px');
+    wrapper.style.setProperty('--mf-rail-width',poster.width.toFixed(2)+'px');
+    wrapper.classList.add('mf-detail-rail-anchored');
+    // The rail is out of flow on desktop. Reserve enough vertical space if
+    // a film has no collections/similar, or if the MAL/Simkl editor expands.
+    const railHeight=rail.getBoundingClientRect().height;
+    wrapper.style.setProperty('--mf-rail-min-height',Math.ceil(y+railHeight+24)+'px');
+  }
+  function queueRailPosition(page) {
+    if (railFrame || !page) return;
+    railFrame=window.requestAnimationFrame(()=>{
+      railFrame=0;
+      if (page.isConnected) positionPosterRail(page);
+    });
+  }
+  function watchPosterRail(page) {
+    const image=page.querySelector('.detailPagePrimaryContainer > .detailImageContainer');
+    const rail=page.querySelector('.detailPagePrimaryContainer > .mf-detail-poster-rail');
+    if (!image || !rail) return;
+    if (trackedRailPage===page && trackedRailImage===image && trackedRailElement===rail) return;
+    railResizeObserver?.disconnect();railResizeObserver=null;
+    trackedRailPage=page;trackedRailImage=image;trackedRailElement=rail;
+    if (typeof ResizeObserver==='function') {
+      railResizeObserver=new ResizeObserver(()=>queueRailPosition(page));
+      railResizeObserver.observe(image);
+      railResizeObserver.observe(rail);
+    }
+  }
+  function stopPosterRail(page) {
+    if (trackedRailPage===page) {
+      railResizeObserver?.disconnect();railResizeObserver=null;
+      trackedRailPage=null;trackedRailImage=null;trackedRailElement=null;
+      if (railFrame) {window.cancelAnimationFrame(railFrame);railFrame=0;}
+    }
+    const wrapper=page?.querySelector('.detailPageWrapperContainer.mf-detail-grid');
+    if (wrapper) {
+      wrapper.classList.remove('mf-detail-rail-anchored');
+      for (const name of ['--mf-rail-x','--mf-rail-y','--mf-rail-width','--mf-rail-min-height'])
+        wrapper.style.removeProperty(name);
+    }
+  }
+
   // v0.4.67: NEVER reparent a Jellyfin-owned node. Its older webcomponents
   // run attachedCallback/detachedCallback when an existing subtree is moved,
   // including a broken addScrollEventListener callback in Jellyfin 12.4.
@@ -301,6 +374,7 @@
   // CSS grid lays them out without triggering any legacy component lifecycle.
   function restoreLayout(page){
     if(!page) return;
+    stopPosterRail(page);
     page.querySelector('.mf-detail-back')?.remove();
     page.querySelector('.mf-detail-poster-rail')?.remove();
     page.querySelector('.mf-detail-cast-button')?.remove();
@@ -393,6 +467,8 @@
     if (!id || !page) return;
     const grid=ensureLayout(page);
     if (!grid) return;
+    watchPosterRail(page);
+    positionPosterRail(page);
     ensureBackButton(page);
     clampSimilar(page);
     syncCastButton(page);
@@ -490,6 +566,9 @@
       schedule();
     });
     document.addEventListener('viewshow',schedule);
+    window.addEventListener('resize',()=>{
+      if(lastPage?.isConnected) queueRailPosition(lastPage);
+    },{passive:true});
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});
   else init();
