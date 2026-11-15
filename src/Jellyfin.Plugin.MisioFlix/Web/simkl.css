@@ -301,3 +301,17 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .mf-simkl-de
     padding:3px 7px!important;margin-right:6px!important;font-size:12px!important;
   }
 }
+
+/* v0.4.67 original, unmoved Jellyfin poster — independently styled Simkl frame */
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-simkl-detail-ready
+  .detailPagePrimaryContainer > .detailImageContainer {
+  position:relative!important;isolation:isolate;outline:0!important;box-shadow:none!important;border-radius:15px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-simkl-detail-ready
+  .detailPagePrimaryContainer > .detailImageContainer::after {
+  content:"";position:absolute;inset:0;z-index:8;pointer-events:none;
+  box-sizing:border-box;border-radius:15px;padding:3px;
+  background:var(--mf-simkl-frame);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}

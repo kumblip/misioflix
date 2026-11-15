@@ -19,8 +19,10 @@ class DetailPage0421(unittest.TestCase):
         self.assertIn('button.click()',DETAILS)
         self.assertIn("window.location.hash = detailsRoute(target)",DETAILS)
     def test_reuses_native_structure(self):
-        for name in ['detailImageContainer','detailRibbon','detailPagePrimaryContent','childrenCollapsible','listChildrenCollapsible','specialsCollapsible','castCollapsible']:
+        for name in ['detailImageContainer','detailRibbon','detailPagePrimaryContent','detailPageSecondaryContainer','castCollapsible']:
             self.assertIn(name,DETAILS)
+        self.assertIn('mf-detail-series-sections',DETAILS)
+        self.assertNotIn('relocate(', DETAILS)
     def test_removes_banner_only_on_details(self):
         self.assertIn('#itemDetailPage.mf-detail-compact > #itemBackdrop',CSS)
         self.assertIn('#itemDetailPage.mf-detail-compact > .detailLogo',CSS)

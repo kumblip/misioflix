@@ -51,7 +51,7 @@ class JellyfinNativeWatched057(unittest.TestCase):
         self.assertNotIn('po 75%',WEB)
 
     def test_version(self):
-        self.assertIn('0.4.66.0',(ROOT/'meta.json').read_text())
-        self.assertIn('<AssemblyVersion>0.4.66.0</AssemblyVersion>',(BASE/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertIn('0.4.67.0',(ROOT/'meta.json').read_text())
+        self.assertIn('<AssemblyVersion>0.4.67.0</AssemblyVersion>',(BASE/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__': unittest.main()

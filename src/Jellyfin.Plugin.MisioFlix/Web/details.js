@@ -1,6 +1,7 @@
-/* MisioFlix 0.4.23 — a compact layout for ORIGINAL Jellyfin item details (Jellyfin 12.4 DOM verified).
- * Reparents Jellyfin's existing nodes; does not change player, URL handling,
- * series/season links, metadata, playback state, or media files.
+/* MisioFlix 0.4.67 — non-reparenting compact layout for Jellyfin 12.4 details.
+ * The native image, ribbon, metadata and secondary sections stay in place;
+ * a CSS grid and a few owned nodes create the approved presentation.
+ * The native player, item ID, user status, URL and media files stay untouched.
  */
 (() => {
   'use strict';
@@ -18,8 +19,8 @@
   let previousDetailsRoute = '';
   let lastKnownHash = window.location.hash || '#/home';
   const kindRequests = new Map();
-  // Native metadata editor must run with Jellyfin's ORIGINAL details hierarchy.
-  // In v0.4.5 the native tree was never reparented; compact layout was added later.
+  // Native metadata editor runs on original Jellyfin node hierarchy.
+  // CSS-only arrangement leaves the hierarchy unchanged even on editor clicks.
   let nativeEditSuspended = false;
   let nativeEditItem = '';
   let nativeEditDialogSeen = false;
@@ -134,7 +135,7 @@
       '&mfGenre=' + encodeURIComponent(genre);
   }
   function ensureBackButton(page) {
-    const container = page.querySelector('.detailPagePrimaryContainer');
+    const container = page.querySelector('.detailPageWrapperContainer');
     if (!container || container.querySelector(':scope > .mf-detail-back')) return;
     const back = create('button','mf-detail-back','← Wstecz');
     back.type='button';
@@ -293,95 +294,80 @@
     slot.replaceChildren();
   }
 
-  const savedLocations=new WeakMap();
-  function relocate(element, destination){
-    if (!element || !element.parentNode) return;
-    const marker=document.createComment('MisioFlix original position');
-    element.parentNode.insertBefore(marker,element);
-    savedLocations.get(destination.closest('#itemDetailPage'))?.push([element,marker]);
-    destination.appendChild(element);
-  }
+  // v0.4.67: NEVER reparent a Jellyfin-owned node. Its older webcomponents
+  // run attachedCallback/detachedCallback when an existing subtree is moved,
+  // including a broken addScrollEventListener callback in Jellyfin 12.4.
+  // Keep image, ribbon, content, seasons and cast in their ORIGINAL parents;
+  // CSS grid lays them out without triggering any legacy component lifecycle.
   function restoreLayout(page){
-    const moves=savedLocations.get(page);
-    if(moves){
-      for(const [element,marker] of moves.slice().reverse())if(marker.isConnected)marker.replaceWith(element);
-    }
-    savedLocations.delete(page);
+    if(!page) return;
     page.querySelector('.mf-detail-back')?.remove();
+    page.querySelector('.mf-detail-poster-rail')?.remove();
     page.querySelector('.mf-detail-cast-button')?.remove();
     page.querySelector('.mf-detail-cast-panel')?.remove();
-    page.querySelector(':scope .mf-detail-grid')?.remove();
-    page.classList.remove('mf-detail-compact','mf-detail-has-quick-episode');
+    const wrapper=page.querySelector('.detailPageWrapperContainer');
+    wrapper?.classList.remove('mf-detail-grid');
+    page.querySelector('.detailPageSecondaryContainer')?.classList.remove('mf-detail-series-sections');
+    page.classList.remove('mf-detail-compact','mf-detail-has-quick-episode','mf-detail-cast-expanded');
     page.removeAttribute('data-mf-detail-type');
     page.removeAttribute('data-mf-detail-id');
   }
   function ensureLayout(page) {
+    const wrapper=page.querySelector('.detailPageWrapperContainer');
     const container=page.querySelector('.detailPagePrimaryContainer');
     const secondary=page.querySelector('.detailPageSecondaryContainer');
-    if (!container || !secondary) return null;
-    const existing=container.querySelector(':scope > .mf-detail-grid');
-    if (existing) return existing;
+    if (!wrapper || !container || !secondary || !wrapper.contains(secondary)) return null;
+    // Same native nodes as the approved compact layout. We only add our own
+    // small rail/controls and CSS classes; no appendChild of Jellyfin nodes.
     const image=container.querySelector(':scope > .detailImageContainer');
     const ribbon=container.querySelector(':scope > .detailRibbon');
     const main=container.querySelector(':scope > .detailPagePrimaryContent');
     if (!image || !ribbon || !main) return null;
-
-    savedLocations.set(page,[]);
-    const grid=create('div','mf-detail-grid');
-    const rail=create('aside','mf-detail-poster-rail');
-    const content=create('div','mf-detail-main');
-    const quick=create('div','mf-detail-quick-slot');
-    quick.setAttribute('aria-label','Oglądaj lub kontynuuj');
-    // Place the layout shell before moving Jellyfin's native elements.
-    container.append(grid);
-    grid.append(rail,content);
-    relocate(image,rail);
-    rail.appendChild(quick);
-    relocate(ribbon,content);
-    relocate(main,content);
-    const nav=create('div','mf-detail-series-sections');
-    content.append(nav);
-    for(const selector of [
-      '#childrenCollapsible','#listChildrenCollapsible','#specialsCollapsible',
-      '.moreFromSeasonSection','#additionalPartsCollapsible'
-    ]){
-      const element=page.querySelector(selector);
-      if (element) relocate(element,nav);
+    let rail=container.querySelector(':scope > .mf-detail-poster-rail');
+    if (!rail) {
+      rail=create('aside','mf-detail-poster-rail');
+      const quick=create('div','mf-detail-quick-slot');
+      quick.setAttribute('aria-label','Oglądaj lub kontynuuj');
+      rail.append(quick);
+      container.append(rail);
     }
+    // The secondary container holds the original seasons/episodes/cast. MAL
+    // and Simkl already use .mf-detail-series-sections to discover them.
+    secondary.classList.add('mf-detail-series-sections');
+    wrapper.classList.add('mf-detail-grid');
     const meta=main.querySelector('.itemDetailsGroup');
-    if (meta) {
+    if (meta && !main.querySelector('.mf-detail-cast-button')) {
       const castButton=create('button','mf-detail-cast-button','Obsada');
       castButton.type='button';
       castButton.setAttribute('aria-expanded','false');
       const castPanel=create('section','mf-detail-cast-panel');
       castPanel.hidden=true;
       castButton.addEventListener('click',()=>{
-        const expand=castPanel.hidden;
+        const expand=!page.classList.contains('mf-detail-cast-expanded');
+        page.classList.toggle('mf-detail-cast-expanded',expand);
         castPanel.hidden=!expand;
         castButton.setAttribute('aria-expanded',String(expand));
       });
       meta.after(castButton,castPanel);
-      for (const selector of ['#castCollapsible','#guestCastCollapsible']) {
-        const element=page.querySelector(selector);
-        if (element) relocate(element,castPanel);
-      }
-      syncCastButton(page);
     }
     page.classList.add('mf-detail-compact');
-    return grid;
+    return wrapper;
   }
   // Jellyfin leaves #castCollapsible/.hide in the DOM even when no people exist.
   // Keep the button hidden until the existing native cast cards become available.
   function syncCastButton(page) {
-    const button = page.querySelector('.mf-detail-cast-button');
-    const panel = page.querySelector('.mf-detail-cast-panel');
-    if (!button || !panel) return;
-    const available = [...panel.children].some(section =>
+    const button=page.querySelector('.mf-detail-cast-button');
+    const panel=page.querySelector('.mf-detail-cast-panel');
+    if(!button || !panel) return;
+    const sections=['#castCollapsible','#guestCastCollapsible']
+      .map(selector=>page.querySelector(selector)).filter(Boolean);
+    const available=sections.some(section =>
       !section.classList.contains('hide') &&
       !!section.querySelector('.itemsContainer .card, .itemsContainer .cardBox, .itemsContainer [data-id]'));
-    button.hidden = !available;
-    if (!available) {
-      panel.hidden = true;
+    button.hidden=!available;
+    if(!available){
+      page.classList.remove('mf-detail-cast-expanded');
+      panel.hidden=true;
       button.setAttribute('aria-expanded','false');
     }
   }
@@ -419,16 +405,13 @@
     page.querySelector('.mf-detail-quick-slot')?.replaceChildren();
     const panel=page.querySelector('.mf-detail-cast-panel');
     if(panel)panel.hidden=true;
+    page.classList.remove('mf-detail-cast-expanded');
     page.querySelector('.mf-detail-cast-button')?.setAttribute('aria-expanded','false');
     void loadQuick(page,id,grid.querySelector('.mf-detail-poster-rail'),serial);
   }
-  // v0.4.66: the Jellyfin action sheet resolves its selected command first.
-  // Reparenting detail nodes in the CAPTURE click handler can invalidate that
-  // action before itemContextMenu reaches metadataEditor.show(itemId,serverId).
-  // Let Jellyfin handle the entire click; hand its original layout back only
-  // on the next task, while our own layout observer is suspended.
-  // A metadata *form* (not a generic actionsheet formDialog) is the only signal
-  // that the actual editor has opened. Never navigate to #/metadata on a timer.
+  // v0.4.67: the native editor must open WITHOUT a second disconnection
+  // of Jellyfin's own DOM. Nothing to restore: the layout is now CSS-only.
+  // Only temporarily suspend our observers while the dialog is in use.
   function nativeMetadataDialogVisible() {
     return [...document.querySelectorAll('.editItemMetadataForm')]
       .some(form => form.isConnected && form.getClientRects().length > 0);
@@ -458,23 +441,11 @@
     nativeEditSuspended=true;
     nativeEditItem=id;
     nativeEditDialogSeen=nativeMetadataDialogVisible();
-    const page=lastPage && lastPage.isConnected ? lastPage : activeDetailsPage(id);
     const initialHash=window.location.hash;
-    // Zero-delay TASK, not a capture-phase DOM mutation or a microtask: the
-    // Jellyfin action-sheet click handler and its Promise callbacks run first.
-    window.setTimeout(()=>{
-      if(!nativeEditSuspended || itemRoute()!==id)return;
-      if(page && page.isConnected && page.classList.contains('mf-detail-compact')){
-        restoreLayout(page);
-        lastPage=null;lastItem='';generation++;
-      }
-    },0);
     nativeEditObserver=new MutationObserver(()=>{
       if(!nativeEditSuspended)return;
       if(itemRoute()!==nativeEditItem){finishNativeMetadataEdit();return;}
       if(nativeMetadataDialogVisible())nativeEditDialogSeen=true;
-      // Only the *real editor form* closing releases the handoff. A disappearing
-      // action sheet is NOT the editor closing (the editor loads asynchronously).
       if(nativeEditDialogSeen && !nativeMetadataDialogExists())finishNativeMetadataEdit();
     });
     nativeEditObserver.observe(document.body,{childList:true,subtree:true});
@@ -482,8 +453,6 @@
       if(!nativeEditSuspended)return;
       if(window.location.hash!==initialHash || itemRoute()!==id){finishNativeMetadataEdit();return;}
       if(nativeMetadataDialogVisible()){nativeEditDialogSeen=true;return;}
-      // Diagnostic only. Never hijack the URL: the metadata manager is not
-      // the per-title editor and hides Jellyfin's original error/stack trace.
       console.warn('[MisioFlix] Native per-title metadata editor has not opened. Check the first Jellyfin error in DevTools Console.');
       finishNativeMetadataEdit();
     },8000);
@@ -499,9 +468,8 @@
       if(changes.some(change=>change.type==='childList'))schedule();
     });
     observer.observe(document.body,{childList:true,subtree:true});
-    // Restore original React-owned elements before the navigation click is
-    // handled by Jellyfin. Otherwise the next library renderer can see a
-    // mutated/cached detail tree. Do not touch the player or navigation URLs.
+    // Remove only our own layout elements before another route appears.
+    // All native nodes are already in their original parent containers.
     document.addEventListener('click',event=>{
       if(!lastPage || !lastPage.isConnected)return;
       const link=event.target.closest?.('a[href]');

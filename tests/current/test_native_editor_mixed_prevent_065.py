@@ -5,12 +5,14 @@ ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / 'src/Jellyfin.Plugin.MisioFlix/Web'
 
 class Preventative065(unittest.TestCase):
-    def test_editor_releases_native_dom_before_jellyfin_action(self):
+    def test_editor_preserves_native_dom_without_reparenting(self):
         code = (WEB / 'details.js').read_text()
         handler = code[code.index('  function recoverNativeMetadataEdit('):code.index('  function schedule() {', code.index('  function recoverNativeMetadataEdit('))]
         self.assertIn('nativeEditSuspended=true', handler)
-        self.assertIn("},0);", handler)
-        self.assertIn('restoreLayout(page);', handler)
+        self.assertNotIn('restoreLayout(page)',handler)
+        self.assertNotIn('ensureLayout(page)',handler)
+        self.assertNotIn('},0);',handler)
+        self.assertNotIn('appendChild',handler)
         self.assertIn(".editItemMetadataForm", code)
         self.assertNotIn("window.location.hash=", handler)
         self.assertIn('nativeEditObserver.observe(document.body', handler)

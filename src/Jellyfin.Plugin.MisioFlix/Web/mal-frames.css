@@ -83,3 +83,17 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .mf-detail-m
     font-size:12px!important;margin-right:6px!important;padding:3px 7px!important;
   }
 }
+
+/* v0.4.67 original, unmoved Jellyfin poster — read-only MAL mixed frame */
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-mf-mal-watch="watched"][data-mf-mal-frame="mixed"]
+  .detailPagePrimaryContainer > .detailImageContainer {
+  position:relative!important;isolation:isolate;outline:0!important;box-shadow:none!important;border-radius:15px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-mf-mal-watch="watched"][data-mf-mal-frame="mixed"]
+  .detailPagePrimaryContainer > .detailImageContainer::after {
+  content:"";position:absolute;inset:0;z-index:8;pointer-events:none;
+  box-sizing:border-box;border:0!important;border-radius:15px;
+  padding:3px;background:var(--mf-mal-mixed-frame);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}

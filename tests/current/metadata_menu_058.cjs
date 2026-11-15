@@ -24,22 +24,22 @@ function scene(command='edit',options={}) {
 {
  const s=scene();s.click();
  assert.equal(s.location.hash,`#/details?id=${id}`);
- assert.equal(s.jobs.filter(j=>j.delay===0).length,1,'native action-sheet handler runs before DOM handoff');
+ assert.equal(s.jobs.filter(j=>j.delay===0).length,0,'native editor must not move Jellyfin DOM in a deferred task');
  assert.equal(s.jobs.filter(j=>j.delay===8000).length,1);
- s.run(0);s.run(8000);
+ s.run(8000);
  assert.equal(s.location.hash,`#/details?id=${id}`,'no Metadata Manager redirect');
  assert.equal(s.warnings.length,1,'diagnosis is logged without hijacking the route');
 }
 {
  const s=scene();s.click();
  // An action sheet's generic formDialog is NOT the actual metadata editor.
- s.run(0);
+ 
  assert.equal(s.dialogs.length,0);
  s.run(8000);
  assert.equal(s.location.hash,`#/details?id=${id}`);
 }
 {
- const s=scene();s.click();s.run(0);
+ const s=scene();s.click();
  const form={isConnected:true,hidden:false,getClientRects(){return [{}]}};
  s.dialogs.push(form);s.mutate();s.run(8000);
  assert.equal(s.warnings.length,0);

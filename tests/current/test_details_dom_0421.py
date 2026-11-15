@@ -25,11 +25,13 @@ class ActualJellyfin124DOM(unittest.TestCase):
         self.assertIn("container.querySelector(':scope > .detailImageContainer')",SCRIPT)
         self.assertIn("container.querySelector(':scope > .detailRibbon')",SCRIPT)
         self.assertIn("container.querySelector(':scope > .detailPagePrimaryContent')",SCRIPT)
-        self.assertIn("'#childrenCollapsible','#listChildrenCollapsible','#specialsCollapsible'",SCRIPT)
+        self.assertIn("secondary.classList.add('mf-detail-series-sections')",SCRIPT)
+        self.assertIn('grid-template-columns:var(--mf-detail-poster)',STYLE)
+        self.assertNotIn('relocate(',SCRIPT)
     def test_empty_cast_not_exposed(self):
         self.assertIn('function syncCastButton(page)', SCRIPT)
         self.assertIn("!section.classList.contains('hide')", SCRIPT)
-        self.assertIn('button.hidden = !available', SCRIPT)
+        self.assertIn('button.hidden=!available', SCRIPT)
         self.assertIn('syncCastButton(page);',SCRIPT)
         self.assertIn('.mf-detail-cast-button[hidden] {display:none!important}',STYLE)
     def test_stays_scoped_and_does_not_modify_player(self):

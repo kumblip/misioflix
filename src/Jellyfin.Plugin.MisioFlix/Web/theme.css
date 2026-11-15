@@ -1356,3 +1356,94 @@ html.misioflix-skin .card[data-mf-anime="1"][data-mf-watch="unknown"] .cardScala
     text-align:center!important;
   }
 }
+
+/* v0.4.67 — NO REPARENTING OF JELLYFIN COMPONENTS.
+ * Layout-only grid on the existing native wrapper. The primary container
+ * becomes CSS-transparent (display:contents), not DOM-transparent: ALL native
+ * nodes retain their parents and attach/detach callbacks are not rerun.
+ * The additional poster rail and back button are MisioFlix-owned DOM only.
+ */
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer.mf-detail-grid {
+  display:grid!important;
+  grid-template-columns:var(--mf-detail-poster) minmax(0,1fr)!important;
+  grid-template-rows:auto auto auto auto;
+  column-gap:var(--mf-detail-gap);row-gap:15px;
+  align-items:start;align-content:start;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer.mf-detail-grid > .detailPagePrimaryContainer {
+  display:contents!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer.mf-detail-grid > .mf-detail-back {
+  grid-column:1 / -1;grid-row:1;justify-self:start;margin-bottom:0!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContainer > .detailImageContainer {
+  grid-column:1;grid-row:2 / span 2;
+  position:relative!important;display:block!important;align-self:start;
+  width:100%!important;min-width:0!important;max-width:100%!important;
+  margin:0!important;padding:0!important;float:none!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContainer > .detailImageContainer .card {
+  position:static!important;top:auto!important;left:auto!important;right:auto!important;
+  display:block!important;width:100%!important;height:auto!important;max-width:100%!important;
+  float:none!important;margin:0!important;border-radius:14px!important;
+  overflow:hidden!important;box-shadow:0 8px 32px rgba(0,0,0,.20)!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContainer > .detailImageContainer :is(.cardImageContainer,.cardPadder) {
+  max-width:100%!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContainer > .detailRibbon {
+  grid-column:2;grid-row:2;min-width:0;align-self:start;
+  position:relative!important;top:auto!important;left:auto!important;right:auto!important;
+  width:100%!important;min-height:0!important;height:auto!important;margin:0!important;
+  padding:0!important;float:none!important;display:flex!important;flex-wrap:wrap!important;
+  justify-content:space-between!important;align-items:center!important;gap:10px!important;
+  background:transparent!important;box-shadow:none!important;border:0!important;backdrop-filter:none!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContainer > .detailPagePrimaryContent {
+  grid-column:2;grid-row:3;align-self:start;min-width:0;
+  width:100%!important;max-width:100%!important;
+  padding:0!important;margin:0!important;float:none!important;
+  position:relative!important;top:auto!important;left:auto!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContainer > .mf-detail-poster-rail {
+  grid-column:1;grid-row:4;align-self:start;min-width:0;
+  display:flex!important;flex-direction:column;gap:14px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer.mf-detail-grid > .detailPageSecondaryContainer.mf-detail-series-sections {
+  grid-column:2;grid-row:4;min-width:0;align-self:start;
+  display:flex!important;flex-direction:column;gap:16px;
+  padding:0!important;margin:0!important;width:100%!important;
+  background:transparent!important;box-shadow:none!important;
+}
+/* Cast remains in the native secondary container. Never move native slider
+ * components into a custom panel because that reattaches scroll webcomponents. */
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-cast-panel {display:none!important}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-series-sections :is(#castCollapsible,#guestCastCollapsible) {
+  display:none!important;order:-1;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-cast-expanded .mf-detail-series-sections :is(#castCollapsible,#guestCastCollapsible):not(.hide) {
+  display:block!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-cast-expanded .mf-detail-series-sections :is(#castCollapsible,#guestCastCollapsible) .scrollSlider {
+  display:flex;overflow-x:auto!important;gap:9px;max-height:385px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-cast-expanded .mf-detail-series-sections :is(#castCollapsible,#guestCastCollapsible) .card {
+  flex:0 0 145px!important;max-width:145px!important;
+}
+/* Four-state MAL poster frame also attaches to the original, UNMOVED poster. */
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-mf-mal-watch]:not([data-mf-mal-watch="unknown"]) .detailPagePrimaryContainer > .detailImageContainer {
+  outline:3px solid var(--mf-detail-mal-border);outline-offset:1px;border-radius:15px;
+}
+@media(max-width:850px){
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer.mf-detail-grid {
+    grid-template-columns:minmax(0,1fr)!important;row-gap:18px;
+  }
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer.mf-detail-grid > .mf-detail-back {grid-column:1;grid-row:1}
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContainer > .detailImageContainer {
+    grid-column:1;grid-row:2;max-width:min(100%,270px)!important;margin-inline:auto!important;
+  }
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContainer > .mf-detail-poster-rail {grid-column:1;grid-row:3;max-width:min(100%,330px);margin-inline:auto;width:100%}
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContainer > .detailRibbon {grid-column:1;grid-row:4}
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContainer > .detailPagePrimaryContent {grid-column:1;grid-row:5}
+  html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPageWrapperContainer.mf-detail-grid > .detailPageSecondaryContainer.mf-detail-series-sections {grid-column:1;grid-row:6}
+}

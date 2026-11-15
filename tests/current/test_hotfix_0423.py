@@ -24,7 +24,8 @@ class Hotfix0423(unittest.TestCase):
         self.assertIn('data-positionticks',H)
     def test_details_restore_when_leaving(self):
         self.assertIn('restoreLayout(lastPage)',D)
-        self.assertIn("savedLocations.delete(page)",D)
+        self.assertIn("page.querySelector('.mf-detail-poster-rail')?.remove()",D)
+        self.assertNotIn('marker.replaceWith(element)',D)
         self.assertIn('lastPage=null;lastItem=',D)
     def test_non_destructive(self):
         self.assertNotIn('DeleteItems',H+D)
