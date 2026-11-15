@@ -9,7 +9,10 @@ class Preventative065(unittest.TestCase):
         code = (WEB / 'details.js').read_text()
         handler = code[code.index('  function recoverNativeMetadataEdit('):code.index('  function schedule() {', code.index('  function recoverNativeMetadataEdit('))]
         self.assertIn('nativeEditSuspended=true', handler)
+        self.assertIn("},0);", handler)
         self.assertIn('restoreLayout(page);', handler)
+        self.assertIn(".editItemMetadataForm", code)
+        self.assertNotIn("window.location.hash=", handler)
         self.assertIn('nativeEditObserver.observe(document.body', handler)
         self.assertIn('if(nativeEditSuspended) return;', code)
         self.assertIn('if(nativeEditDialogSeen && !nativeMetadataDialogExists())finishNativeMetadataEdit();', handler)

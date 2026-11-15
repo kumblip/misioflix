@@ -422,24 +422,25 @@
     page.querySelector('.mf-detail-cast-button')?.setAttribute('aria-expanded','false');
     void loadQuick(page,id,grid.querySelector('.mf-detail-poster-rail'),serial);
   }
-  // v0.4.65: restore native DOM BEFORE invoking the original Jellyfin 12.4
-  // itemContextMenu edit command.  The old v0.4.5 worked without reparenting
-  // these elements; previous versions only navigated away after an error.
-  // We do NOT open an editor ourselves, interfere with the native click, or
-  // change metadata APIs. Other actions retain the current compact layout.
+  // v0.4.66: the Jellyfin action sheet resolves its selected command first.
+  // Reparenting detail nodes in the CAPTURE click handler can invalidate that
+  // action before itemContextMenu reaches metadataEditor.show(itemId,serverId).
+  // Let Jellyfin handle the entire click; hand its original layout back only
+  // on the next task, while our own layout observer is suspended.
+  // A metadata *form* (not a generic actionsheet formDialog) is the only signal
+  // that the actual editor has opened. Never navigate to #/metadata on a timer.
   function nativeMetadataDialogVisible() {
-    return [...document.querySelectorAll('.dialogContainer .formDialog, .dialog.formDialog, .formDialog')]
-      .some(node => node.isConnected && !node.hidden && node.getClientRects().length > 0);
+    return [...document.querySelectorAll('.editItemMetadataForm')]
+      .some(form => form.isConnected && form.getClientRects().length > 0);
   }
   function nativeMetadataDialogExists() {
-    return !!document.querySelector('.dialogContainer .formDialog, .dialog.formDialog, .formDialog');
+    return !!document.querySelector('.editItemMetadataForm');
   }
   function finishNativeMetadataEdit() {
     if(!nativeEditSuspended)return;
     nativeEditSuspended=false;
     nativeEditObserver?.disconnect?.();nativeEditObserver=null;
     nativeEditDialogSeen=false;nativeEditItem='';
-    // Recreate only OUR compact decorations after the native editor is gone.
     schedule();
   }
   function isNativeEditMetadataMenuItem(target) {
@@ -458,32 +459,34 @@
     nativeEditItem=id;
     nativeEditDialogSeen=nativeMetadataDialogVisible();
     const page=lastPage && lastPage.isConnected ? lastPage : activeDetailsPage(id);
-    if(page && page.classList.contains('mf-detail-compact')){
-      // Triggered in CAPTURE phase, while the native actionSheet still owns
-      // the click; its delegated listener is allowed to handle it normally.
-      restoreLayout(page);
-      lastPage=null;lastItem='';generation++;
-    }
+    const initialHash=window.location.hash;
+    // Zero-delay TASK, not a capture-phase DOM mutation or a microtask: the
+    // Jellyfin action-sheet click handler and its Promise callbacks run first.
+    window.setTimeout(()=>{
+      if(!nativeEditSuspended || itemRoute()!==id)return;
+      if(page && page.isConnected && page.classList.contains('mf-detail-compact')){
+        restoreLayout(page);
+        lastPage=null;lastItem='';generation++;
+      }
+    },0);
     nativeEditObserver=new MutationObserver(()=>{
       if(!nativeEditSuspended)return;
       if(itemRoute()!==nativeEditItem){finishNativeMetadataEdit();return;}
       if(nativeMetadataDialogVisible())nativeEditDialogSeen=true;
-      // The dialog is actually removed on close, not merely temporarily hidden
-      // during Jellyfin's opening/closing animations.
+      // Only the *real editor form* closing releases the handoff. A disappearing
+      // action sheet is NOT the editor closing (the editor loads asynchronously).
       if(nativeEditDialogSeen && !nativeMetadataDialogExists())finishNativeMetadataEdit();
     });
     nativeEditObserver.observe(document.body,{childList:true,subtree:true});
-    const initialHash=window.location.hash;
     window.setTimeout(()=>{
       if(!nativeEditSuspended)return;
       if(window.location.hash!==initialHash || itemRoute()!==id){finishNativeMetadataEdit();return;}
       if(nativeMetadataDialogVisible()){nativeEditDialogSeen=true;return;}
-      // Keep the v0.4.59 emergency route until successful NAS tests prove the
-      // original editor works; this is NOT the primary editing mechanism.
-      console.warn('[MisioFlix] Native editor did not open; use Metadata Manager (diagnostic fallback).');
+      // Diagnostic only. Never hijack the URL: the metadata manager is not
+      // the per-title editor and hides Jellyfin's original error/stack trace.
+      console.warn('[MisioFlix] Native per-title metadata editor has not opened. Check the first Jellyfin error in DevTools Console.');
       finishNativeMetadataEdit();
-      window.location.hash='#/metadata';
-    },3000);
+    },8000);
   }
   function schedule() {
     if(timer) return;
