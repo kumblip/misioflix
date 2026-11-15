@@ -38,8 +38,8 @@ class NativeDOMSafety067(unittest.TestCase):
         self.assertIn('var(--mf-mal-mixed-frame)', (WEB/'mal-frames.css').read_text())
         self.assertIn('var(--mf-simkl-frame)', (WEB/'simkl.css').read_text())
     def test_plugin_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.68.0')
-        self.assertIn('<AssemblyVersion>0.4.68.0</AssemblyVersion>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.69.0')
+        self.assertIn('<AssemblyVersion>0.4.69.0</AssemblyVersion>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
     def test_mal_simkl_backends_and_home_recovery_not_modified(self):
         fixed={
             'src/Jellyfin.Plugin.MisioFlix/Web/home.js':'656dcf4b3ac8abb569af8ba1cbf78713f5c6a72d4332c2c77dad682132258ac6',

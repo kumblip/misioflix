@@ -206,8 +206,13 @@
     if(!surface)return;
     const kind=cardKind(card), year=cardYear(card);
     const info=card.getAttribute('data-mf-format')||'';
+    // Only the AnimePL /mixed library drops the format label: "2019 · Seria TV" -> "2019".
+    // Other lists and native detail pages retain their original metadata.
+    const format=(info&&kind!=='film'&&!(modernMixedRoute()&&kind==='anime'))?` · ${info}`:'';
     const pawStats=stats(card,kind), chips=genres(card);
-    const stamp=JSON.stringify([kind,year,info,pawStats.map(s=>s.value),chips]);
+    // The effective displayed label, not the raw format, owns the signature:
+    // a reused card updates correctly after navigating in/out of /mixed.
+    const stamp=JSON.stringify([kind,year,format,pawStats.map(s=>s.value),chips]);
     let overlay=surface.querySelector(':scope > .mf-native-overlay');
     if(overlay?.getAttribute('data-mf-signature')===stamp)return;
     if(overlay)overlay.remove();
@@ -222,7 +227,6 @@
       topLeft.appendChild(makeEl('span','mf-native-kind',labels[kind]));
     }
     if(year){
-      const format=(info&&kind!=='film')?` · ${info}`:'';
       topLeft.appendChild(makeEl('span','mf-native-year',year+format));
     }
     top.appendChild(topLeft);
