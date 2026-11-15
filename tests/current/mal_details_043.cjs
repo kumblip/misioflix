@@ -26,7 +26,8 @@ function posterStatus(entry) {
     removeAttribute(name) { delete this.attrs[name]; },
     querySelector(selector) {
       if (selector === '.mf-detail-mal-badge') return this.label;
-      return {appendChild: child => {this.label = child;}};
+      if (selector.includes('.itemMiscInfo-primary')) return {prepend: child => {this.label=child; child.parentElement=this;}};
+      return null;
     }
   };
   const panel = {closest: () => page};

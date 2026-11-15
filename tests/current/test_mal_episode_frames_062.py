@@ -11,8 +11,8 @@ SIMKL=(WEB/'simkl.js').read_text('utf8')
 
 class MalEpisodeFrames062(unittest.TestCase):
     def test_version_and_original_skins_retained(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.63.0')
-        self.assertIn('AssemblyVersion>0.4.63.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.64.0')
+        self.assertIn('AssemblyVersion>0.4.64.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
         self.assertIn('assets/mal-frames.css?v=',(SRC/'Services/ScriptInjection.cs').read_text())
     def test_read_only_and_native_per_episode_jellyfin_source(self):
         section=MAL[MAL.index('const malEpisodeIndexes=new Map();'):MAL.index('function saveIndexEntry(')]
@@ -40,9 +40,9 @@ class MalEpisodeFrames062(unittest.TestCase):
         self.assertIn('clearMalEpisodeFrames();\n    if(detailPanel?.isConnected)',MAL)
         self.assertIn('decorateMalEpisodeFrames();\n    void refreshMalResume()',MAL)
         self.assertIn('row.setAttribute(\'data-mf-mal-episode-watch\',state);',MAL)
-    def test_simkl_remains_isolated(self):
+    def test_simkl_remains_isolated_under_064_layout(self):
         import hashlib
         self.assertEqual(hashlib.sha256(SIMKL.encode()).hexdigest(),
-            '00ef66fa37fb2854984c968ecdebe194612db86b626acc1eea33d38fd8795f72')
+            '9c9d924e9e97b6a36019a569faa07925c3ba96b928c47142e18322204ddbbd48')
 
 if __name__=='__main__':unittest.main()

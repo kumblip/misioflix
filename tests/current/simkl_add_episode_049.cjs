@@ -26,7 +26,7 @@ function fixture(type){
  const page=new Node('div');page.dataset.mfDetailId=id;
  const rail=new Node('div');rail.className='mf-detail-poster-rail';page.append(rail);
  const body=new Node('body');const jobs=[];let init;const calls=[];let added=false;let episodeSeen=false;
- const document={body,readyState:'loading',createElement:t=>new Node(t),addEventListener(ev,fn){if(ev==='DOMContentLoaded')init=fn;},
+ const document={body,readyState:'loading',createElement:t=>new Node(t),createElementNS:(_ns,t)=>new Node(t),addEventListener(ev,fn){if(ev==='DOMContentLoaded')init=fn;},
    querySelector(sel){if(sel==='.mf-simkl-toast')return null;return null;},
    querySelectorAll(sel){return sel==='#itemDetailPage.mf-detail-compact'?[page]:[];}};
  const browser={location:{hash:`#/details?id=${id}`},ApiClient:{getCurrentUserId(){return user;},accessToken(){return 'stub-token';}},

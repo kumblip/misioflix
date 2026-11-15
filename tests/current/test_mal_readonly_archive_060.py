@@ -14,7 +14,7 @@ REGISTRATOR = (SRC / 'Services' / 'ScriptInjection.cs').read_text('utf-8')
 
 class ReadOnlyArchive060(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.63.0')
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.64.0')
     def test_complete_unfiltered_paginated_list(self):
         self.assertIn('FetchFullArchiveAsync', MAL)
         self.assertIn('users/@me/animelist?fields={fields}', MAL)
@@ -56,13 +56,14 @@ class ReadOnlyArchive060(unittest.TestCase):
         self.assertNotIn('Przywróć z kopii', CLIENT)
         self.assertIn('mal-archive.css', REGISTRATOR)
         self.assertIn('mf-mal-archive', (SRC/'Web'/'mal-archive.css').read_text('utf8'))
-    def test_separate_simkl_untouched(self):
-        # Snapshot of stable v0.4.59.0 source digests. CI only checks out
-        # the repository and must not depend on a ZIP stored outside it.
+    def test_separate_simkl_files_restricted_to_approved_visual_delta(self):
+        # v0.4.64 deliberately changes ONLY the Simkl score-placement UI.
+        # Fixed SHA-256 protects that approved version plus the unchanged C#
+        # synchronization and database modules, with no external ZIP needed.
         import hashlib
         expected_sha256 = {
-            'src/Jellyfin.Plugin.MisioFlix/Web/simkl.js': '00ef66fa37fb2854984c968ecdebe194612db86b626acc1eea33d38fd8795f72',
-            'src/Jellyfin.Plugin.MisioFlix/Web/simkl.css': '5ef574a213c3d5f347f672670279aa1326f386cd32f1da58229dd6354bb263a4',
+            'src/Jellyfin.Plugin.MisioFlix/Web/simkl.js': '9c9d924e9e97b6a36019a569faa07925c3ba96b928c47142e18322204ddbbd48',
+            'src/Jellyfin.Plugin.MisioFlix/Web/simkl.css': '415ecebac9b02ab6c6635944f51bdbfdd449db7b8df2f44258a31f103f0f9838',
             'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixSimklService.cs': 'ab31152c93a6ca697c96ac229fca913136011a2805bf6b42beaed56343442d75',
             'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixSimklLocalStore.cs': 'af0ff76d3f2a8e07849df22db37ef6b83f7750b9d2b4bc1fbbb148777daaa117',
         }

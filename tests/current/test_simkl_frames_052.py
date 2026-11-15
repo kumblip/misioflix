@@ -40,7 +40,7 @@ class SimklFrames052(unittest.TestCase):
         self.assertIn('resumeForUser=new Set()',SIMKL)
     def test_rating_in_details_only_nonanime_movie_series(self):
         self.assertIn("const type=session.episodeId?'Episode':session.seasonId?'Season':",SIMKL)
-        self.assertIn("const actions=page.querySelector('.mainDetailButtons')",SIMKL)
+        self.assertIn(".detailRibbon .infoWrapper .itemMiscInfo-primary",SIMKL)
         self.assertIn("if(type==='Season'||!data.connected)",SIMKL)
         self.assertIn("badge.append(el('span','mf-simkl-detail-score-number',value),simklPaw()",SIMKL)
         self.assertIn("card.dataset.mfAnime==='1'",SIMKL)

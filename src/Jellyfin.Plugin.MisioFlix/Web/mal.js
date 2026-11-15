@@ -523,13 +523,22 @@
       malHasActiveResume(ctx.catalogId,ctx.seasonId?ctx.seasonNumber:null);
     if(mixed)page.setAttribute('data-mf-mal-frame','mixed');
     else page.removeAttribute('data-mf-mal-frame');
+    // v0.4.64: own MAL badge stays directly BEFORE the year/date in the
+    // native metadata row. Never append it to the ribbon's action-button area.
     let label=page.querySelector('.mf-detail-mal-badge');
-    if(!label){
-      label=el('span','mf-detail-mal-badge');
-      const anchor=page.querySelector('.detailRibbon .itemMiscInfo,.detailRibbon .infoWrapper,.detailRibbon');
-      anchor?.appendChild(label);
+    if(!label)label=el('span','mf-detail-mal-badge');
+    const row=page.querySelector('.detailRibbon .infoWrapper .itemMiscInfo-primary, .detailRibbon .infoWrapper .itemMiscInfo, .detailRibbon .itemMiscInfo-primary, .detailRibbon .itemMiscInfo');
+    if(row){
+      if(label.parentElement!==row)row.prepend(label);
+    }else{
+      // The year row may not be mounted yet. Keep the badge in the info
+      // column, after the title; a later render moves it into the year row.
+      const info=page.querySelector('.detailRibbon .infoWrapper');
+      const name=info?.querySelector('.nameContainer');
+      if(name){if(label.previousElementSibling!==name)name.after(label);}
+      else if(info&&label.parentElement!==info)info.prepend(label);
     }
-    if(!label)return;
+    if(!label.isConnected && !label.parentElement)return;
     const fields=entry?entryFields(entry):null;
     label.textContent=fields&&fields.score>0?`★ ${fields.score}/10 · MAL`:'★ Bez oceny · MAL';
     label.title='Osobista ocena zalogowanego użytkownika MyAnimeList';

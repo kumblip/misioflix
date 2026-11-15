@@ -254,13 +254,21 @@
     } : entry;
     page.classList.add('mf-simkl-detail-ready');
     page.setAttribute('data-mf-simkl-watch',simklFrame(seasonEntry,fallback,inProgress));
-    // A personal score is NOT a Jellyfin community score; display beside
-    // native play/heart buttons only on the Movie/Series detail header.
-    const actions=page.querySelector('.mainDetailButtons');
+    // v0.4.64: Simkl keeps its OWN badge and places it BEFORE the year/date
+    // in the native metadata row, never beside the Play/Heart buttons.
     let badge=page.querySelector('.mf-simkl-detail-score');
     if(type==='Season'||!data.connected){badge?.remove();return;}
-    if(!actions)return;
-    if(!badge){badge=el('span','mf-simkl-detail-score');actions.prepend(badge);}
+    if(!badge)badge=el('span','mf-simkl-detail-score');
+    const row=page.querySelector('.detailRibbon .infoWrapper .itemMiscInfo-primary, .detailRibbon .infoWrapper .itemMiscInfo, .detailRibbon .itemMiscInfo-primary, .detailRibbon .itemMiscInfo');
+    if(row){
+      if(badge.parentElement!==row)row.prepend(badge);
+    }else{
+      const info=page.querySelector('.detailRibbon .infoWrapper');
+      const name=info?.querySelector('.nameContainer');
+      if(name){if(badge.previousElementSibling!==name)name.after(badge);}
+      else if(info&&badge.parentElement!==info)info.prepend(badge);
+    }
+    if(!badge.isConnected && !badge.parentElement)return;
     badge.replaceChildren();
     const rating=Number(entry?.score);
     const value=Number.isInteger(rating)&&rating>=1&&rating<=10?`${rating}/10`:'Bez oceny';
