@@ -7,7 +7,7 @@ MAL=(W/'mal.js').read_text();SIM=(W/'simkl.js').read_text()
 MC=(W/'mal-frames.css').read_text();SC=(W/'simkl.css').read_text()
 class RatingBeforeDate064(unittest.TestCase):
  def test_version(self):
-  self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.64.0')
+  self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.65.0')
  def test_mal_only_meta_row(self):
   src=MAL.split('  function showDetailMalRating(',1)[1].split('  function showMalSaveToast(',1)[0]
   self.assertIn(".detailRibbon .infoWrapper .itemMiscInfo-primary",src)

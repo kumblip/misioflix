@@ -41,4 +41,4 @@ const malcss=fs.readFileSync(path.join(web,'mal-frames.css'),'utf8'),simcss=fs.r
 assert(malcss.includes('.detailRibbon .mf-detail-mal-badge'));
 assert(simcss.includes('.detailRibbon .mf-simkl-detail-score'));
 assert(!simcss.includes('.mf-detail-mal-badge'));
-console.log('PASS v0.4.64: MAL and Simkl ratings before year, own CSS, no action-button intrusion');
+console.log('PASS v0.4.65: MAL and Simkl ratings before year, own CSS, no action-button intrusion');

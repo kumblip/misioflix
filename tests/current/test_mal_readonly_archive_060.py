@@ -14,7 +14,7 @@ REGISTRATOR = (SRC / 'Services' / 'ScriptInjection.cs').read_text('utf-8')
 
 class ReadOnlyArchive060(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.64.0')
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.65.0')
     def test_complete_unfiltered_paginated_list(self):
         self.assertIn('FetchFullArchiveAsync', MAL)
         self.assertIn('users/@me/animelist?fields={fields}', MAL)
@@ -57,7 +57,7 @@ class ReadOnlyArchive060(unittest.TestCase):
         self.assertIn('mal-archive.css', REGISTRATOR)
         self.assertIn('mf-mal-archive', (SRC/'Web'/'mal-archive.css').read_text('utf8'))
     def test_separate_simkl_files_restricted_to_approved_visual_delta(self):
-        # v0.4.64 deliberately changes ONLY the Simkl score-placement UI.
+        # v0.4.65 deliberately changes ONLY the Simkl score-placement UI.
         # Fixed SHA-256 protects that approved version plus the unchanged C#
         # synchronization and database modules, with no external ZIP needed.
         import hashlib

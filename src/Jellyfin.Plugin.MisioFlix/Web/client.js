@@ -12,6 +12,51 @@
   // Reuse the same noninteractive visual ornaments as v0.4.29, not a separate
   // plain-text CSS lookalike. Cards may be recycled: always check data-id.
   const modernMixedRoute=()=>/^#\/mixed(?:[?&#]|$)/i.test(window.location?.hash||'');
+  // v0.4.65: on Modern /mixed, decorate only the currently mounted, visible
+  // virtual-list subtree AFTER Jellyfin has committed its initial card tree.
+  // We do not insert a child into a React-owned card during its first render.
+  // This is a PREVENTATIVE mount guard, not an error-triggered reload.
+  let mixedActiveList=null;
+  let mixedReady=false;
+  let mixedProbePending=false;
+  function mixedCardRoot() {
+    for(const list of document.querySelectorAll('.itemsContainer')) {
+      if(!list.isConnected || !list.querySelector('.card[data-id]'))continue;
+      if(typeof list.getClientRects==='function' && !list.getClientRects().length)continue;
+      return list;
+    }
+    return null;
+  }
+  function mixedDecorationsAllowed() {
+    if(!modernMixedRoute()){
+      mixedReady=false;mixedActiveList=null;
+      return true;
+    }
+    const root=mixedCardRoot();
+    if(!root){mixedActiveList=null;mixedReady=false;return false;}
+    if(mixedActiveList!==root){mixedActiveList=root;mixedReady=false;}
+    if(mixedReady)return true;
+    if(mixedProbePending)return false;
+    const first=root.querySelector('.card[data-id]');
+    const initialId=first?.getAttribute('data-id');
+    if(!first || !initialId)return false;
+    const raf=window.requestAnimationFrame?.bind(window);
+    if(!raf){ // Non-browser test harnesses; real Jellyfin provides rAF.
+      mixedReady=true;return true;
+    }
+    mixedProbePending=true;
+    raf(()=>raf(()=>{
+      mixedProbePending=false;
+      if(!modernMixedRoute())return;
+      if(mixedActiveList===root && root.isConnected && first.isConnected &&
+         first.getAttribute('data-id')===initialId){
+        mixedReady=true;
+      }
+      schedule();
+    }));
+    return false;
+  }
+
   const CARD = '.card, .MuiCard-root, [data-testid="item-card"], [data-testid="media-card"]';
   const IMAGE = '.cardImageContainer, .MuiCardMedia-root, [data-testid="media-image"]';
   const TITLE = 'h1,h2,h3,h4,.sectionTitle,.sectionTitleTextButton,.MuiTypography-h4,.MuiTypography-h5';
@@ -233,8 +278,13 @@
   }
   function markCards(){
     document.documentElement.classList.toggle('mf-modern-mixed-route',modernMixedRoute());
+    if(!mixedDecorationsAllowed())return;
+    // Never change hidden, React-cached cards of another view while /mixed
+    // mounts or virtualizes its own list.
+    const scope=modernMixedRoute()?mixedActiveList:document.body;
+    if(!scope)return;
     let n=0;
-    for(const card of document.body.querySelectorAll(CARD)){
+    for(const card of scope.querySelectorAll(CARD)){
       if(card.closest('.dialog,#dashboardPage,[role="dialog"]'))continue;
       // Virtualized #/mixed slots can be reused for a DIFFERENT anime.
       resetCardIfReused(card);
@@ -329,6 +379,7 @@
   }
   function useMetadata(card,data){
     if(!data||typeof data!=='object')return;
+    if(modernMixedRoute() && (!mixedDecorationsAllowed() || !mixedActiveList?.contains(card)))return;
     // One visual component for Home's native cards, AnimePL and other libraries:
     // restore the proven v0.4.29 overlay instead of the pseudo-content imitation.
     const before=card.getAttribute('data-mf-mal-id')||'';
@@ -433,6 +484,7 @@
   }
   function observeVisible(){
     if(overlayDisabled||!apiToken()||typeof IntersectionObserver!=='function')return;
+    if(!mixedDecorationsAllowed())return;
     if(!io){
       io=new IntersectionObserver(entries=>{
         for(const entry of entries){
@@ -442,7 +494,9 @@
         }
       },{rootMargin:'160px 0px',threshold:0.01});
     }
-    for(const card of document.body.querySelectorAll(CARD)){
+    const scope=modernMixedRoute()?mixedActiveList:document.body;
+    if(!scope)return;
+    for(const card of scope.querySelectorAll(CARD)){
       if(seenCards.has(card))continue;
       if(!card.getAttribute('data-id'))continue;
       if(!card.querySelector(IMAGE))continue;
