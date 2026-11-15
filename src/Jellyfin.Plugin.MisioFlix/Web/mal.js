@@ -216,7 +216,11 @@
     if(!session||session.userId!==currentUser||session.animeVerified!==true||
        session.phase!=='ready'||!valid(session.catalogId))return;
     const page=detailPage(session.id);
-    const area=page?.querySelector('.mf-detail-series-sections');
+    // The Jellyfin 12.4 episode list is a native #childrenContent node.
+    // Following v0.4.67's no-reparent layout it remains under primary content,
+    // while .mf-detail-series-sections refers to unrelated secondary content.
+    // Scope to the real list to avoid labeling Similar/NextUp episodes.
+    const area=page?.querySelector('#listChildrenCollapsible #childrenContent');
     if(!area)return;
     const episodeData=malSeasonEpisodeIndex(session);
     if(!episodeData.items)return; // asynchronous read, never invent episode IDs
@@ -279,7 +283,7 @@
       svg.appendChild(toe);
     }
     const foot=document.createElementNS(ns,'path');
-    foot.setAttribute('d','M12.2 10.6c-2.2 0-3.5 1.9-5.2 4-.9 1.1-1.8 2.3-1.8 3.6 0 1.6 1.3 2.7 2.8 2.7 1.4 0 2.5-.9 4-.9s2.6.9 4 .9c1.5 0 2.8-1.1 2.8-2.7 0-1.3-.9-2.5-1.8-3.6-1.7-2.1-3-4.8-4Z');
+    foot.setAttribute('d','M12.2 10.6c-2.2 0-3.5 1.9-5.2 4-.9 1.1-1.8 2.3-1.8 3.6 0 1.6 1.3 2.7 2.8 2.7 1.4 0 2.5-.9 4-.9s2.6.9 4 .9c1.5 0 2.8-1.1 2.8-2.7 0-1.3-.9-2.5-1.8-3.6-1.7-2.1-3-4.8-4 0Z');
     foot.setAttribute('fill','currentColor');svg.appendChild(foot);
     return svg;
   }
@@ -872,7 +876,7 @@
     }));
     document.addEventListener('click',event=>{
       const target=event.target?.nodeType===1?event.target:null;
-      const row=target?.closest?.('#itemDetailPage .mf-detail-series-sections .mf-mal-episode-row');
+      const row=target?.closest?.('#itemDetailPage #listChildrenCollapsible .mf-mal-episode-row');
       if(!row||!target.closest('button,[role="button"]'))return;
       const session=detailSessions.get(`${currentUser}:${currentDetail}`);
       if(!session?.catalogId)return;

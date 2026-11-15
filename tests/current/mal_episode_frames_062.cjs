@@ -40,7 +40,7 @@ const rows=[row1,row2,row3,row4,foreign];
 const area={querySelectorAll(selector){assert(selector.includes('.listItem'));return rows;}};
 const page={isConnected:true,dataset:{mfDetailId:season},getClientRects:()=>[1],
  classList:{contains:()=>false},
- querySelector:selector=>selector==='.mf-detail-series-sections'?area:null};
+ querySelector:selector=>selector==='#listChildrenCollapsible #childrenContent'?area:null};
 const doc={readyState:'loading',addEventListener(){},
  querySelector:selector=>selector.includes('#itemDetailPage.mf-detail-mal-rating')?page:null,
  createElement(tag){return {className:'',tagName:tag,setAttribute(name,value){this[name]=value;}};},

@@ -27,7 +27,7 @@ async function runCase(name,episodes,rows,expected,resuming=[]){
    index:malSeasonEpisodeIndex,clear:clearMalEpisodeFrames
   };function tick(){`);
  const area={querySelectorAll:()=>rows},page={isConnected:true,dataset:{mfDetailId:series},getClientRects:()=>[1],
-   classList:{contains:()=>true},querySelector:sel=>sel==='.mf-detail-series-sections'?area:null};
+   classList:{contains:()=>true},querySelector:sel=>sel==='#listChildrenCollapsible #childrenContent'?area:null};
  const doc={readyState:'loading',addEventListener(){},
   querySelectorAll:sel=>sel==='#itemDetailPage.mf-detail-compact'?[page]:sel==='.mf-mal-episode-row'?rows.filter(r=>r.classes.has('mf-mal-episode-row')):[],
   createElement(tag){return {className:'',setAttribute(k,v){this[k]=v;}};}};

@@ -16,7 +16,7 @@ class EpisodeFrames054(unittest.TestCase):
         self.assertIn('if(!info)continue;',JS)
         self.assertIn('session.data?.relevant!==true',JS)
     def test_episode_scope_is_only_season_details(self):
-        self.assertIn("page?.querySelector('.mf-detail-series-sections')",JS)
+        self.assertIn("page?.querySelector('#listChildrenCollapsible #childrenContent')",JS)
         self.assertIn("const key=`${session.user}:${session.seasonId}`",JS)
         self.assertIn('SeasonId:session.seasonId',JS)
         self.assertIn("row.classList.add('mf-simkl-episode-row')",JS)

@@ -32,7 +32,7 @@ const one=makeNode(ids[0],'1. Loteria'),two=makeNode(null,'2. Coś za coś'),thr
 const unrelated=makeNode('8'.repeat(32),'1. Nie ten serial');
 const rows=[one,two,three,four,unrelated];
 const area={querySelectorAll(sel){assert.ok(sel.includes('.listItem'));return rows;}};
-const page={isConnected:true,dataset:{mfDetailId:season},getClientRects(){return [1];},querySelector(sel){return sel==='.mf-detail-series-sections'?area:null;}};
+const page={isConnected:true,dataset:{mfDetailId:season},getClientRects(){return [1];},querySelector(sel){return sel==='#listChildrenCollapsible #childrenContent'?area:null;}};
 const document={readyState:'loading',addEventListener(){},createElement(tag){return {className:'',tagName:tag,setAttribute(k,v){this[k]=v;},remove(){}};},querySelectorAll(sel){if(sel==='#itemDetailPage.mf-detail-compact')return [page];if(sel==='.mf-simkl-episode-row')return rows.filter(x=>x.classes.has('mf-simkl-episode-row'));return [];}};
 const browser={ApiClient:{getCurrentUserId(){return user;},accessToken(){return 'token';}},location:{hash:'#/details?id='+season},innerHeight:800,setTimeout(){return 1;},clearTimeout(){},addEventListener(){}};
 let requests=0;

@@ -203,7 +203,11 @@
     if(!session||session.phase!=='ready'||session.episodeId||!valid(session.seasonId)||
        session.data?.relevant!==true||session.data?.connected!==true||session.user!==currentUser)return;
     const page=pageFor(session.id);
-    const area=page?.querySelector('.mf-detail-series-sections');
+    // Since v0.4.67 we preserve the original Jellyfin DOM. In Jellyfin
+    // 12.4 #listChildrenCollapsible/#childrenContent is inside
+    // .detailPagePrimaryContent, NOT .detailPageSecondaryContainer. Never
+    // scan the secondary area: it may contain Similar/NextUp from other shows.
+    const area=page?.querySelector('#listChildrenCollapsible #childrenContent');
     if(!area)return;
     const cache=seasonEpisodeIndex(session);
     if(!cache.items)return; // Retry on the next render after Jellyfin responds.
@@ -761,7 +765,7 @@
       svg.append(toe);
     }
     const base=document.createElementNS(ns,'path');
-    base.setAttribute('d','M12.2 10.6c-2.2 0-3.5 1.9-5.2 4-.9 1.1-1.8 2.3-1.8 3.6 0 1.6 1.3 2.7 2.8 2.7 1.4 0 2.5-.9 4-.9s2.6.9 4 .9c1.5 0 2.8-1.1 2.8-2.7 0-1.3-.9-2.5-1.8-3.6-1.7-2.1-3-4.8-4Z');
+    base.setAttribute('d','M12.2 10.6c-2.2 0-3.5 1.9-5.2 4-.9 1.1-1.8 2.3-1.8 3.6 0 1.6 1.3 2.7 2.8 2.7 1.4 0 2.5-.9 4-.9s2.6.9 4 .9c1.5 0 2.8-1.1 2.8-2.7 0-1.3-.9-2.5-1.8-3.6-1.7-2.1-3-4.8-4 0Z');
     base.setAttribute('fill','currentColor');svg.append(base);return svg;
   }
   function renderCardScore(card,score,native){
