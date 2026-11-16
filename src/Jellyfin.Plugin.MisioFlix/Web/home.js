@@ -857,6 +857,21 @@
     state.more.hidden=state.shown>=state.matches.length;
     state.status.textContent=`Wyniki: ${state.matches.length} · pokazano ${state.shown} · lista źródłowa: ${state.pool.length}`;
   }
+  // The server reads <tag>Typ: ...</tag> from each season.nfo. A Jellyfin
+  // Season is a container, NOT necessarily an anime TV season or a Special.
+  function animeSeasonFormat(item){
+    const label=String(item.kind||'').trim();
+    return label||'Sezon (brak typu w NFO)';
+  }
+  function episodeCountLabel(count){
+    const n=Number(count);
+    if(!Number.isFinite(n)||n<0)return '';
+    const whole=Math.floor(n);
+    const tail=whole%10;
+    const teen=whole%100;
+    const noun=whole===1?'odcinek':(tail>=2&&tail<=4&&(teen<12||teen>14))?'odcinki':'odcinków';
+    return `${short(whole)} ${noun}`;
+  }
   function suggestSearch(state){
     const q=normalized(state.input.value);
     state.suggestions.replaceChildren();
@@ -889,7 +904,14 @@
         if(tile.seasons!=null && Number(tile.seasons)>0)counts.push(`${short(tile.seasons)} sezonów`);
         if(tile.episodes!=null && Number(tile.episodes)>0)counts.push(`${short(tile.episodes)} odcinków`);
       }
-      if(item.type==='Season')counts.push('Sezon / Specials');
+      if(item.type==='Season'){
+        counts.push(animeSeasonFormat(item));
+        // The episode count is scoped to this Jellyfin Season, never the parent.
+        if(tile.episodes!=null){
+          const episodeText=episodeCountLabel(tile.episodes);
+          if(episodeText)counts.push(episodeText);
+        }
+      }
       if(item.type==='Movie')counts.push('Film');
       facts.textContent=counts.join(' · ');
       content.appendChild(facts);
@@ -981,7 +1003,7 @@
     const searchWrap=own('div','mf-home-search-input-wrap');
     const input=own('input','mf-home-search-input');
     input.type='search';input.autocomplete='off';
-    input.placeholder=kind==='anime'?'Tytuł serii, sezonu lub Speciala (NFO)…':'Szukaj filmów i seriali…';
+    input.placeholder=kind==='anime'?'Tytuł serii, sezonu, OVA, ONA lub Speciala (NFO)…':'Szukaj filmów i seriali…';
     input.setAttribute('aria-label','Wyszukaj tytuł');
     const suggestions=own('div','mf-home-suggestions');suggestions.hidden=true;
     append(searchWrap,input,suggestions);
@@ -989,11 +1011,12 @@
     const libraryChoices=makeFilterGroup('Biblioteki', 'Zielony: uwzględnij · czerwony: wyklucz · ponownie: obojętne');
     const libraryOptions=scopedLibraries.map(lib=>({id:compactId(lib.id),label:lib.name}));
     const typeChoices=makeFilterGroup('Typy produkcji', 'Możesz zaznaczyć kilka typów jednocześnie');
-    const typeOptions=[{id:'series',label:'Serie'},{id:'movies',label:kind==='anime'?'Filmy / OVA / ONA':'Filmy'}];
-    if(kind==='anime')typeOptions.push({id:'seasons',label:'Sezony / Specials'});
+    const typeOptions=[{id:'series',label:'Serie'},{id:'movies',label:'Filmy'}];
+    if(kind==='anime')typeOptions.push({id:'seasons',label:'Sezony / OVA / ONA / Specials'});
     const seasonLabel=own('label','mf-home-search-seasons');
     const includeSeasons=own('input','');includeSeasons.type='checkbox';
-    seasonLabel.append(includeSeasons,document.createTextNode(' Pokaż osobne sezony / Specials'));
+    seasonLabel.append(includeSeasons,document.createTextNode(' Pokaż osobne części anime'));
+    seasonLabel.title='Sezony serii TV, OVA, ONA i Specials — typ z season.nfo';
     if(kind!=='anime')seasonLabel.hidden=true;
     const reset=own('button','mf-home-button','Wyczyść filtry');reset.type='button';
     const refresh=own('button','mf-home-button','Odśwież dane');refresh.type='button';

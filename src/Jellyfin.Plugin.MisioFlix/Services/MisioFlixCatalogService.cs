@@ -134,7 +134,8 @@ public sealed class MisioFlixCatalogService
                         // is the number of episodes. Only a Series has seasons.
                         season_count = Text(Get(json, "Type")) == "Series"
                             ? PositiveInt(Get(json, "ChildCount")) : null,
-                        episode_count = PositiveInt(Get(json, "RecursiveItemCount")),
+                        episode_count = PositiveInt(Get(json, "RecursiveItemCount"))
+                            ?? (Text(Get(json, "Type")) == "Season" ? PositiveInt(Get(json, "ChildCount")) : null),
                         rating = PersonalRating(json),
                         mal_id = local?.MalId,
                         watch_status = WatchStatus(json)
