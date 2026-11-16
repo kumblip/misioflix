@@ -745,6 +745,7 @@
       window.removeEventListener('misioflix-mal-cache-changed',activeSearch.watchCacheHandler);
     searchModal.remove();searchModal=null;activeSearch=null;
     document.body.classList.remove('mf-home-search-open');
+    window.dispatchEvent(new Event('misioflix-search-toggle'));
     if(opener?.isConnected)opener.focus();
   }
   function catalogGenres(item,kind){
@@ -1130,7 +1131,7 @@
     if(kind==='anime')typeOptions.push({id:'seasons',label:'Sezony / OVA / ONA / Specials'});
     const seasonLabel=own('label','mf-home-search-seasons');
     const includeSeasons=own('input','');includeSeasons.type='checkbox';
-    seasonLabel.append(includeSeasons,document.createTextNode(' Pokaż osobne części anime'));
+    seasonLabel.append(includeSeasons,document.createTextNode(' Pokaż osobno sezony/speciale/itd.'));
     seasonLabel.title='Sezony serii TV, OVA, ONA i Specials — typ z season.nfo';
     if(kind!=='anime')seasonLabel.hidden=true;
     const reset=own('button','mf-home-button','Wyczyść filtry');reset.type='button';
@@ -1244,6 +1245,7 @@
     activeSearch=state;searchModal=state.overlay;
     document.body.appendChild(state.overlay);
     document.body.classList.add('mf-home-search-open');
+    window.dispatchEvent(new Event('misioflix-search-toggle'));
     state.input.focus();
     void loadSearch(state);
   }

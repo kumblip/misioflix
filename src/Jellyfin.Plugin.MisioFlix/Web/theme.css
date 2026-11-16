@@ -1553,7 +1553,7 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-anime-separator
 html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-anime-season-title {
   min-width:0;overflow-wrap:anywhere;flex:0 1 auto;
 }
-html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContent > .mf-detail-season-nav {
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContent .mf-detail-season-nav {
   display:block;min-width:0;width:100%;padding:10px 12px!important;
   margin:14px 0 3px!important;
   background:rgba(54,25,52,.73)!important;
@@ -1593,3 +1593,22 @@ html.misioflix-skin #itemDetailPage.mf-detail-collection-title-small .detailRibb
   white-space:normal!important;
   overflow-wrap:anywhere!important;
 }
+
+/* v0.4.80 — a single floating action in all native SPA routes and modals. */
+html.misioflix-skin #mf-scroll-to-top {
+  position:fixed!important;right:clamp(16px,2.5vw,38px)!important;
+  bottom:calc(20px + env(safe-area-inset-bottom,0px))!important;
+  z-index:100005!important;width:44px;height:44px;border-radius:50%!important;
+  display:grid;place-items:center;padding:0!important;
+  border:1px solid rgba(255,202,231,.72)!important;
+  color:#fff1f8!important;background:rgba(77,32,67,.96)!important;
+  box-shadow:0 6px 22px #0009!important;
+  font-size:26px!important;line-height:1!important;cursor:pointer;
+  transition:background 150ms ease,opacity 150ms ease;
+}
+html.misioflix-skin #mf-scroll-to-top[hidden],
+html:not(.misioflix-skin) #mf-scroll-to-top {display:none!important}
+html.misioflix-skin #mf-scroll-to-top:hover {background:rgba(159,61,116,.98)!important}
+html.misioflix-skin #mf-scroll-to-top:focus-visible {outline:2px solid #ffcfeb;outline-offset:3px}
+@media(max-width:700px){html.misioflix-skin #mf-scroll-to-top {width:40px;height:40px;right:12px!important;bottom:calc(12px + env(safe-area-inset-bottom,0px))!important}}
+@media(prefers-reduced-motion:reduce){html.misioflix-skin #mf-scroll-to-top {transition:none}}

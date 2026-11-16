@@ -727,8 +727,97 @@
     pending=true;
     window.setTimeout(decorate,190);
   }
+  // v0.4.80: ONE floating "Do góry" button for the native Jellyfin SPA,
+  // collection/library pages and BOTH search dialogs. Only the real vertical
+  // scroller is reset: the horizontal card sliders are left untouched.
+  function installScrollTopControl(){
+    // Non-browser fixtures may expose only the card DOM, not a full document.
+    if (typeof document.getElementById !== 'function') return;
+    if (document.getElementById('mf-scroll-to-top')) return;
+    const control=document.createElement('button');
+    control.type='button';
+    control.id='mf-scroll-to-top';
+    control.className='mf-scroll-to-top';
+    control.textContent='↑';
+    control.title='Do góry';
+    control.setAttribute('aria-label','Przewiń do góry');
+    control.hidden=true;
+    document.body.append(control);
+    const candidatesSelector='#itemDetailPage, .mainAnimatedPages, .mainScrollFrame, .page.scrollY, .page.scrollable, .mainDrawerScrollContainer, .MuiDialogContent-root, .MuiDialog-container, .scrollY, [data-simplebar-scrollbar]';
+    let lastScrollable=null;
+    let pending=false;
+    const visible=node=>{
+      if(!node || !node.isConnected || node.hidden || node.classList?.contains('hide'))return false;
+      if(node!==document.scrollingElement && node!==document.body && node!==document.documentElement){
+        if(node.getClientRects && !node.getClientRects().length)return false;
+        for(let p=node.parentElement;p && p!==document.body;p=p.parentElement){
+          if(p.hidden || p.classList?.contains('hide'))return false;
+        }
+      }
+      return true;
+    };
+    const vertical=node=>visible(node) &&
+      Number(node.scrollHeight)>Number(node.clientHeight)+8;
+    const modalScroll=()=>document.querySelector('.mf-home-search-overlay .mf-home-search-modal-main');
+    function targets(){
+      const modal=modalScroll();
+      if(modal && visible(modal))return [modal];
+      const roots=[document.scrollingElement,document.documentElement,document.body];
+      if(vertical(lastScrollable))roots.unshift(lastScrollable);
+      roots.push(...document.querySelectorAll(candidatesSelector));
+      return [...new Set(roots)].filter(vertical);
+    }
+    function currentTop(){
+      const current=targets();
+      // A nested Jellyfin view may scroll independently of the document.
+      return current.length?Math.max(...current.map(el=>Number(el.scrollTop)||0)):0;
+    }
+    function refresh(){
+      pending=false;
+      control.hidden=currentTop()<180 || !document.documentElement.classList.contains('misioflix-skin');
+    }
+    function scheduleRefresh(){
+      if(pending)return;
+      pending=true;
+      if(typeof window.requestAnimationFrame==='function') window.requestAnimationFrame(refresh);
+      else window.setTimeout(refresh,16);
+    }
+    document.addEventListener('scroll',event=>{
+      const pane=event.target;
+      if(pane?.nodeType===1 && !pane.closest?.('.mf-home-suggestions,.mf-home-shelf-scroll,.mf-home-resume-items') && vertical(pane))
+        lastScrollable=pane;
+      scheduleRefresh();
+    },{capture:true,passive:true});
+    window.addEventListener('scroll',scheduleRefresh,{passive:true});
+    window.addEventListener('hashchange',()=>{
+      lastScrollable=null;
+      for(const delay of [0,120,350])window.setTimeout(scheduleRefresh,delay);
+    });
+    window.addEventListener('pageshow',scheduleRefresh);
+    window.addEventListener('misioflix-search-toggle',scheduleRefresh);
+    document.addEventListener('viewshow',scheduleRefresh);
+    // The modal is attached to body; this tracks only its open/close and avoids
+    // a subtree observer that would scan a huge virtualized Jellyfin library.
+    new MutationObserver(scheduleRefresh).observe(document.body,{attributes:true,attributeFilter:['class'],childList:true});
+    control.addEventListener('click',()=>{
+      const modal=modalScroll();
+      const active=modal && visible(modal)?[modal]:targets();
+      // When Jellyfin has multiple nested scroll panes, reset each visible
+      // vertical pane, not merely window.scrollY.
+      for(const el of active){
+        try{el.scrollTo({top:0,behavior:'smooth'});}catch{el.scrollTop=0;}
+      }
+      if(!modal){
+        try{window.scrollTo({top:0,behavior:'smooth'});}catch{window.scrollTo(0,0);}
+      }
+      window.setTimeout(scheduleRefresh,220);
+    });
+    scheduleRefresh();
+  }
+
   function init(){
     document.documentElement.classList.add('misioflix-skin');
+    installScrollTopControl();
     // Optional cleanup of older pre-0.4.7 portal artifacts only.
     document.querySelector('#mf-portal')?.remove();
     document.querySelector('#mf-launch')?.remove();

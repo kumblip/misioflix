@@ -243,10 +243,25 @@
         nav.setAttribute('aria-label','Wybierz sezon serialu');
         const row=create('div','mf-detail-season-buttons');
         row.append(create('span','mf-detail-season-loading','Ładowanie sezonów…'));
-        nav.append(row); primary.append(nav);
+        nav.append(row);
+        // Jellyfin 12.4: #listChildrenCollapsible contains #childrenContent.
+        // It is nested inside .detailSection, NOT a sibling of primaryContent.
+        // Insert directly BEFORE this native episode section; never append to
+        // primaryContent (that placed our buttons AFTER all episodes).
+        const episodes=page.querySelector('#listChildrenCollapsible');
+        const episodeAnchor=episodes || page.querySelector('#childrenContent');
+        if(!episodeAnchor?.parentNode){
+          // Delay retry while native Jellyfin fills the episode container.
+          // Never append after the episodes, or prevent the anime breadcrumb.
+          window.setTimeout(() => {
+            if (serial !== generation || itemRoute() !== id || !page.isConnected) return;
+            const ready = page.querySelector('#listChildrenCollapsible') || page.querySelector('#childrenContent');
+            if (ready?.parentNode && !nav.isConnected) ready.parentNode.insertBefore(nav, ready);
+          }, 400);
+        } else episodeAnchor.parentNode.insertBefore(nav,episodeAnchor);
         try{
           const seasons=await getSeriesSeasons(seriesId);
-          if(serial!==generation || itemRoute()!==id || !nav.isConnected)return;
+          if(serial!==generation || itemRoute()!==id || !page.isConnected)return;
           row.replaceChildren();
           for(const season of seasons){
             const sid=compact(season.Id);

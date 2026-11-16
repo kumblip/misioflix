@@ -19,8 +19,8 @@ class AnimeSeasonDetails073(unittest.TestCase):
   self.assertIn('if(tile.episodes!=null)',HOME)
   self.assertNotIn("counts.push('Sezon / Specials')",HOME)
  def test_version_and_ui_controls(self):
-  self.assertEqual(json.loads((ROOT/'meta.json').read_text('utf8'))['version'],'0.4.79.0')
-  self.assertIn('Pokaż osobne części anime',HOME)
+  self.assertEqual(json.loads((ROOT/'meta.json').read_text('utf8'))['version'],'0.4.80.0')
+  self.assertIn('Pokaż osobno sezony/speciale/itd.',HOME)
   self.assertIn('Sezony / OVA / ONA / Specials',HOME)
 
 if __name__=='__main__':unittest.main()
