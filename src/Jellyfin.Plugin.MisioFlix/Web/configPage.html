@@ -88,7 +88,7 @@
    const auth=()=>{
      const t=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
      if(!t)throw Error('Brak aktywnego tokenu Jellyfin.');
-     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.93", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
+     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.94", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
    };
    async function query(path,method='GET',payload=null){
     const h=auth();

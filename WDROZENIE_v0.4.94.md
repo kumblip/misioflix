@@ -1,21 +1,11 @@
-# Wdrożenie MisioFlix v0.4.94
+# Wdrożenie v0.4.94
 
-## Co zawiera ta wersja
-Ta wersja poprawia wyłącznie dopasowanie wizualne licznika kolekcji na kafelkach filmów i seriali.
+Do GitHub wgraj całą paczkę źródeł lub tylko pliki z ZIP różnicowego 0.4.93 → 0.4.94. Uruchom GitHub Actions, sprawdź `dotnet publish`, a dopiero po sukcesie opublikuj wydanie. Zainstaluj przez Jellyfin.
 
-## Zakres
-- bez zmian w logice MAL,
-- bez zmian w logice Simkl,
-- bez zmian w pobieraniu katalogu Jellyfina,
-- bez zmian w danych kolekcji,
-- tylko korekta CSS dla wyrównania `liczba + 📦`.
+Sprawdź na stronie głównej i w bibliotece:
+1. Film `Bad Boys`: tylko `3 📦`, bardzo mała ramka.
+2. `Step Up 4 Revolution`: ocena Simkl z łapką powyżej `3 📦`, jedna wspólna ramka.
+3. Serial z sezonami i odcinkami: pełny wielowierszowy licznik bez zmiany szerokości.
+4. Wszystkie istniejące funkcje i odnośniki kart.
 
-## Co sprawdzić po aktualizacji
-1. Otwórz stronę główną MisioFlix.
-2. Otwórz bibliotekę filmów i bibliotekę seriali.
-3. Znajdź kafelek filmu lub serialu należącego do kolekcji.
-4. Zweryfikuj, że:
-   - liczba kolekcji i pudełko są w jednej linii,
-   - pudełko jest ustawione tak samo jak łapki po prawej stronie,
-   - spacing jest zgodny z innymi wierszami statystyk,
-   - nie pojawiła się dodatkowa ramka wewnątrz bloku statystyk.
+Zmiany kodu produkcyjnego poza numerowaniem: tylko `theme.css`.

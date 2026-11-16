@@ -1720,3 +1720,28 @@ html.misioflix-skin .mf-native-box-icon {
     width:10px;height:10px;min-width:10px;font-size:10px;
   }
 }
+
+/* v0.4.94: the box is the ONLY badge on films such as Bad Boys.
+ * Do not reserve the two/three-paw frame width in this case: shrink-wrap
+ * the single number + box glyph, but retain identical number/icon columns.
+ * Multi-row stacks retain their existing widths and right alignment. */
+html.misioflix-skin .mf-native-stats:has(> .mf-native-collection-member:only-child),
+html.misioflix-skin .mf-home-stats:has(> .mf-home-member-collection:only-child) {
+  width:max-content;
+  min-width:0;
+  gap:0;
+  padding:3px 4px;
+}
+html.misioflix-skin .mf-native-stats > .mf-native-collection-member:only-child,
+html.misioflix-skin .mf-home-stats > .mf-home-member-collection:only-child {
+  min-width:0;
+  width:max-content;
+  max-width:none;
+  align-self:auto;
+}
+@media(max-width:680px){
+  html.misioflix-skin .mf-native-stats:has(> .mf-native-collection-member:only-child),
+  html.misioflix-skin .mf-home-stats:has(> .mf-home-member-collection:only-child){
+    padding:2px 3px;
+  }
+}
