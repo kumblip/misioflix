@@ -32,7 +32,9 @@ class Features0422(unittest.TestCase):
     def test_back_and_native_shuffle_hidden_only_on_details(self):
         self.assertIn('ensureBackButton(page);',DETAILS)
         self.assertIn("create('button','mf-detail-back','← Wstecz')",DETAILS)
-        self.assertIn('window.history.back()',DETAILS)
+        self.assertNotIn('window.history.back()',DETAILS)
+        self.assertIn("if(type==='Episode' && valid(parentSeason))",DETAILS)
+        self.assertIn("if((type==='Season'||type==='Episode') && valid(parentSeries))",DETAILS)
         self.assertIn("window.location.hash='#/home'",DETAILS)
         self.assertIn('#itemDetailPage .mainDetailButtons .btnShuffle',CSS)
         self.assertIn('mf-home-shuffle',HOME) # homepage random remains

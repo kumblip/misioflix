@@ -16,8 +16,6 @@
   let lastItem = '';
   let lastPage = null;
   let observer;
-  let previousDetailsRoute = '';
-  let lastKnownHash = window.location.hash || '#/home';
   const kindRequests = new Map();
   // Native metadata editor runs on original Jellyfin node hierarchy.
   // CSS-only arrangement leaves the hierarchy unchanged even on editor clicks.
@@ -144,30 +142,27 @@
   function openDetails(id) {
     if (valid(id)) window.location.hash = detailsRoute(id);
   }
-  // Structural anime navigation, not browser history: Episode -> Season ->
-  // Series -> MisioFlix home. Non-anime media retains the original behavior.
+  // Deterministic, one-level navigation for ALL supported detail types.
+  // No browser history: Episode -> Season -> Series -> MisioFlix home;
+  // Movie / Series -> MisioFlix home.
   function ensureBackButton(page) {
-    const container = page.querySelector('.detailPageWrapperContainer');
-    if (!container || container.querySelector(':scope > .mf-detail-back')) return;
-    const back = create('button','mf-detail-back','← Wstecz');
+    const container=page.querySelector('.detailPageWrapperContainer');
+    if(!container || container.querySelector(':scope > .mf-detail-back'))return;
+    const back=create('button','mf-detail-back','← Wstecz');
     back.type='button';
     back.setAttribute('aria-label','Wróć poziom wyżej');
-    back.addEventListener('click',() => {
-      if (page.dataset.mfAnimeDetails === '1') {
-        const type = page.dataset.mfDetailType;
-        if (type === 'Episode' && valid(page.dataset.mfDetailSeasonId)) {
-          openDetails(page.dataset.mfDetailSeasonId); return;
-        }
-        if ((type === 'Season' || type === 'Episode') && valid(page.dataset.mfDetailSeriesId)) {
-          openDetails(page.dataset.mfDetailSeriesId); return;
-        }
-        if (type === 'Series') {window.location.hash='#/home';return;}
+    back.addEventListener('click',()=>{
+      // Resolve from the current item's own DTO, not the previous hash.
+      const type=page.dataset.mfDetailType;
+      const parentSeries=page.dataset.mfDetailSeriesId;
+      const parentSeason=page.dataset.mfDetailSeasonId;
+      if(type==='Episode' && valid(parentSeason)){
+        openDetails(parentSeason);return;
       }
-      if (previousDetailsRoute && previousDetailsRoute !== window.location.hash) {
-        window.history.back();
-      } else {
-        window.location.hash='#/home';
+      if((type==='Season'||type==='Episode') && valid(parentSeries)){
+        openDetails(parentSeries);return;
       }
+      window.location.hash='#/home';
     });
     container.prepend(back);
   }
@@ -206,19 +201,55 @@
     return raw!=null && Number.isInteger(number) && number>=0
       ? 'S'+String(number).padStart(2,'0') : String(season?.Name||'Sezon');
   }
+  // Season navigation works for anime AND ordinary TV series. The breadcrumb
+  // ANIME > Season remains anime-only. No native DOM reparenting.
   async function syncAnimeDetailsControls(page,item,id,serial) {
     const type=String(item?.Type||'');
-    const kind=await itemKind(id);
-    if(serial!==generation || itemRoute()!==id || !page.isConnected) return;
-    const anime=kind==='anime';
-    // Some Jellyfin Season DTOs expose ParentId but omit SeriesId.
     const rawSeriesId=valid(item?.SeriesId)?item.SeriesId
       :type==='Season' && valid(item?.ParentId)?item.ParentId:'';
-    page.dataset.mfAnimeDetails=anime?'1':'0';
     page.dataset.mfDetailSeriesId=valid(rawSeriesId)?compact(rawSeriesId):'';
-    page.dataset.mfDetailSeasonId=valid(item?.SeasonId)?compact(item.SeasonId):'';
+    page.dataset.mfDetailSeasonId=valid(item?.SeasonId)?compact(item.SeasonId)
+      :type==='Episode' && valid(item?.ParentId)?compact(item.ParentId):'';
     clearAnimeSeasonControls(page);
-    if (!anime || type!=='Season' || !valid(rawSeriesId)) return;
+    // Season switcher must not wait for potentially slow NFO classification.
+    if(type==='Season' && valid(rawSeriesId) && compact(rawSeriesId)!==id){
+      const seriesId=compact(rawSeriesId);
+      const secondary=page.querySelector('.detailPageSecondaryContainer');
+      if(secondary){
+        const nav=create('nav','mf-detail-season-nav');
+        nav.setAttribute('aria-label','Wybierz sezon serialu');
+        const row=create('div','mf-detail-season-buttons');
+        row.append(create('span','mf-detail-season-loading','Ładowanie sezonów…'));
+        nav.append(row); secondary.prepend(nav);
+        try{
+          const seasons=await getSeriesSeasons(seriesId);
+          if(serial!==generation || itemRoute()!==id || !nav.isConnected)return;
+          row.replaceChildren();
+          for(const season of seasons){
+            const sid=compact(season.Id);
+            const button=create('button','mf-detail-season-switch',seasonButtonLabel(season));
+            button.type='button';
+            const active=sid===id;
+            button.classList.toggle('mf-detail-season-active',active);
+            if(active){button.setAttribute('aria-current','page');button.disabled=true;}
+            const label=String(season.Name||'Sezon');
+            button.title=label;
+            button.setAttribute('aria-label',seasonButtonLabel(season)+' — '+label+(active?' (obecny)':''));
+            if(!active)button.addEventListener('click',()=>openDetails(sid));
+            row.append(button);
+          }
+          if(!seasons.length)nav.remove();
+        }catch(error){
+          console.warn('[MisioFlix] Nie można pobrać sezonów serialu:',error);
+          if(nav.isConnected)nav.remove();
+        }
+      }
+    }
+    const kind=await itemKind(id);
+    if(serial!==generation || itemRoute()!==id || !page.isConnected)return;
+    const anime=kind==='anime';
+    page.dataset.mfAnimeDetails=anime?'1':'0';
+    if(!anime || type!=='Season' || !valid(rawSeriesId))return;
     const seriesId=compact(rawSeriesId);
     if(seriesId===id)return;
     page.classList.add('mf-detail-anime-season');
@@ -236,36 +267,6 @@
       const name=create('span','mf-detail-anime-season-title',String(item.Name||'Sezon'));
       crumb.append(parent,separator,name);
       info.prepend(crumb);
-    }
-    const secondary=page.querySelector('.detailPageSecondaryContainer');
-    if(!secondary)return;
-    const nav=create('nav','mf-detail-season-nav');
-    nav.setAttribute('aria-label','Sezony tego anime');
-    const row=create('div','mf-detail-season-buttons');
-    row.append(create('span','mf-detail-season-loading','Ładowanie sezonów…'));
-    nav.append(row);
-    secondary.prepend(nav);
-    try {
-      const seasons=await getSeriesSeasons(seriesId);
-      if(serial!==generation || itemRoute()!==id || !nav.isConnected)return;
-      row.replaceChildren();
-      for(const season of seasons) {
-        const sid=compact(season.Id);
-        const button=create('button','mf-detail-season-switch',seasonButtonLabel(season));
-        button.type='button';
-        const active=sid===id;
-        button.classList.toggle('mf-detail-season-active',active);
-        if(active){button.setAttribute('aria-current','page');button.disabled=true;}
-        const label=String(season.Name||'Sezon');
-        button.title=label;
-        button.setAttribute('aria-label',seasonButtonLabel(season)+' — '+label+(active?' (obecny)':''));
-        if(!active)button.addEventListener('click',()=>openDetails(sid));
-        row.append(button);
-      }
-      if(!seasons.length){nav.remove();}
-    } catch(error) {
-      console.warn('[MisioFlix] Nie można pobrać sezonów tego anime:',error);
-      if(nav.isConnected)nav.remove();
     }
   }
   function nativePlayButton(page, resume = true) {
@@ -679,10 +680,6 @@
     document.addEventListener('click',onGenreClick,true);
     document.addEventListener('click',recoverNativeMetadataEdit,true);
     for(const name of ['hashchange','pageshow','popstate']) window.addEventListener(name,()=>{
-      const next = window.location.hash || '#/home';
-      if (/^#\/details(?:\?|$)/i.test(next) && next !== lastKnownHash &&
-          /^#\//.test(lastKnownHash)) previousDetailsRoute=lastKnownHash;
-      lastKnownHash=next;
       if(itemRoute()!==lastItem)generation++;
       schedule();
     });

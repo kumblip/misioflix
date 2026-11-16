@@ -35,12 +35,168 @@
    <button type="submit" class="raised button-submit emby-button">Zapisz ustawienia Simkl</button>
    <p id="mf-simkl-config-status" aria-live="polite"></p>
   </form>
+  <hr style="margin:26px 0;border-color:#77526c" />
+  <section id="mf-updates-panel" aria-labelledby="mf-updates-heading" style="padding:12px 0 22px">
+   <h2 id="mf-updates-heading">Aktualizacje MisioFlix</h2>
+   <p>Oddzielne sprawdzanie GitHub Release, manifestu MisioFlix i katalogu Jellyfina. Sprawdzenie wersji nie instaluje pakietów i nie zastępuje plików DLL.</p>
+   <dl style="display:grid;grid-template-columns:minmax(170px,220px) 1fr;gap:9px;margin:12px 0">
+    <dt>Wersja zainstalowana</dt><dd id="mf-update-installed">Nie sprawdzono</dd>
+    <dt>Najnowsza wersja GitHub</dt><dd id="mf-update-github">Nie sprawdzono</dd>
+    <dt>Manifest repozytorium</dt><dd id="mf-update-manifest">Nie sprawdzono</dd>
+    <dt>Katalog Jellyfin</dt><dd id="mf-update-catalog">Nie sprawdzono</dd>
+    <dt>Ostatnia kontrola</dt><dd id="mf-update-checked">—</dd>
+   </dl>
+   <label class="inputContainer" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+    <input type="checkbox" id="mf-update-auto" checked />
+    <span>Automatyczne sprawdzanie co 15 minut (bez automatycznego instalowania)</span>
+   </label>
+   <div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0">
+    <button type="button" class="raised emby-button" id="mf-update-check">Wymuś sprawdzenie aktualizacji</button>
+    <button type="button" class="emby-button" id="mf-update-install" disabled>Zainstaluj aktualizację</button>
+   </div>
+   <p id="mf-update-status" role="status" aria-live="polite">Gotowe do sprawdzenia.</p>
+   <p><small>Instalacja odbywa się wyłącznie przez mechanizm Jellyfina, z repozytorium MisioFlix. Nie jest możliwa, dopóki odpowiednia zgodna wersja nie pojawi się w jego katalogu. Po instalacji może być wymagany restart serwera.</small></p>
+  </section>
  </div>
  <script>
  (()=>{
   const view=document.querySelector('#misioflixConfigPage');
   const pluginId='97d15b37-b868-492b-83da-eb67b16a0d44';
+  // Independent status. Install/scheduled task operations go through
+  // Jellyfin's NATIVE admin-protected endpoints with user's own API token.
+  const updates=(function(){
+   const panel=view.querySelector('#mf-updates-panel');
+   const refs={installed:panel.querySelector('#mf-update-installed'),
+    github:panel.querySelector('#mf-update-github'),manifest:panel.querySelector('#mf-update-manifest'),
+    catalog:panel.querySelector('#mf-update-catalog'),checked:panel.querySelector('#mf-update-checked'),
+    status:panel.querySelector('#mf-update-status'),check:panel.querySelector('#mf-update-check'),
+    install:panel.querySelector('#mf-update-install'),auto:panel.querySelector('#mf-update-auto')};
+   const GUID='97d15b37-b868-492b-83da-eb67b16a0d44';
+   const REPO='https://raw.githubusercontent.com/kumblip/misioflix/main/manifest.json';
+   let snapshot=null;
+   let timer=null;
+   const get=(obj,...names)=>{for(const name of names){if(obj&&obj[name]!==undefined)return obj[name];}return undefined;};
+   const norm=v=>String(v||'').replace(/^v/i,'').trim();
+   const compare=(a,b)=>{const aa=norm(a).split('.').map(Number),bb=norm(b).split('.').map(Number);
+    if(!aa.length||!bb.length||aa.some(x=>!Number.isInteger(x))||bb.some(x=>!Number.isInteger(x)))return 0;
+    for(let i=0;i<4;i++){if((aa[i]||0)!==(bb[i]||0))return (aa[i]||0)>(bb[i]||0)?1:-1;}return 0;};
+   const status=t=>{refs.status.textContent=t;};
+   const api=path=>typeof ApiClient?.getUrl==='function'?ApiClient.getUrl(path):'/'+path;
+   const auth=()=>{
+     const t=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
+     if(!t)throw Error('Brak aktywnego tokenu Jellyfin.');
+     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.78", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
+   };
+   async function query(path,method='GET'){
+    const response=await fetch(api(path),{method,headers:auth(),cache:'no-store'});
+    if(!response.ok)throw Error(method+' '+path+': HTTP '+response.status);
+    if(response.status===204||response.status===202||method==='POST')return null;
+    return await response.json();
+   }
+   async function readCatalog(){
+    const [packages,repositories]=await Promise.all([query('Packages'),query('Repositories')]);
+    const items=Array.isArray(packages)?packages:get(packages,'Items','items')||[];
+    const repoList=Array.isArray(repositories)?repositories:[];
+    const repoOK=repoList.some(r=>String(get(r,'Url','url')||'').replace(/\/$/,'')===REPO && get(r,'Enabled','enabled')!==false);
+    const pkg=items.find(p=>String(get(p,'Guid','guid')||'').toLowerCase()===GUID)
+      ||items.find(p=>String(get(p,'Name','name')||'').toLowerCase()==='misioflix');
+    const versions=get(pkg,'Versions','versions')||[];
+    const max=versions.map(v=>({version:norm(get(v,'Version','version')),abi:get(v,'TargetAbi','targetAbi')}))
+      .filter(v=>/^\d+(\.\d+){2,3}$/.test(v.version))
+      .sort((a,b)=>compare(b.version,a.version));
+    return {repoOK,versions:max};
+   }
+   async function refresh(force){
+    refs.check.disabled=true; refs.install.disabled=true;
+    status(force?'Wymuszam odczyt GitHub i repozytorium…':'Sprawdzam aktualizacje…');
+    try{
+     const remote=await query('MisioFlix/api/updates/status'+(force?'?force=true':''));
+     let catalog=null,catError=null;
+     try{catalog=await readCatalog();}catch(error){catError=error.message;}
+     snapshot={remote,catalog};
+     refs.installed.textContent=remote.installedVersion||'Nieznana';
+     refs.github.textContent=remote.gitHubVersion||('Brak danych: '+(remote.gitHubError||'nie opublikowano Release'));
+     refs.manifest.textContent=remote.repositoryVersion ? remote.repositoryVersion+' (ABI '+(remote.repositoryTargetAbi||'?')+')'
+       :'Brak danych: '+(remote.repositoryError||'nie znaleziono wersji');
+     refs.catalog.textContent=catError?'Błąd: '+catError:
+       catalog && !catalog.repoOK?'Brak aktywnego repozytorium MisioFlix w Jellyfin':
+       catalog?.versions?.length?catalog.versions[0].version:'MisioFlix nie jest jeszcze widoczny';
+     refs.checked.textContent=remote.checkedAt?new Date(remote.checkedAt).toLocaleString('pl-PL'):'—';
+     const github=remote.gitHubVersion,manifest=remote.repositoryVersion,installed=remote.installedVersion;
+     const matchingCatalog=catalog?.versions?.find(v=>norm(v.version)===norm(manifest));
+     const abiCompatible=norm(remote.repositoryTargetAbi)==='12.4.0.0' &&
+       (!matchingCatalog?.abi||norm(matchingCatalog.abi)==='12.4.0.0');
+     const installable=!!(github&&manifest&&catalog?.repoOK&&matchingCatalog&&abiCompatible &&
+       compare(github,manifest)===0 && compare(manifest,installed)>0);
+     refs.install.disabled=!installable;
+     if(!catalog?.repoOK)status('Dodaj repozytorium MisioFlix w Jellyfin: '+REPO);
+     else if(github && manifest && compare(github,manifest)>0)
+       status('Nowy Release jest na GitHubie, ale manifest repozytorium nie został jeszcze zaktualizowany.');
+     else if(manifest && catalog && !matchingCatalog)
+       status('Manifest ma już wersję '+manifest+', lecz katalog Jellyfina jeszcze jej nie pokazuje. Uruchom „Wymuś sprawdzenie”.');
+     else if(!abiCompatible && manifest)status('Wersja z manifestu nie jest oznaczona jako zgodna z Jellyfin 12.4.');
+     else if(installable)status('Wykryto aktualizację '+manifest+'. Możesz zlecić instalację do Jellyfina.');
+     else if(github&&compare(github,installed)<=0)status('Brak nowszego opublikowanego wydania MisioFlix.');
+     else status('Sprawdzono źródła. Instalacja będzie możliwa po pojawieniu się zgodnej wersji w katalogu Jellyfina.');
+    }catch(error){status('Nie udało się sprawdzić aktualizacji: '+error.message);}
+    finally{refs.check.disabled=false;}
+   }
+   async function forceCheck(){
+    await refresh(true);
+    refs.check.disabled=true;
+    try{
+     const tasks=await query('ScheduledTasks');
+     const all=Array.isArray(tasks)?tasks:[];
+     const task=all.find(t=>/plugin.*update|update.*plugin|aktualiz.*wtycz|wtycz.*aktualiz/i.test(
+       [get(t,'Key','key'),get(t,'Name','name'),get(t,'Description','description')].join(' ')));
+     const id=get(task,'Id','id');
+     if(!id){status(refs.status.textContent+' Zadania „Update Plugins” nie znaleziono; uruchom je ręcznie w panelu zadań Jellyfina.');return;}
+     const running=String(get(task,'State','state')||'').toLowerCase()==='running';
+     if(!running)await query('ScheduledTasks/Running/'+encodeURIComponent(id),'POST');
+     status('Odświeżanie wtyczek Jellyfina '+(running?'już działa.':'zostało uruchomione.')+
+      ' Po zakończeniu naciśnij „Wymuś sprawdzenie”, aby pobrać nowy stan katalogu.');
+    }catch(error){status('Odczyt GitHub zakończony. Nie udało się uruchomić zadania Jellyfin: '+error.message);}
+    finally{refs.check.disabled=false;}
+   }
+   async function install(){
+    if(!snapshot||refs.install.disabled)return;
+    const version=norm(snapshot.remote.repositoryVersion);
+    // Only exact version verified in both GitHub and native Jellyfin catalog.
+    if(!snapshot.catalog?.repoOK||!snapshot.catalog.versions.some(v=>norm(v.version)===version)||
+       norm(snapshot.remote.gitHubVersion)!==version||norm(snapshot.remote.repositoryTargetAbi)!=='12.4.0.0')return;
+    if(!window.confirm('Zlecić instalację MisioFlix '+version+' przez Jellyfin? Po zakończeniu może być wymagany restart serwera.'))return;
+    refs.install.disabled=true;
+    try{
+     const params=new URLSearchParams({assemblyGuid:GUID,version,repositoryUrl:REPO});
+     await query('Packages/Installed/MisioFlix?'+params.toString(),'POST');
+     status('Jellyfin przyjął zlecenie instalacji '+version+'. Sprawdź stan instalacji w panelu wtyczek. Po aktualizacji może być wymagany restart.');
+    }catch(error){status('Nie udało się zlecić instalacji: '+error.message);}
+   }
+   refs.check.addEventListener('click',forceCheck);
+   refs.install.addEventListener('click',install);
+   refs.auto.addEventListener('change',async()=>{
+    const selected=refs.auto.checked;
+    try{const config=await ApiClient.getPluginConfiguration(pluginId);
+      config.AutoCheckUpdates=selected;
+      await ApiClient.updatePluginConfiguration(pluginId,config);
+      status(selected?'Włączono sprawdzanie co 15 minut.':'Wyłączono automatyczne sprawdzanie; ręczne nadal działa.');
+    }catch(error){refs.auto.checked=!selected;status('Nie zapisano ustawienia: '+error.message);}
+   });
+   function activate(){
+    ApiClient.getPluginConfiguration(pluginId).then(config=>{
+      refs.auto.checked=config.AutoCheckUpdates!==false;
+    }).catch(()=>{});
+    void refresh(false);
+    if(timer!==null)window.clearInterval(timer);
+    timer=window.setInterval(()=>{
+      if(panel.isConnected&&refs.auto.checked)void refresh(false);
+    },15*60*1000);
+   }
+   return {activate};
+  })();
+
   view.addEventListener('pageshow',async()=>{
+   updates.activate();
    try{const config=await ApiClient.getPluginConfiguration(pluginId);
     view.querySelector('#mf-mal-client').value=config.MalClientId||'';
     view.querySelector('#mf-mal-secret').value=config.MalClientSecret||'';

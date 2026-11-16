@@ -1,6 +1,6 @@
 'use strict';
-// v0.4.77 — authenticated, true parent-linked anime navigation;
-// no season strip/breadcrumb is ever added to non-anime series.
+// v0.4.78 — authenticated parent-linked season navigation for ALL TV series;
+// the ANIME breadcrumb remains anime-only.
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
@@ -79,13 +79,21 @@ assert.ok(win.__mf077);
  page.dataset.mfDetailType='Series';
  wrapper.children[0].click();
  assert.equal(win.location.hash,'#/home');
- // Non-anime is never decorated, even when it is a Season.
+ // Ordinary TV series gets season buttons, but never anime-only breadcrumb.
  win.location.hash='#/details?id='+media;
  await t.syncAnimeDetailsControls(page,{Type:'Season',SeriesId:series,Name:'Not anime'},media,0);
  assert.equal(page.dataset.mfAnimeDetails,'0');
  assert.equal(page.classList.contains('mf-detail-anime-season'),false);
  assert.equal(info.children[0].isConnected,false);
+ const ordinaryNav=secondary.children[0];
+ assert.equal(ordinaryNav.className,'mf-detail-season-nav');
+ assert.deepEqual(ordinaryNav.children[0].children.map(x=>x.textContent),['S01','S02','S03']);
+ // Even when navigating from a film, back has a fixed destination.
+ page.dataset.mfDetailType='Movie';
+ win.location.hash='#/details?id='+media;
+ wrapper.children[0].click();
+ assert.equal(win.location.hash,'#/home');
  assert.ok(css.includes('.mf-detail-season-switch.mf-detail-season-active'));
  assert.ok(css.includes('.mf-detail-series-sections > .mf-detail-season-nav'));
- console.log('PASS v0.4.77: anime-only season links, active highlighting, breadcrumb, deterministic back, isolated media');
+ console.log('PASS v0.4.78: anime + ordinary TV season buttons, anime-only breadcrumb, deterministic back for all details');
 })().catch(e=>{console.error(e);process.exitCode=1;});
