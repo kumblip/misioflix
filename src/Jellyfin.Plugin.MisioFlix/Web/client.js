@@ -287,8 +287,16 @@
     // mounts or virtualizes its own list.
     const scope=modernMixedRoute()?mixedActiveList:document.body;
     if(!scope)return;
+    const candidates=[...scope.querySelectorAll(CARD)];
+    // v0.4.82: the extra-library deck is separate from Jellyfin's React tree.
+    // Decorate it with the SAME overlays/status logic as native cards, without
+    // changing any existing card or search-rendering path.
+    if(modernMixedRoute()){
+      const extra=document.querySelector('.mf-library-extra-deck');
+      if(extra)candidates.push(...extra.querySelectorAll(CARD));
+    }
     let n=0;
-    for(const card of scope.querySelectorAll(CARD)){
+    for(const card of candidates){
       if(card.closest('.dialog,#dashboardPage,[role="dialog"]'))continue;
       // Virtualized #/mixed slots can be reused for a DIFFERENT anime.
       resetCardIfReused(card);
@@ -500,7 +508,12 @@
     }
     const scope=modernMixedRoute()?mixedActiveList:document.body;
     if(!scope)return;
-    for(const card of scope.querySelectorAll(CARD)){
+    const candidates=[...scope.querySelectorAll(CARD)];
+    if(modernMixedRoute()){
+      const extra=document.querySelector('.mf-library-extra-deck');
+      if(extra)candidates.push(...extra.querySelectorAll(CARD));
+    }
+    for(const card of candidates){
       if(seenCards.has(card))continue;
       if(!card.getAttribute('data-id'))continue;
       if(!card.querySelector(IMAGE))continue;

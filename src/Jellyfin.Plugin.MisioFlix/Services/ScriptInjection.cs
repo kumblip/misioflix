@@ -77,6 +77,7 @@ public sealed class MisioFlixStartupFilter : IStartupFilter
                         "<script data-misioflix=\"skin\" defer src=\"../MisioFlix/assets/client.js?v=" + version + "\"></script>" +
                         "<script data-misioflix=\"home\" defer src=\"../MisioFlix/assets/home.js?v=" + version + "\"></script>" +
                         "<script data-misioflix=\"details\" defer src=\"../MisioFlix/assets/details.js?v=" + version + "\"></script>" +
+                        "<script data-misioflix=\"library-scroll\" defer src=\"../MisioFlix/assets/library-scroll.js?v=" + version + "\"></script>" +
                         "<script data-misioflix=\"mal\" defer src=\"../MisioFlix/assets/mal.js?v=" + version + "\"></script>" +
                         "<link data-misioflix=\"mal-archive\" rel=\"stylesheet\" href=\"../MisioFlix/assets/mal-archive.css?v=" + version + "\">" +
                         "<link data-misioflix=\"mal-frames\" rel=\"stylesheet\" href=\"../MisioFlix/assets/mal-frames.css?v=" + version + "\">" +

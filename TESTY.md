@@ -40,3 +40,9 @@ Jellyfin i zrezygnuj z wtyczki zgodnie z `INSTALACJA_UGREEN.md`.
 - Testy tytułów nadrzędnych wyłącznie z tvshow.nfo/movie.nfo i niezależnego dopasowania sezonów z season.nfo.
 - Testy automatycznego ładowania wyników wyszukiwarek w porcjach 30 i katalogu Kolekcje po 24 BoxSet.
 - Brak ingerencji w natywne strony bibliotek Jellyfina.
+
+## v0.4.82.0
+
+- Testy `library_scroll_082.cjs` i `test_library_scroll_082.py`: rozpoznawanie tras bibliotek, licznika 1-100 z 602 / 101-200 of 602, tylko dozwolone biblioteki, API z paginacją, weryfikacja kolejności, zachowanie React-owned DOM i poprawne wstrzykiwanie assetów.
+- Zestaw istniejących testów wyszukiwarek, kolekcji, MAL/Simkl i szczegółów wciąż działa.
+- Rzeczywisty infinite scroll na działającym Jellyfinie 12.4 musi zostać sprawdzony po publikacji.

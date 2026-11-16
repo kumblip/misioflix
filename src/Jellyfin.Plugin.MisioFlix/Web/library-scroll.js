@@ -1,0 +1,332 @@
+/* MisioFlix Native 0.4.82 — library-only incremental scrolling.
+ * Inspired by the single infinite-scroll approach in KefinTweaks (MIT):
+ * use Jellyfin's Users/{id}/Items paging, not another library renderer/router.
+ * This implementation is standalone; no KefinTweaks scripts or dependencies.
+ * Search pages, MisioFlix home shelves, collections and playback are untouched.
+ */
+(() => {
+  'use strict';
+  if (window.__MISIOFLIX_NATIVE_LIBRARY_SCROLL_082__) return;
+  window.__MISIOFLIX_NATIVE_LIBRARY_SCROLL_082__ = true;
+  const LOG = '[MisioFlix Library Scroll]';
+  const allowed = new Set(['mixed', 'movies', 'tv', 'music']);
+  const PAGE_SIZE = 100;
+  let state = null;
+  let scanTimer = 0;
+  let observer = null;
+  let scrollDebounce = 0;
+  const guid = value => String(value || '').replace(/-/g, '').toLowerCase();
+  const route = () => {
+    const match = /^#\/([^?&#]+)(?:\?([^#]*))?/i.exec(location.hash || '');
+    if (!match || !allowed.has(match[1].toLowerCase())) return null;
+    const q = new URLSearchParams(match[2] || '');
+    const parent = guid(q.get('topParentId') || '');
+    if (!/^[0-9a-f]{32}$/.test(parent)) return null;
+    // The modern Jellyfin library's initial media tab, not search or collections.
+    if (Number(q.get('tab') || '0') !== 0) return null;
+    return { page:match[1].toLowerCase(), parent, key:match[1].toLowerCase() + '|' + parent + '|' + (q.get('collectionType') || '') };
+  };
+  const api = () => window.ApiClient || window.ConnectionManager?.getApiClient?.();
+  const visible = node => node?.isConnected && node.getClientRects?.().length > 0 && !node.closest?.('.hide,[hidden]');
+  function findContainer(r){
+    if (!r) return null;
+    const names={mixed:['mixed'],movies:['moviesPage'],tv:['tvshowsPage'],music:['musicPage']};
+    const pageRoot=(names[r.page] || []).map(id=>document.getElementById(id)).find(visible);
+    const legacy=document.querySelector('.libraryPage:not(.hide)');
+    if(!pageRoot && !legacy)return null;
+    const candidates=[...(pageRoot||legacy).querySelectorAll('.itemsContainer')];
+    return candidates.find(node => visible(node) && node.querySelector('.card[data-id]:not([data-mf-library-infinite-card])')) || null;
+  }
+  const cards = container => [...container.querySelectorAll('.card[data-id]:not([data-mf-library-infinite-card])')];
+  const id = item => guid(item?.getAttribute?.('data-id') || item?.Id);
+  function currentRange(){
+    // The global Jellyfin header and the inner library paging bar can both
+    // be MuiAppBar elements. Search each, not just the first unrelated header.
+    const heads=[...document.querySelectorAll('header.MuiAppBar-root,.libraryPage:not(.hide) .paging')].filter(visible);
+    const numeric=v=>Number(String(v).replace(/[^\d]/g,''));
+    for(const header of heads){
+      const content=String(header.textContent||'');
+      const match=content.match(/(\d[\d\s,.]*)\s*[-–]\s*(\d[\d\s,.]*)\s*(?:z|of|von|de|sur)\s*(\d[\d\s,.]*)/i);
+      if(!match)continue;
+      const first=numeric(match[1]),last=numeric(match[2]),total=numeric(match[3]);
+      if(first>0&&last>=first&&total>=last)return {first,last,total};
+    }
+    return null;
+  }
+  function firstSignature(container){
+    const list=cards(container);
+    return list.slice(0,3).map(id).join('|')+' / '+(list.length ? id(list[list.length-1]) : '');
+  }
+  function identity(){const r=currentRange();return r?[r.first,r.last,r.total].join('/'):'';}
+  function queryIdentity(r){
+    const observed=perfQuery(r);if(!observed)return '';
+    return [...observed.entries()].filter(([k])=>!/^(?:StartIndex|Limit|Fields|ImageTypeLimit|EnableImageTypes)$/i.test(k))
+      .map(([k,v])=>k.toLowerCase()+'='+v).sort().join('&');
+  }
+  function scrollerContext(){
+    let el=document.scrollingElement || document.documentElement;
+    if(!state?.container)return el;
+    for(let parent=state.container.parentElement;parent && parent!==document.body;parent=parent.parentElement){
+      if(parent.scrollHeight>parent.clientHeight+120 && /auto|scroll/i.test(getComputedStyle(parent).overflowY)) return parent;
+    }
+    return el;
+  }
+  function nearBottom(){
+    const root=scrollerContext();
+    return root.scrollHeight-root.scrollTop-root.clientHeight < Math.max(500,root.clientHeight * 0.9);
+  }
+  function perfQuery(r){
+    const candidates=[];
+    try{
+      for(const entry of performance.getEntriesByType('resource')){
+        const url=new URL(entry.name,location.href);
+        if(url.origin!==location.origin || !/\/(?:Users\/[0-9a-f-]+\/)?Items\/?$/i.test(url.pathname))continue;
+        const q=url.searchParams;
+        const queryParent=guid(q.get('ParentId')||q.get('parentId')||q.get('TopParentId')||'');
+        if(queryParent!==r.parent)continue;
+        candidates.push(q);
+      }
+    }catch{}
+    return candidates.length ? candidates[candidates.length-1] : null;
+  }
+  function queryParams(r){
+    const observed=perfQuery(r);
+    const params={};
+    if(observed){
+      for(const [key,value] of observed){
+        // Only valid Jellyfin item-query fields. Never copy authentication tokens.
+        if(!/^[A-Za-z][A-Za-z0-9]*$/.test(key) || /^(?:api_key|token|xembytoken|userid|deviceid)$/i.test(key))continue;
+        params[key]=value;
+      }
+    }else{
+      params.ParentId=r.parent;
+      params.SortBy='SortName,ProductionYear';
+      params.SortOrder='Ascending';
+      params.Recursive='true';
+    }
+    // Exact parent must match the currently open native library.
+    params.ParentId=r.parent;
+    delete params.parentId;
+    delete params.TopParentId;
+    delete params.topParentId;
+    params.StartIndex='0'; params.Limit='1';
+    return {params,source:observed?'native-request':'fallback'};
+  }
+  function requestUrl(client,user,params){
+    return client.getUrl('Users/'+encodeURIComponent(user)+'/Items', params);
+  }
+  async function verifyNativeQuery(s,client,user){
+    const base=queryParams(s.route);
+    // Modern /mixed can virtualize its FIRST 100 cards. The first mounted
+    // node may be item 75, not item 1; validate membership in the native
+    // page, not position 0. Do not force its React component to rerender.
+    if(s.nativeFirst){
+      const probe={...base.params,StartIndex:String((s.range?.first||1)-1),Limit:String(PAGE_SIZE)};
+      const result=await client.getJSON(requestUrl(client,user,probe));
+      const sample=Array.isArray(result?.Items)?result.Items.map(item=>id(item)):[];
+      const shown=cards(s.container).slice(0,4).map(el=>id(el));
+      const positions=shown.map(value=>sample.indexOf(value));
+      if(!positions.length||positions.some(i=>i<0)||positions.some((n,i)=>i>0&&n<=positions[i-1])){
+        console.warn(LOG,'Natywna biblioteka ma inne filtry lub sortowanie; pozostawiam oryginalną paginację.');
+        return null;
+      }
+    }
+    if(!state || state!==s || identity()!==s.identity)return null;
+    return base.params;
+  }
+  function removeMisioFlixAttrs(root){
+    for(const el of [root,...root.querySelectorAll('*')]){
+      for(const attr of [...el.attributes]) if(attr.name.startsWith('data-mf-'))el.removeAttribute(attr.name);
+    }
+    for(const el of root.querySelectorAll('.mf-native-overlay,.mf-native-description,.mf-collection-preview,.mf-home-stats,.mf-home-mal-score,.mf-mal-episode-frame'))el.remove();
+  }
+  function makeCard(item,s){
+    const template=s.template;
+    if(!template || !item?.Id)return null;
+    const node=template.cloneNode(true);
+    removeMisioFlixAttrs(node);
+    const newId=guid(item.Id), oldId=id(template);
+    for(const el of [node,...node.querySelectorAll('*')]){
+      for(const name of ['data-id','data-item-id','data-parentid','data-parent-id']){
+        const value=el.getAttribute(name);
+        if(value && guid(value)===oldId)el.setAttribute(name,newId);
+      }
+    }
+    node.setAttribute('data-id',newId);
+    node.setAttribute('data-type',item.Type||'');
+    node.setAttribute('data-isfolder',String(!!item.IsFolder));
+    node.setAttribute('data-mf-library-infinite-card','1');
+    node.removeAttribute('data-mf-card');
+    node.removeAttribute('data-mf-anime');
+    const name=node.querySelector('.cardText-first bdi,.cardText-first,.cardText-first a');
+    if(name)name.textContent=String(item.Name||item.OriginalTitle||'');
+    const year=node.querySelector('.cardText-secondary bdi,.cardText-secondary');
+    if(year)year.textContent=item.ProductionYear ? String(item.ProductionYear) : '';
+    const img=node.querySelector('.cardImageContainer');
+    if(img){
+      // Start from the item's own artwork, never the cloned template artwork.
+      for(const extra of img.querySelectorAll('img,.mf-collection-preview'))extra.remove();
+      const primary=item.ImageTags?.Primary;
+      const tag=primary || item.SeriesPrimaryImageTag || '';
+      const imageId=primary ? newId : item.SeriesId || newId;
+      const url=tag ? '/Items/'+encodeURIComponent(imageId)+'/Images/Primary?maxWidth=400&quality=90&tag='+encodeURIComponent(tag) : '';
+      img.style.backgroundImage=url ? 'url("'+url+'")' : 'none';
+      img.removeAttribute('data-src');
+      img.classList.remove('lazy','lazy-hidden','lazy-hidden-children','blurhashed');
+    }
+    const pad=node.querySelector('.cardPadder');
+    pad?.classList.remove('lazy-hidden-children');
+    // Cloned React nodes have no React handlers. Use native-looking cards with
+    // explicit per-item navigation; leave originals entirely owned by Jellyfin.
+    for(const el of node.querySelectorAll('button,.cardOverlayButton,[data-action="play"],[data-action="resume"],.playedIndicator,.itemProgressBar'))el.remove();
+    node.setAttribute('tabindex','0');node.setAttribute('role','link');
+    node.setAttribute('aria-label','Otwórz: '+String(item.Name||''));
+    return node;
+  }
+  function itemLink(item,s){
+    const client=api();
+    const server=typeof client?.serverId==='function'?client.serverId():client?.serverId;
+    const sid=guid(server)||new URLSearchParams((location.hash||'').split('?')[1]||'').get('serverId')||'';
+    const itemId=guid(item.Id);
+    if(!itemId)return '';
+    if(item.Type==='Folder'||item.Type==='CollectionFolder')return '#/list?parentId='+encodeURIComponent(itemId)+'&serverId='+encodeURIComponent(sid);
+    return '#/details?id='+encodeURIComponent(itemId)+'&serverId='+encodeURIComponent(sid);
+  }
+  function reset(){
+    if(!state)return;
+    state.abort=true;
+    state.io?.disconnect();
+    state.pane?.remove();
+    state.sentinel?.remove();
+    state=null;
+  }
+  function configure(r,container){
+    const native=cards(container);
+    if(!native.length)return;
+    const range=currentRange();
+    const displayed=range?.last || native.length;
+    const total=range?.total || null;
+    if(total!==null && displayed>=total)return;
+    const s={route:r,container,identity:identity(),queryIdentity:queryIdentity(r),nativeFirst:id(native[0]),range,
+      next:displayed,total,loading:false,complete:false,abort:false,pane:null,sentinel:null,
+      template:native[0].cloneNode(true),itemIds:new Set(native.map(id)),query:null,failures:0};
+    // The additional cards are a separate non-React deck. It follows the
+    // native grid within the existing library view, never rewrites its children.
+    const pane=document.createElement('div');
+    pane.className=container.className+' mf-library-extra-deck';
+    pane.setAttribute('aria-label','Kolejne elementy biblioteki');
+    const sentinel=document.createElement('div');
+    sentinel.className='mf-library-load-sentinel';
+    sentinel.setAttribute('aria-hidden','true');
+    // Both nodes are siblings of React's itemsContainer. React retains ownership
+    // of its cards; our deck is destroyed on a route/filter/native page change.
+    container.insertAdjacentElement('afterend',pane);
+    pane.insertAdjacentElement('afterend',sentinel);
+    s.pane=pane;s.sentinel=sentinel;
+    state=s;
+    if(typeof IntersectionObserver==='function'){
+      s.io=new IntersectionObserver(entries=>{
+        if(entries.some(e=>e.isIntersecting))loadMore(s);
+      },{root:null,rootMargin:'600px 0px'});
+      s.io.observe(sentinel);
+    }
+    if(nearBottom())loadMore(s);
+  }
+  async function loadMore(s){
+    if(!s || state!==s || s.loading || s.complete || s.abort || !visible(s.container))return;
+    const client=api();
+    const user=client?.getCurrentUserId?.();
+    if(!user || typeof client.getJSON!=='function' || typeof client.getUrl!=='function')return;
+    s.loading=true;
+    s.sentinel.textContent='Ładowanie kolejnych pozycji…';
+    s.sentinel.setAttribute('aria-hidden','false');
+    try{
+      if(!s.query){
+        s.query=await verifyNativeQuery(s,client,user);
+        if(!s.query){s.complete=true;return;}
+      }
+      if(s.total!==null && s.next>=s.total){s.complete=true;return;}
+      const params={...s.query,StartIndex:String(s.next),Limit:String(PAGE_SIZE)};
+      const data=await client.getJSON(requestUrl(client,user,params));
+      if(state!==s || s.abort || identity()!==s.identity || route()?.key!==s.route.key)return;
+      const items=Array.isArray(data?.Items)?data.Items:[];
+      const total=Number(data?.TotalRecordCount);
+      if(Number.isFinite(total) && total>=0)s.total=total;
+      let appended=0;
+      const batch=document.createDocumentFragment();
+      for(const item of items){
+        const iid=id(item);
+        if(!iid || s.itemIds.has(iid))continue;
+        const node=makeCard(item,s);
+        if(!node)continue;
+        s.itemIds.add(iid);
+        node.addEventListener('click',event=>{
+          if(event.button!==0 || event.ctrlKey || event.shiftKey || event.metaKey || event.altKey)return;
+          const target=itemLink(item,s);if(!target)return;
+          event.preventDefault();event.stopPropagation();
+          location.hash=target;
+        });
+        node.addEventListener('keydown',event=>{
+          if(event.key!=='Enter'&&event.key!==' ')return;
+          const target=itemLink(item,s);if(!target)return;
+          event.preventDefault();location.hash=target;
+        });
+        batch.appendChild(node);appended++;
+      }
+      s.pane.appendChild(batch);
+      s.next+=items.length;
+      s.failures=0;
+      s.complete=items.length===0 || (s.total!==null && s.next>=s.total);
+      // Hide native page arrows only once incremental loading is confirmed.
+      // The original pagination is deliberately left available if loading fails.
+      if(appended || s.complete)s.pane.setAttribute('data-mf-library-scroll-active','1');
+      s.sentinel.title=String(s.next)+' z '+String(s.total??'?');
+    }catch(error){
+      console.warn(LOG,'Nie udało się pobrać kolejnej partii; oryginalna paginacja Jellyfina pozostaje dostępna.',error);
+      s.failures+=1;
+      if(s.failures>=3)s.complete=true;
+      else setTimeout(()=>{if(state===s && !s.abort)loadMore(s);},800*s.failures);
+    }finally{
+      s.loading=false;
+      if(s.complete){s.io?.disconnect();s.sentinel.textContent='';s.sentinel.setAttribute('aria-hidden','true');}
+      else {s.sentinel.textContent='';s.sentinel.setAttribute('aria-hidden','true');}
+    }
+  }
+  function reconcile(){
+    scanTimer=0;
+    const r=route();
+    const container=findContainer(r);
+    if(!r || !container){reset();return;}
+    const q=queryIdentity(r);
+    if(state && (state.route.key!==r.key || state.container!==container || !state.pane?.isConnected || state.identity!==identity() ||
+       (state.queryIdentity && q && state.queryIdentity!==q)))reset();
+    if(!state)configure(r,container);
+  }
+  function schedule(){if(!scanTimer)scanTimer=setTimeout(reconcile,190);}
+  function startup(){
+    schedule();
+    window.addEventListener('hashchange',()=>{reset();schedule();});
+    document.addEventListener('viewshow',schedule);
+    window.addEventListener('pageshow',schedule);
+    // Filters, sorting, letter picker and native paging are React-controlled.
+    // Never append the previous query's results after the user changes one.
+    document.addEventListener('click',event=>{
+      if(!route())return;
+      const button=event.target?.closest?.('header.MuiAppBar-root button,.libraryPage .paging button,.alphaPickerButton,.alphaPicker-fixed-right button');
+      if(button){reset();setTimeout(schedule,450);}
+    },true);
+    document.addEventListener('scroll',()=>{
+      if(!scrollDebounce)scrollDebounce=setTimeout(()=>{scrollDebounce=0;if(state && nearBottom())loadMore(state);},120);
+    },{capture:true,passive:true});
+    window.addEventListener('scroll',()=>{if(state&&nearBottom())loadMore(state);},{passive:true});
+    observer=new MutationObserver(changes=>{
+      // React-managed library cards change via childList on navigation/paging.
+      if(changes.some(x=>x.addedNodes.length||x.removedNodes.length))schedule();
+    });
+    observer.observe(document.body,{subtree:true,childList:true});
+    // The native React page can mount after MisioFlix's deferred scripts.
+    setInterval(()=>{if(route())schedule();else if(state)reset();},1600);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startup,{once:true});
+  else startup();
+})();

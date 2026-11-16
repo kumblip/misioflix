@@ -1623,3 +1623,8 @@ html.misioflix-skin .mf-home-search-feed[hidden],
 html.misioflix-skin .mf-collections-page-feed[hidden],
 html.misioflix-skin .mf-collections-page-retry[hidden] {display:none!important}
 html.misioflix-skin .mf-collections-page-retry {align-self:center}
+
+/* v0.4.82: additional pages on native Jellyfin library views only. */
+.mf-library-extra-deck.itemsContainer{display:flex;flex-wrap:wrap;align-content:flex-start;gap:1em;padding-top:1.2em;padding-bottom:1em;box-sizing:border-box;}
+.mf-library-extra-deck.itemsContainer .card{cursor:pointer;}
+.mf-library-load-sentinel{min-height:8px;text-align:center;color:var(--theme-text-color,#eee);font-size:.85em;pointer-events:none;}
