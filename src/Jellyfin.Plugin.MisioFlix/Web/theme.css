@@ -1501,3 +1501,32 @@ html.misioflix-skin .mf-home-card-search-alias{
   html.misioflix-skin .mf-home-search-dialog[aria-label="Wyszukiwarka anime"] .mf-home-choice-groups{grid-template-columns:1fr}
   html.misioflix-skin .mf-home-search-dialog[aria-label="Wyszukiwarka anime"] .mf-home-choice-watched{grid-column:auto}
 }
+
+/* v0.4.76 — never clip the native Jellyfin detail title, including long anime
+   romanized titles. Let it wrap BEFORE the action controls on every viewport. */
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .infoWrapper,
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .nameContainer{
+  min-width:0!important;
+  max-width:100%!important;
+  overflow:visible!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .nameContainer,
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .nameContainer :is(h1,.itemName,.parentName),
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .itemName{
+  white-space:normal!important;
+  text-overflow:clip!important;
+  overflow:visible!important;
+  overflow-wrap:anywhere!important;
+  word-break:normal!important;
+  -webkit-line-clamp:unset!important;
+  max-height:none!important;
+  height:auto!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .nameContainer :is(h1,.itemName,.parentName){
+  width:100%!important;
+  max-width:100%!important;
+  display:block!important;
+  line-height:1.24!important;
+}
+/* 18 suggestions rather than 8. Keep scrolling available inside the popup. */
+html.misioflix-skin .mf-home-suggestions{max-height:min(55dvh,540px)}

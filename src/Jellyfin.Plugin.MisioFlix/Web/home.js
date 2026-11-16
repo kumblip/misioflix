@@ -831,20 +831,20 @@
     if(state.type?.value==='seasons')return value==='Season'&&seasonOnly;
     return seasonOnly?kind==='seasons':kind!=='seasons';
   }
-  // On anime, use the same account-scoped MAL statuses as the card frames.
-  // A missing title is "not watched" only with a complete MAL list; never
-  // silently call an unverified title watched or borrow another user's cache.
-  // If MAL is disconnected/unavailable the search uses Jellyfin UserData,
-  // explicitly identifying this fallback in the result status line.
+  // Source priority for each Jellyfin user: connected MAL read-only API ->
+  // the same user's verified, persistent MAL archive -> Jellyfin only when no
+  // account-scoped MAL data is available. Nothing here updates MAL or backups.
   function watchClassification(item,state){
     const snapshot=state.watchSnapshot;
     if(state.kind==='anime'&&snapshot?.connected){
       const id=Number(item.mal_id??item.malId);
       if(!Number.isSafeInteger(id)||id<=0)return 'unknown';
       const entry=snapshot.entries?.[String(id)];
-      if(!entry)return 'unwatched'; // /mal/status returns a complete list.
+      if(!entry)return 'unwatched'; // verified complete MAL list (online or archive)
+      // Online returns a MalEntry object; the archive endpoint returns a
+      // minimal status string. Never infer status from titles/descriptions.
       const data=entry.entry||entry.Entry||entry;
-      const status=String(data.status??data.Status??'').toLowerCase();
+      const status=String(typeof data==='string'?data:(data.status??data.Status??'')).toLowerCase();
       if(status==='completed')return 'watched';
       if(['watching','on_hold','plan_to_watch','dropped'].includes(status))return 'unwatched';
       return 'unknown';
@@ -885,16 +885,29 @@
     state.watchLoading=true;
     paintSearchResults(state);
     try{
-      // Read-only endpoint, refresh=false: existing MAL list cache, no writes.
-      const response=await request('/mal/status?refresh=false','GET',undefined,60000);
+      // Online MAL only when the Jellyfin user has a connected account.
+      // An unavailable/disconnected MAL must not suppress offline backups.
+      let remote=null;
+      try{remote=await request('/mal/status?refresh=false','GET',undefined,60000);}
+      catch(_error){ /* offline or expired token: read archive below */ }
       if(state!==activeSearch||!state.overlay.isConnected||job!==state.watchRequestId)return;
-      state.watchSnapshot=response?.connected&&response.entries
-        ? {connected:true,entries:response.entries} : {connected:false};
-      state.watchFallback=false;
-    }catch(_error){
-      if(state!==activeSearch||!state.overlay.isConnected||job!==state.watchRequestId)return;
-      state.watchSnapshot={connected:false};
-      state.watchFallback=true;
+      if(remote?.connected&&remote.entries){
+        state.watchSnapshot={connected:true,source:'mal',entries:remote.entries};
+        state.watchFallback=false;
+      }else{
+        // Server authenticates the CURRENT Jellyfin user and selects only
+        // the archive of their linked MAL ID (or sole historical MAL ID).
+        // Do NOT cache backup data across users or store it in localStorage.
+        let saved=null;
+        try{saved=await request('/mal/archive/watch-status','GET',undefined,30000);}
+        catch(_error){ /* missing/corrupt/ambiguous archive: use Jellyfin */ }
+        if(state!==activeSearch||!state.overlay.isConnected||job!==state.watchRequestId)return;
+        state.watchSnapshot=saved?.available&&saved.entries
+          ? {connected:true,source:'archive',entries:saved.entries,
+             exportedAtUtc:saved.exportedAtUtc}
+          : {connected:false,source:'jellyfin'};
+        state.watchFallback=true;
+      }
     }finally{
       if(state===activeSearch&&job===state.watchRequestId){
         state.watchLoading=false;
@@ -938,9 +951,10 @@
     if(!state.matches.length)state.grid.appendChild(own('p','mf-home-empty','Brak wyników dla wybranych warunków.'));
     state.more.hidden=state.shown>=state.matches.length;
     const source=state.watchMode
-      ? state.watchLoading?' · pobieranie statusów MAL…'
-        : state.watchSnapshot?.connected?' · obejrzane wg MAL'
-        : ' · obejrzane wg Jellyfin'+(state.watchFallback?' (MAL niedostępny)':'')
+      ? state.watchLoading?' · odczyt statusów MAL / kopii lokalnej…'
+        : state.watchSnapshot?.source==='mal'?' · obejrzane wg MAL'
+        : state.watchSnapshot?.source==='archive'?' · obejrzane wg lokalnej kopii MAL'
+        : ' · obejrzane wg Jellyfin (brak dostępnej kopii MAL)'
       : '';
     state.status.textContent=`Wyniki: ${state.matches.length} · pokazano ${state.shown} · lista źródłowa: ${state.pool.length}${source}`;
     suggestSearch(state);
@@ -973,7 +987,7 @@
     if(q.length<2){state.suggestions.hidden=true;return;}
     const titles=state.matches.filter(item=>titleMatches(item,q) ||
       (state.kind==='anime'&&item.type==='Series'&&
-        relatedSeasons(item,state).some(season=>titleMatches(season,q)))).slice(0,8);
+        relatedSeasons(item,state).some(season=>titleMatches(season,q)))).slice(0,18);
     for(const item of titles){
       const tile=searchTile(item,state);
       const link=own('a','mf-home-suggestion');

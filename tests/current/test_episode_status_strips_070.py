@@ -11,7 +11,7 @@ DETAILS=(WEB/'details.js').read_text('utf8')
 
 class StatusStrips070(unittest.TestCase):
     def test_current_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.75.0')
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.76.0')
     def test_colors_are_only_on_left_except_mixed_bottom(self):
         for css,key in [(MAL,'mal'),(SIMKL,'simkl')]:
             for state,color in [('unwatched','#f4a5ce'),('started','#e6a23c'),('watched','#45b879'),('mixed','#45b879')]:

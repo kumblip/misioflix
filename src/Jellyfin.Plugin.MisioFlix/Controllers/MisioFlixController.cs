@@ -268,6 +268,28 @@ public sealed class MisioFlixController : ControllerBase
         catch (IOException) { return StatusCode(503, new { error = "Nie można odczytać archiwum MAL" }); }
     }
 
+    // Lightweight fallback for the anime "Obejrzane" search filter.
+    // Authenticated per Jellyfin user; returns only MAL IDs and statuses,
+    // never OAuth tokens, full notes, or another user's archive.
+    [HttpGet("api/mal/archive/watch-status")]
+    [Authorize]
+    public async Task<IActionResult> MalArchiveWatchStatus(CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        try
+        {
+            var user = await _catalog.GetAuthenticatedUserIdAsync(Request, cancel).ConfigureAwait(false);
+            var data = _malArchive.ReadWatchStatuses(user);
+            if (data is null) return Ok(new { available = false });
+            return Ok(new { available = true, source = "archive", malUserId = data.MalUserId,
+                username = data.Username, exportedAtUtc = data.ExportedAtUtc,
+                entries = data.Entries });
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (IOException) { return StatusCode(503, new { error = "Nie można odczytać kopii MAL" }); }
+    }
+
     [HttpGet("api/mal/archive/download")]
     [Authorize]
     public async Task<IActionResult> MalArchiveDownload([FromQuery] string? kind,

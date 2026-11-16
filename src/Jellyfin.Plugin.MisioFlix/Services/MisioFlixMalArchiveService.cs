@@ -261,6 +261,81 @@ public sealed class MisioFlixMalArchiveService
             _errors.TryGetValue(user, out var error) ? error : null, files.ToArray());
     }
 
+    // A search-only, read-only view of current.json. Never read another Jellyfin
+    // user folder; a disconnected user may use a backup only if exactly ONE
+    // historical MAL account exists. If relinked, prefer the linked account ID.
+    // No archive endpoint here writes anything to MyAnimeList or Jellyfin.
+    public sealed record ArchivedWatchStatuses(int MalUserId, string? Username,
+        string? ExportedAtUtc, Dictionary<int, string> Entries);
+
+    public ArchivedWatchStatuses? ReadWatchStatuses(string userId)
+    {
+        var user = Normalize(userId);
+        var linkedId = _mal.LinkedMalAccountId(user);
+        var folder = Path.Combine(_root, user);
+        int accountId;
+        if (linkedId > 0)
+        {
+            accountId = linkedId;
+        }
+        else
+        {
+            if (!Directory.Exists(folder)) return null;
+            var ids = Directory.EnumerateDirectories(folder)
+                .Select(Path.GetFileName)
+                .Select(name => int.TryParse(name, NumberStyles.None,
+                    CultureInfo.InvariantCulture, out var id) && id > 0 ? id : 0)
+                .Where(id => id > 0).Distinct().ToArray();
+            if (ids.Length != 1) return null; // no ambiguous historical accounts
+            accountId = ids[0];
+        }
+        var accountFolder = FolderForAccount(user, accountId);
+        var stateFile = Path.Combine(accountFolder, "state.json");
+        var currentFile = Path.Combine(accountFolder, "current.json");
+        if (!File.Exists(stateFile) || !File.Exists(currentFile)) return null;
+        try
+        {
+            var state = JsonSerializer.Deserialize<ArchiveState>(File.ReadAllText(stateFile));
+            if (state is null || state.MalUserId != accountId) return null;
+            using var doc = JsonDocument.Parse(File.ReadAllText(currentFile));
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("account", out var account) ||
+                account.ValueKind != JsonValueKind.Object ||
+                !account.TryGetProperty("malUserId", out var malId) ||
+                malId.ValueKind != JsonValueKind.Number ||
+                !malId.TryGetInt32(out var savedId) || savedId != accountId ||
+                !root.TryGetProperty("entries", out var entries) ||
+                entries.ValueKind != JsonValueKind.Object) return null;
+            if (!root.TryGetProperty("itemCount", out var total) ||
+                total.ValueKind != JsonValueKind.Number ||
+                !total.TryGetInt32(out var expected) ||
+                expected != entries.EnumerateObject().Count())
+                return null; // only a complete archive can classify missing IDs
+            var statuses = new Dictionary<int, string>();
+            foreach (var node in entries.EnumerateObject())
+            {
+                if (!int.TryParse(node.Name, NumberStyles.None,
+                    CultureInfo.InvariantCulture, out var id) || id <= 0) continue;
+                if (node.Value.ValueKind != JsonValueKind.Object ||
+                    !node.Value.TryGetProperty("list_status", out var info) ||
+                    info.ValueKind != JsonValueKind.Object ||
+                    !info.TryGetProperty("status", out var value) ||
+                    value.ValueKind != JsonValueKind.String) continue;
+                statuses[id] = value.GetString() ?? "";
+            }
+            // A link change while we read invalidates the result; never leak
+            // the archive of the old MAL identity to a newly linked account.
+            var currentLinked = _mal.LinkedMalAccountId(user);
+            if (currentLinked != linkedId) return null;
+            return new ArchivedWatchStatuses(accountId, state.MalUsername,
+                state.LastSuccessUtc.ToString("O", CultureInfo.InvariantCulture), statuses);
+        }
+        catch (JsonException) { return null; }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
     private static bool ValidKey(string kind, string key) => kind switch
     {
         "current" => key == "current",
