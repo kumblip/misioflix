@@ -58,3 +58,10 @@ Jellyfin i zrezygnuj z wtyczki zgodnie z `INSTALACJA_UGREEN.md`.
 - Test regresji `library_card_posters_084.cjs`: rzeczywiste obrazy `<img>` z nowym item ID, brak starych liczników, poprawne linki i most do kolejki metadanych, bez zmiany paginacji.
 - Test `test_library_covers_084.py`: brak ingerencji w siatkę React, kontrola selektorów i wersji.
 - Test lokalny Chromium/Playwright na syntetycznym fragmencie struktury karty Jellyfin 12.4: nowy obraz, typ ANIME, link, opis, łapki 2/24 i gatunki z przykładowych metadanych.
+
+## v0.4.85 — ręczne „Następny” jako obejrzany w Jellyfinie
+- 387 testów Python + 36 podtestów (przejście po aktualizacji oczekiwanej wersji) — OK.
+- 36 skryptów testowych JavaScript, w tym 8 asercji nowej akcji NEXT — OK.
+- Front-end nie przechwytuje samodzielnego automatycznego przejścia, Stop ani Seek.
+- Serwer czeka na potwierdzone sąsiadujące przejście; zapis `MarkPlayed(User)` jest w Jellyfinie.
+- Nie wykonano kompilacji .NET 10 i integracyjnego testu na NAS-ie.

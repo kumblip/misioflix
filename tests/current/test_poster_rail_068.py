@@ -60,7 +60,7 @@ class PosterRailUnderNativePoster068(unittest.TestCase):
         self.assertIn("const rail=page.querySelector('.mf-detail-poster-rail')", simkl)
         self.assertIn('if(rail)rail.append(panel)', mal)
         self.assertIn('if(rail)rail.append(section)', simkl)
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.84.0')
-        self.assertIn('<AssemblyVersion>0.4.84.0</AssemblyVersion>', (ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.85.0')
+        self.assertIn('<AssemblyVersion>0.4.85.0</AssemblyVersion>', (ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__ == '__main__': unittest.main()
