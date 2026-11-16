@@ -34,5 +34,5 @@ class MemberCollection090(unittest.TestCase):
   self.assertNotIn('/* Standardowe oceny Jellyfina: gwiazdka',CSS)
   self.assertTrue((R/'zrobionepozamisioflixem.txt').exists())
  def test_version(self):
-  self.assertEqual(json.loads((R/'meta.json').read_text())['version'],'0.4.91.0')
+  self.assertEqual(json.loads((R/'meta.json').read_text())['version'],'0.4.92.0')
 if __name__=='__main__':unittest.main()

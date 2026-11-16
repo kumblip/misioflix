@@ -38,7 +38,7 @@
   <hr style="margin:26px 0;border-color:#77526c" />
   <section id="mf-updates-panel" aria-labelledby="mf-updates-heading" style="padding:12px 0 22px">
    <h2 id="mf-updates-heading">Aktualizacje MisioFlix</h2>
-   <p>Oddzielne sprawdzanie GitHub Release, manifestu MisioFlix i katalogu Jellyfina. Sprawdzenie wersji nie instaluje pakietów i nie zastępuje plików DLL.</p>
+   <p>Porównanie GitHub Release, manifestu i katalogu Jellyfina. Wymuszenie zapisuje w Jellyfinie adres zweryfikowanego manifestu konkretnej rewizji GitHuba; nie instaluje pakietów ani nie zastępuje DLL.</p>
    <dl style="display:grid;grid-template-columns:minmax(170px,220px) 1fr;gap:9px;margin:12px 0">
     <dt>Wersja zainstalowana</dt><dd id="mf-update-installed">Nie sprawdzono</dd>
     <dt>Najnowsza wersja GitHub</dt><dd id="mf-update-github">Nie sprawdzono</dd>
@@ -51,7 +51,7 @@
     <span>Automatyczne sprawdzanie co 15 minut (bez automatycznego instalowania)</span>
    </label>
    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0">
-    <button type="button" class="raised emby-button" id="mf-update-check">Wymuś pobranie aktualnego katalogu</button>
+    <button type="button" class="raised emby-button" id="mf-update-check">Wymuś aktualizację katalogu Jellyfina</button>
     <button type="button" class="emby-button" id="mf-update-install" disabled>Zainstaluj aktualizację</button>
    </div>
    <p id="mf-update-status" role="status" aria-live="polite">Gotowe do sprawdzenia.</p>
@@ -73,6 +73,8 @@
     install:panel.querySelector('#mf-update-install'),auto:panel.querySelector('#mf-update-auto')};
    const GUID='97d15b37-b868-492b-83da-eb67b16a0d44';
    const REPO='https://raw.githubusercontent.com/kumblip/misioflix/main/manifest.json';
+   const repoPrefix='https://raw.githubusercontent.com/kumblip/misioflix/';
+   let pinnedRevision=null;
    let snapshot=null;
    let timer=null;
    let refreshSeq=0;
@@ -86,40 +88,29 @@
    const auth=()=>{
      const t=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
      if(!t)throw Error('Brak aktywnego tokenu Jellyfin.');
-     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.79", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
+     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.92", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
    };
    async function query(path,method='GET',payload=null){
     const h=auth();
     if(payload!==null)h['Content-Type']='application/json';
     const response=await fetch(api(path),{method,headers:h,cache:'no-store',
       ...(payload!==null?{body:JSON.stringify(payload)}:{})});
-    if(!response.ok)throw Error(method+' '+path+': HTTP '+response.status);
-    if(response.status===204||response.status===202||method==='POST')return null;
+    if(!response.ok){
+      let details='';
+      try{const data=await response.json();details=String(data?.error||data?.message||'');}catch(_){}
+      throw Error(method+' '+path+': HTTP '+response.status+(details?' – '+details:''));
+    }
+    if(response.status===204||response.status===202)return null;
     return await response.json();
    }
-   // Compare registered repositories without mistaking a safe CDN cache buster
-   // for an unrelated repository. No arbitrary repository can be modified.
-   const isOwnRepo=url=>String(url||'').split('?')[0].replace(/\/$/,'')===REPO;
-   async function forceLiveRepositoryRead(){
-    const repositories=await query('Repositories');
-    if(!Array.isArray(repositories))throw Error('Jellyfin nie zwrócił listy repozytoriów.');
-    const matching=repositories.filter(r=>isOwnRepo(get(r,'Url','url')));
-    if(matching.length!==1)throw Error('Wymagane jest dokładnie jedno repozytorium MisioFlix w Jellyfin.');
-    if(get(matching[0],'Enabled','enabled')===false)throw Error('Repozytorium MisioFlix jest wyłączone.');
-    const updatedUrl=REPO+'?mf_refresh='+Date.now();
-    // POST /Repositories replaces the entire list: preserve every other
-    // repository's Name, Url, Enabled exactly as Jellyfin returned them.
-    const updated=repositories.map(r=>({
-      Name:get(r,'Name','name'),
-      Url:isOwnRepo(get(r,'Url','url'))?updatedUrl:get(r,'Url','url'),
-      Enabled:get(r,'Enabled','enabled')!==false
-    }));
-    await query('Repositories','POST',updated);
-    const verified=await query('Repositories');
-    if(!Array.isArray(verified)||!verified.some(r=>get(r,'Url','url')===updatedUrl))
-      throw Error('Jellyfin nie potwierdził nowego adresu repozytorium.');
-    return updatedUrl;
-   }
+   // Canonical URL, earlier cache-buster and immutable commit-pinned URLs
+   // all belong to this plugin. Never treat an unrelated repository as ours.
+   const isOwnRepo=url=>{
+    const clean=String(url||'').split(/[?#]/)[0].replace(/\/$/,'');
+    if(clean===REPO)return true;
+    if(!clean.startsWith(repoPrefix)||!clean.endsWith('/manifest.json'))return false;
+    return /^[a-f0-9]{40}$/i.test(clean.slice(repoPrefix.length,-'/manifest.json'.length));
+   };
    async function readCatalog(){
     const [packages,repositories]=await Promise.all([query('Packages'),query('Repositories')]);
     const items=Array.isArray(packages)?packages:get(packages,'Items','items')||[];
@@ -168,7 +159,8 @@
     const installedFromJellyfin=get(installedItem,'Version','version');
     const installed=norm(installedFromJellyfin||remote?.installedVersion);
     const installedValid=/^\d+(\.\d+){2,3}$/.test(installed);
-    const gh=norm(remote?.gitHubVersion),manifest=norm(remote?.repositoryVersion);
+    const gh=norm(remote?.gitHubVersion);
+    let manifest=norm(remote?.repositoryVersion);
     const githubError=remote?.gitHubError||remoteError;
     const manifestError=remote?.repositoryError||remoteError;
     snapshot={remote,catalog,installed:installedValid?installed:null};
@@ -185,6 +177,23 @@
     const checked=remote?.checkedAt?new Date(remote.checkedAt):new Date();
     refs.checked.textContent=(Number.isNaN(checked.getTime())?new Date():checked).toLocaleString('pl-PL')+
       (remote?.checkedAt?'':' (odczyt lokalny)');
+    // When the admin has just successfully pinned a manifest through Jellyfin,
+    // trust that independently verified revision instead of a possibly stale
+    // moving /main URL still returned by the separate discovery service.
+    // The repository URL survives page reloads because it is persisted by
+    // Jellyfin. Recognize it even if this browser has no in-memory pin yet.
+    const repoUrl=String(catalog?.repoUrl||'');
+    const isCommitted=/^https:\/\/raw\.githubusercontent\.com\/kumblip\/misioflix\/[a-f0-9]{40}\/manifest\.json$/i.test(repoUrl);
+    const newestNative=catalog?.versions?.[0];
+    const nativePinned=(isCommitted&&newestNative&&compare(newestNative.version,manifest)>=0)?
+      {version:newestNative.version,abi:newestNative.abi}:null;
+    const trustedPin=pinnedRevision||nativePinned;
+    if(remote&&trustedPin&&catalog?.versions?.some(v=>norm(v.version)===norm(trustedPin.version))){
+      remote.repositoryVersion=trustedPin.version;
+      remote.repositoryTargetAbi=trustedPin.abi;
+      refs.manifest.textContent=trustedPin.version+' (ABI '+trustedPin.abi+', wczytano przez Jellyfin)';
+    }
+    manifest=norm(remote?.repositoryVersion);
     const matchingCatalog=catalog?.versions?.find(v=>norm(v.version)===manifest);
     const abiCompatible=norm(remote?.repositoryTargetAbi)==='12.4.0.0' &&
       (!matchingCatalog?.abi||norm(matchingCatalog.abi)==='12.4.0.0');
@@ -211,31 +220,35 @@
    }
    async function forceCheck(){
     refs.check.disabled=true;refs.install.disabled=true;
-    status('Wymuszam świeże pobranie manifestu MisioFlix i katalogu Jellyfin…');
-    let forceError=null;
-    try{await forceLiveRepositoryRead();}
-    catch(error){forceError=String(error?.message||error);}
-    // Even if forcing the repository URL fails, ALWAYS reload displayed data
-    // instead of leaving stale 'unknown' fields in place.
-    let result;
-    try{result=await refresh(true);}
-    catch(error){status('Nie udało się ponownie odczytać danych: '+String(error?.message||error));}
-    if(result){
-      const manifest=norm(result.remote?.repositoryVersion);
-      const visible=!!(manifest&&result.catalog?.versions?.some(v=>norm(v.version)===manifest));
-      if(forceError)status('Dane zostały ponownie odczytane, ale wymuszenie pobrania katalogu nie powiodło się: '+forceError);
-      else if(visible)status('Katalog odświeżony: MisioFlix '+manifest+' jest dostępny w Jellyfin.'+
-        (result.installed===''+manifest?' Jest już zainstalowany.':''));
-      else if(manifest)status('Wymuszono pobranie repozytorium. Manifest wskazuje '+manifest+', ale Jellyfin nie udostępnia tej wersji.'+
-        (result.errors.catError?' Błąd katalogu: '+result.errors.catError:''));
-      else status('Ponownie odczytano katalog Jellyfin; nie można potwierdzić manifestu: '+
-        (result.remote?.repositoryError||result.errors.remoteError||'brak odczytu'));
-    }
-    refs.check.disabled=false;
+    status('Proszę o wczytanie nowego manifestu przez natywny menedżer Jellyfina…');
+    let result=null;
+    try{
+      // ADMIN ONLY. Server uses Jellyfin IInstallationManager.GetPackages()
+      // to verify a Git SHA-pinned manifest, then persists exactly this one
+      // repository URL through IServerConfigurationManager.SaveConfiguration().
+      // Do not POST /Repositories from the browser or edit system.xml/DLLs.
+      const data=await query('MisioFlix/api/updates/native-catalog/refresh','POST');
+      const version=norm(get(data,'repositoryVersion','RepositoryVersion'));
+      const abi=norm(get(data,'repositoryTargetAbi','RepositoryTargetAbi'));
+      if(!get(data,'verifiedByJellyfin','VerifiedByJellyfin')||
+         !/^\d+(\.\d+){2,3}$/.test(version)||abi!=='12.4.0.0')
+         throw Error('Jellyfin nie potwierdził zgodnej wersji manifestu.');
+      pinnedRevision={version,abi};
+      result=await refresh(true); // Read /Packages AFTER native config saved.
+      if(!result?.catalog?.versions?.some(v=>norm(v.version)===version))
+        status('Zapisano manifest '+version+' w konfiguracji Jellyfina, lecz /Packages nadal go nie pokazuje. Sprawdź log Jellyfina lub inne repozytoria.');
+      else status('Jellyfin wczytał manifest '+version+' i udostępnia tę wersję w swoim katalogu. Możesz zainstalować aktualizację.');
+    }catch(error){
+      const message=String(error?.message||error);
+      // 400 from our endpoint includes a meaningful reason in its JSON body.
+      pinnedRevision=null;
+      try{await refresh(true);}catch(_){}
+      status('Wymuszenie aktualizacji katalogu Jellyfina nie powiodło się: '+message);
+    }finally{refs.check.disabled=false;}
    }
    async function install(){
     if(!snapshot||refs.install.disabled)return;
-    const version=norm(snapshot.remote.repositoryVersion);
+    const version=norm(snapshot.remote?.repositoryVersion);
     // Only exact version verified in both GitHub and native Jellyfin catalog.
     if(!snapshot.catalog?.repoOK||!snapshot.catalog.versions.some(v=>norm(v.version)===version)||
        norm(snapshot.remote.repositoryTargetAbi)!=='12.4.0.0'||

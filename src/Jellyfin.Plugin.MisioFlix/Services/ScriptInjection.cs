@@ -119,6 +119,7 @@ public sealed class MisioFlixServiceRegistrator : IPluginServiceRegistrator
         services.AddHttpClient("MisioFlixUpdates", http => { http.Timeout=TimeSpan.FromSeconds(15); })
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect=false });
         services.AddSingleton<MisioFlixUpdateService>();
+        services.AddSingleton<MisioFlixNativeCatalogRefreshService>();
         services.AddHostedService<MisioFlixUpdateService>(provider => provider.GetRequiredService<MisioFlixUpdateService>());
         services.AddHostedService<MisioFlixMalRefreshHostedService>();
         services.AddSingleton<MisioFlixMalArchiveService>();

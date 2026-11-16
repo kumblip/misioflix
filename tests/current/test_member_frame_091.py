@@ -32,5 +32,5 @@ class SharedFrame091(unittest.TestCase):
   result=subprocess.run(['node',str(R/'tests/current/member_frame_091.cjs')],capture_output=True,text=True)
   self.assertEqual(result.returncode,0,result.stderr)
  def test_version(self):
-  self.assertEqual(json.loads((R/'meta.json').read_text())['version'],'0.4.91.0')
+  self.assertEqual(json.loads((R/'meta.json').read_text())['version'],'0.4.92.0')
 if __name__=='__main__':unittest.main()

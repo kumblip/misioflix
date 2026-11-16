@@ -24,7 +24,7 @@ function makeServer(remoteFactory){
    if(p==='MisioFlix/api/updates/status'||p==='MisioFlix/api/updates/status?force=true')data=remoteFactory();
    else if(p==='Packages')data=[{Guid:GUID,Name:'MisioFlix',Versions:[{Version:'0.4.78.0',TargetAbi:'12.4.0.0'}]}];
    else if(p==='Plugins')data=[{Id:GUID,Name:'MisioFlix',Version:'0.4.78.0'}];
-   else if(p==='Repositories'&&opts.method==='POST'){repo=JSON.parse(opts.body);code=204;}
+   else if(p==='MisioFlix/api/updates/native-catalog/refresh'&&opts.method==='POST'){repo[0].Url='https://raw.githubusercontent.com/kumblip/misioflix/'+'a'.repeat(40)+'/manifest.json';data={repositoryVersion:'0.4.78.0',repositoryTargetAbi:'12.4.0.0',verifiedByJellyfin:true};}
    else if(p==='Repositories')data=repo;
    else throw Error('Unexpected API '+p);
    return {ok:true,status:code,json:async()=>data};
@@ -46,10 +46,10 @@ const settle=async()=>{for(let i=0;i<25;i++)await new Promise(resolve=>setImmedi
  assert.notEqual(r['#mf-update-checked'].textContent,'—');
  assert.equal(r['#mf-update-install'].disabled,true);
  await r['#mf-update-check'].fire('click');await settle();
- assert.match(r['#mf-update-status'].textContent,/Katalog odświeżony/);
+ assert.match(r['#mf-update-status'].textContent,/Jellyfin wczytał manifest/);
  assert.equal(r['#mf-update-installed'].textContent,'0.4.78.0');
  assert.equal(r['#mf-update-github'].textContent,'0.4.78.0');
- assert.match(server.getRepo()[0].Url,/\?mf_refresh=/);
+ assert.match(server.getRepo()[0].Url,/[a-f0-9]{40}\/manifest\.json/);
  assert.equal(server.getRepo()[1].Url,'https://other.example.com/m.json');
  assert.ok(server.calls.some(x=>x[0]==='/MisioFlix/api/updates/status?force=true'));
  // No GitHub release response should not make the installed version unknown.
