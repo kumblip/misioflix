@@ -20,12 +20,13 @@ class SearchRelation0416(unittest.TestCase):
 
     def test_search_index_and_independent_non_anime_genres(self):
         for symbol in ['function indexAnimeSeasons(state)', 'function relatedSeasons(item,state)',
-                       'relatedSeasons(item,state).some(season=>titleMatches(season,q))',
-                       'state.kind===\'anime\'&&item.type===\'Series\'',
+                       'return titleMatches(item,q);',
+                       'function titleMatches(item,term)',
                        'function searchTile(item,state)',
                        'data.items.filter(x=>state.kind===\'anime\'',
                        ": !x.anime && ['Series','Movie'].includes(x.type)"]:
             self.assertIn(symbol,CLIENT)
+        self.assertNotIn('relatedSeasons(item,state).some(season=>titleMatches(season,q))',CLIENT)
         self.assertIn("const names=state.kind==='anime'",CLIENT)
         self.assertIn(': [...display.values()].sort',CLIENT)
 

@@ -791,9 +791,9 @@
     if(q&&!normalized(item.title).includes(q)){
       const alt=(Array.isArray(item.search_titles)?item.search_titles:[])
         .find(title=>normalized(title).includes(q)&&normalized(title)!==normalized(item.title));
-      const child=!alt&&item.type==='Series'&&state.kind==='anime'
-        ? relatedSeasons(item,state).find(season=>titleMatches(season,q)) : null;
-      if(alt||child)result.matchedAlias=alt||child.title;
+      // A parent anime is searchable ONLY by its own tvshow.nfo titles.
+      // Season / OVA / Special names are not aliases of the parent series.
+      if(alt)result.matchedAlias=alt;
     }
     // A Season/Special is ONE Jellyfin season, not a series with N seasons.
     // ChildCount/RecursiveItemCount on Season describe episode totals. Only
@@ -928,14 +928,10 @@
     }
     const q=normalized(state.input.value);
     if(withText&&q){
-      if(titleMatches(item,q))return true;
-      // With the checkbox OFF, a linked season/Special title can find its
-      // parent series. With it ON, searchByType instead returns season cards
-      // only (unless the user explicitly selected additional type filters).
-      if(state.kind==='anime'&&item.type==='Series'){
-        return relatedSeasons(item,state).some(season=>titleMatches(season,q));
-      }
-      return false;
+      // For the parent Series: its own title and alternatives from tvshow.nfo.
+      // For a selected Season: its own title and alternatives from season.nfo.
+      // No implicit search over the titles of related Seasons / Specials.
+      return titleMatches(item,q);
     }
     return true;
   }
@@ -950,7 +946,8 @@
     state.grid.replaceChildren();
     for(const item of state.matches.slice(0,state.shown))state.grid.appendChild(makeCard(searchTile(item,state)));
     if(!state.matches.length)state.grid.appendChild(own('p','mf-home-empty','Brak wyników dla wybranych warunków.'));
-    state.more.hidden=state.shown>=state.matches.length;
+    state.feed.hidden=state.shown>=state.matches.length;
+    state.feed.textContent='Przewiń niżej, aby wczytać kolejne wyniki…';
     const source=state.watchMode
       ? state.watchLoading?' · odczyt statusów MAL / kopii lokalnej…'
         : state.watchSnapshot?.source==='mal'?' · obejrzane wg MAL'
@@ -959,13 +956,35 @@
       : '';
     state.status.textContent=`Wyniki: ${state.matches.length} · pokazano ${state.shown} · lista źródłowa: ${state.pool.length}${source}`;
     suggestSearch(state);
+    queueSearchAutoLoad(state);
+  }
+  function queueSearchAutoLoad(state){
+    if(!state||state.loadQueued||state.feed.hidden||state.shown>=state.matches.length)return;
+    if(typeof requestAnimationFrame!=='function')return;
+    state.loadQueued=true;
+    requestAnimationFrame(()=>{
+      state.loadQueued=false;
+      if(state!==activeSearch||!state.overlay.isConnected||state.feed.hidden)return;
+      const scroller=state.scroller;
+      if(scroller.scrollTop+scroller.clientHeight>=scroller.scrollHeight-650){
+        appendMoreResults(state);
+      }
+    });
   }
   function appendMoreResults(state){
     const more=state.matches.slice(state.shown,state.shown+30);
     more.forEach(item=>state.grid.appendChild(makeCard(searchTile(item,state))));
     state.shown+=more.length;
-    state.more.hidden=state.shown>=state.matches.length;
-    state.status.textContent=`Wyniki: ${state.matches.length} · pokazano ${state.shown} · lista źródłowa: ${state.pool.length}`;
+    state.feed.hidden=state.shown>=state.matches.length;
+    state.feed.textContent='Przewiń niżej, aby wczytać kolejne wyniki…';
+    const source=state.watchMode
+      ? state.watchLoading?' · odczyt statusów MAL / kopii lokalnej…'
+        : state.watchSnapshot?.source==='mal'?' · obejrzane wg MAL'
+        : state.watchSnapshot?.source==='archive'?' · obejrzane wg lokalnej kopii MAL'
+        : ' · obejrzane wg Jellyfin (brak dostępnej kopii MAL)'
+      : '';
+    state.status.textContent=`Wyniki: ${state.matches.length} · pokazano ${state.shown} · lista źródłowa: ${state.pool.length}${source}`;
+    queueSearchAutoLoad(state);
   }
   // The server reads <tag>Typ: ...</tag> from each season.nfo. A Jellyfin
   // Season is a container, NOT necessarily an anime TV season or a Special.
@@ -986,9 +1005,7 @@
     const q=normalized(state.input.value);
     state.suggestions.replaceChildren();
     if(q.length<2){state.suggestions.hidden=true;return;}
-    const titles=state.matches.filter(item=>titleMatches(item,q) ||
-      (state.kind==='anime'&&item.type==='Series'&&
-        relatedSeasons(item,state).some(season=>titleMatches(season,q)))).slice(0,18);
+    const titles=state.matches.filter(item=>titleMatches(item,q)).slice(0,18);
     for(const item of titles){
       const tile=searchTile(item,state);
       const link=own('a','mf-home-suggestion');
@@ -1029,9 +1046,10 @@
       if(item.type==='Movie')counts.push('Film');
       facts.textContent=counts.join(' · ');
       content.appendChild(facts);
-      if(state.kind==='anime'&&item.type==='Series'){
-        const child=relatedSeasons(item,state).find(season=>titleMatches(season,q));
-        if(child&&!titleMatches(item,q))content.appendChild(own('span','mf-home-suggestion-match',`Znaleziono po: ${child.title}`));
+      if(state.kind==='anime'&&item.type==='Series'&&!normalized(item.title).includes(q)){
+        const alias=(Array.isArray(item.search_titles)?item.search_titles:[])
+          .find(value=>normalized(value).includes(q)&&normalized(value)!==normalized(item.title));
+        if(alias)content.appendChild(own('span','mf-home-suggestion-match',`Alternatywny tytuł: ${alias}`));
       }
       append(link,cover,content);
       link.addEventListener('click',closeSearch);
@@ -1117,7 +1135,7 @@
     const searchWrap=own('div','mf-home-search-input-wrap');
     const input=own('input','mf-home-search-input');
     input.type='search';input.autocomplete='off';
-    input.placeholder=kind==='anime'?'Tytuł serii, sezonu, OVA, ONA lub Speciala (NFO)…':'Szukaj filmów i seriali…';
+    input.placeholder=kind==='anime'?'Tytuł anime lub jego alternatywna nazwa (tvshow.nfo)…':'Szukaj filmów i seriali…';
     input.setAttribute('aria-label','Wyszukaj tytuł');
     const suggestions=own('div','mf-home-suggestions');suggestions.hidden=true;
     append(searchWrap,input,suggestions);
@@ -1131,6 +1149,11 @@
     if(kind==='anime')typeOptions.push({id:'seasons',label:'Sezony / OVA / ONA / Specials'});
     const seasonLabel=own('label','mf-home-search-seasons');
     const includeSeasons=own('input','');includeSeasons.type='checkbox';
+    const syncSearchPlaceholder=()=>{
+      if(kind==='anime')input.placeholder=includeSeasons.checked
+        ? 'Tytuł sezonu, OVA, ONA lub Speciala (season.nfo)…'
+        : 'Tytuł anime lub jego alternatywna nazwa (tvshow.nfo)…';
+    };
     seasonLabel.append(includeSeasons,document.createTextNode(' Pokaż osobno sezony/speciale/itd.'));
     seasonLabel.title='Sezony serii TV, OVA, ONA i Specials — typ z season.nfo';
     if(kind!=='anime')seasonLabel.hidden=true;
@@ -1151,31 +1174,34 @@
     const status=own('p','mf-home-search-status','Ładowanie katalogu…');
     status.setAttribute('role','status');
     const grid=own('div','mf-home-search-grid'+(kind==='media'?' mf-simkl-media-grid':''));
-    const more=own('button','mf-home-button mf-home-search-more','Pokaż kolejne');more.type='button';more.hidden=true;
-    main.append(tool,choicesWrap,genresHead,summary,help,genres,status,grid,more);
+    const feed=own('div','mf-home-search-feed','Przewiń niżej, aby wczytać kolejne wyniki…');
+    feed.hidden=true;feed.setAttribute('role','status');
+    main.append(tool,choicesWrap,genresHead,summary,help,genres,status,grid,feed);
     dialog.append(header,main);overlay.appendChild(dialog);
     const state={kind, overlay, input, suggestions, includeSeasons, reset, refresh,
       scopedLibraries, libraryOptions, typeOptions, libraryChoices, typeChoices,
       libraryStates:new Map(), typeStates:new Map(),watchChoices:watchChoice?.choices||null,
       watchMode:0,watchSnapshot:null,watchLoading:false,watchRequestId:0,watchFallback:false,
       genres,genreStates:new Map(),genreNames:new Map(),genreCounts:new Map(),genresExpanded:true,
-      toggle,summary,help,status,grid,more,pool:[],matches:[],shown:0,requestId:0};
+      toggle,summary,help,status,grid,feed,scroller:main,loadQueued:false,
+      pool:[],matches:[],shown:0,requestId:0};
     renderChoiceGroup(libraryChoices.choices,libraryOptions,state.libraryStates,()=>paintSearchResults(state));
     drawWatchFilter(state);
     renderChoiceGroup(typeChoices.choices,typeOptions,state.typeStates,(selected,mode)=>{
       if(selected==='seasons'&&mode===1)includeSeasons.checked=true;
-      paintSearchResults(state);
+      syncSearchPlaceholder();paintSearchResults(state);
     });
     overlay.addEventListener('click',e=>{if(e.target===overlay)closeSearch();});
     toggle.addEventListener('click',()=>{state.genresExpanded=!state.genresExpanded;updateGenreSummary(state);});
     includeSeasons.addEventListener('change',()=>{
+      syncSearchPlaceholder();
       // A manually selected seasons-only type is meaningless while unchecked.
       if(!includeSeasons.checked&&state.typeStates.get('seasons')===1){
         state.typeStates.delete('seasons');
         renderChoiceGroup(typeChoices.choices,typeOptions,state.typeStates,
           (selected,mode)=>{
             if(selected==='seasons'&&mode===1)includeSeasons.checked=true;
-            paintSearchResults(state);
+            syncSearchPlaceholder();paintSearchResults(state);
           });
       }
       paintSearchResults(state);
@@ -1189,6 +1215,7 @@
     dialog.addEventListener('click',e=>{if(!searchWrap.contains(e.target))suggestions.hidden=true;});
     reset.addEventListener('click',()=>{
       input.value='';includeSeasons.checked=false;
+      syncSearchPlaceholder();
       state.libraryStates.clear();state.typeStates.clear();state.genreStates.clear();
       state.watchMode=0;drawWatchFilter(state);
       state.unmatchedGenre='';state.initialGenre='';
@@ -1197,7 +1224,8 @@
       drawGenreButtons(state);paintSearchResults(state);
       input.focus();
     });
-    more.addEventListener('click',()=>appendMoreResults(state));
+    // The modal main element is the scroll owner, not window or the underlying Jellyfin page.
+    main.addEventListener('scroll',()=>queueSearchAutoLoad(state),{passive:true});
     refresh.addEventListener('click',()=>{
       for(const lib of state.scopedLibraries)catalogCache.delete(compactId(lib.id));
       state.watchSnapshot=null;state.watchFallback=false;
@@ -1314,11 +1342,36 @@
     const grid=own('div','mf-collections-page-grid');
     const message=own('p','mf-home-empty','Ładowanie kolekcji…');
     grid.appendChild(message);
-    const next=own('button','mf-home-button mf-collections-page-more','Pokaż kolejne');
-    next.type='button';next.hidden=true;
-    next.addEventListener('click',()=>void loadCollectionsPage(false));
-    append(section,header,grid,next);
-    return {section,grid,next,summary};
+    const feed=own('div','mf-collections-page-feed','Wczytywanie kolejnych kolekcji…');
+    feed.hidden=true;feed.setAttribute('role','status');
+    const retry=own('button','mf-home-button mf-collections-page-retry','Spróbuj ponownie');
+    retry.type='button';retry.hidden=true;
+    retry.addEventListener('click',()=>{retry.hidden=true;void loadCollectionsPage(false);});
+    append(section,header,grid,feed,retry);
+    return {section,grid,feed,retry,summary,observer:null};
+  }
+  function scheduleCollectionsAutoLoad(){
+    if(!collectionsPage?.section.isConnected||!collectionsRoute()||
+       collectionsLoad.busy||!collectionsLoad.hasMore||
+       collectionsPage.feed.hidden||!collectionsPage.retry.hidden)return;
+    // The Jellyfin SPA may scroll inside a nested element. getBoundingClientRect
+    // and IntersectionObserver work even when window itself does not scroll.
+    if(typeof requestAnimationFrame!=='function')return;
+    requestAnimationFrame(()=>{
+      if(!collectionsPage?.section.isConnected||!collectionsRoute()||
+         collectionsLoad.busy||!collectionsLoad.hasMore||
+         collectionsPage.feed.hidden||!collectionsPage.retry.hidden)return;
+      if(collectionsPage.feed.getBoundingClientRect().top<=window.innerHeight+650)
+        void loadCollectionsPage(false);
+    });
+  }
+  function observeCollectionsFeed(){
+    if(!collectionsPage||typeof IntersectionObserver==='undefined')return;
+    collectionsPage.observer?.disconnect();
+    collectionsPage.observer=new IntersectionObserver(entries=>{
+      if(entries.some(entry=>entry.isIntersecting))scheduleCollectionsAutoLoad();
+    },{root:null,rootMargin:'0px 0px 650px 0px',threshold:0});
+    collectionsPage.observer.observe(collectionsPage.feed);
   }
   async function loadCollectionsPage(reset=false){
     if(!collectionsPage || !collectionsRoute() || !homeRoot?.isConnected || collectionsLoad.busy)return;
@@ -1328,7 +1381,9 @@
     collectionsLoad.busy=true;
     const start=reset?0:collectionsLoad.offset;
     if(reset){collectionsLoad.offset=0;collectionsLoad.hasMore=true;collectionsPage.grid.replaceChildren(own('p','mf-home-empty','Ładowanie kolekcji…'));}
-    collectionsPage.next.disabled=true;
+    collectionsPage.retry.hidden=true;
+    collectionsPage.feed.hidden=false;
+    collectionsPage.feed.textContent='Wczytywanie kolejnych kolekcji…';
     try{
       // The server caps one authorized request at 24 items; paginate instead
       // of fetching the entire database or relying on a separate BoxSet view.
@@ -1340,19 +1395,20 @@
       collectionsLoad.offset=start+items.length;
       collectionsLoad.hasMore=Boolean(data.hasMore)&&items.length>0;
       collectionsLoad.loaded=true;
-      collectionsPage.next.textContent='Pokaż kolejne';
-      collectionsPage.next.hidden=!collectionsLoad.hasMore;
+      collectionsPage.feed.hidden=!collectionsLoad.hasMore;
+      collectionsPage.feed.textContent='Przewiń niżej, aby wczytać kolejne kolekcje…';
       collectionsPage.summary.textContent=items.length||start ? 'Pobrano '+collectionsLoad.offset+' kolekcji' : 'Brak kolekcji';
       if(!collectionsPage.grid.childElementCount)collectionsPage.grid.appendChild(own('p','mf-home-empty','Nie znaleziono kolekcji.'));
     }catch{
       if(isCurrent(serial)&&collectionsPage?.section.isConnected){
         if(reset)collectionsPage.grid.replaceChildren(own('p','mf-home-empty','Nie udało się pobrać kolekcji.'));
-        collectionsPage.next.textContent='Spróbuj ponownie';
-        collectionsPage.next.hidden=false;
+        collectionsPage.feed.hidden=true;
+        collectionsPage.retry.hidden=false;
       }
     }finally{
       collectionsLoad.busy=false;
-      if(collectionsPage?.next)collectionsPage.next.disabled=false;
+      if(collectionsPage?.section.isConnected && collectionsLoad.hasMore)
+        scheduleCollectionsAutoLoad();
     }
   }
   function syncCollectionsPage(){
@@ -1460,6 +1516,7 @@
       rowsArea.appendChild(own('p','mf-home-empty','Ładowanie bibliotek…'));
       homeRoot.appendChild(rowsArea);
       host.prepend(homeRoot);
+      observeCollectionsFeed();
       document.documentElement.classList.add('mf-home-custom-active');
       syncCollectionsPage();
       void loadLibraries(serial);
@@ -1468,7 +1525,8 @@
   }
   function unmountHome(){
     if(homeRoot){
-      closeSearch();homeRoot.remove();homeRoot=null;homeHost=null;
+      closeSearch();collectionsPage?.observer?.disconnect();
+      homeRoot.remove();homeRoot=null;homeHost=null;
       discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;epoch++;rows.clear();
     }
     document.documentElement.classList.remove('mf-home-custom-active');

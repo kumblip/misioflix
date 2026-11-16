@@ -51,8 +51,12 @@ const animeItems=[
 ];
 const anime={kind:'anime',pool:animeItems,seasonsBySeries:new Map(),genreStates:new Map(),typeStates:new Map(),input:{value:'ari'},watchMode:0,includeSeasons:{checked:false}};
 ctx.indexAnimeSeasons(anime);
+assert.deepEqual(anime.pool.filter(i=>ctx.fitsSearch(i,anime)).map(i=>i.title),[],
+ 'Anime parent must NOT be found by linked season alias; description-only film excluded');
+anime.input.value='main';
 assert.deepEqual(anime.pool.filter(i=>ctx.fitsSearch(i,anime)).map(i=>i.title),['Główna seria'],
- 'Anime parent found by linked season alias; description-only film excluded');
+ 'Anime parent can still be found by its own tvshow.nfo alternate title');
+anime.input.value='ari';
 anime.includeSeasons.checked=true;
 assert.deepEqual(anime.pool.filter(i=>ctx.fitsSearch(i,anime)).map(i=>i.title),['Rok drugi'],
  'Separate seasons found by their own title aliases');
@@ -64,7 +68,7 @@ assert.equal(ctx.watchClassification(animeItems[2],anime),'unknown');
 anime.watchMode=1;
 assert.deepEqual(anime.pool.filter(i=>ctx.fitsSearch(i,anime)).map(i=>i.title),[],
  'Watch filter combined with season selection');
-anime.includeSeasons.checked=false;
+anime.includeSeasons.checked=false;anime.input.value='main';
 assert.deepEqual(anime.pool.filter(i=>ctx.fitsSearch(i,anime)).map(i=>i.title),['Główna seria']);
 anime.watchMode=2;
 assert.deepEqual(anime.pool.filter(i=>ctx.fitsSearch(i,anime)).map(i=>i.title),[],

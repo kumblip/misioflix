@@ -1612,3 +1612,14 @@ html.misioflix-skin #mf-scroll-to-top:hover {background:rgba(159,61,116,.98)!imp
 html.misioflix-skin #mf-scroll-to-top:focus-visible {outline:2px solid #ffcfeb;outline-offset:3px}
 @media(max-width:700px){html.misioflix-skin #mf-scroll-to-top {width:40px;height:40px;right:12px!important;bottom:calc(12px + env(safe-area-inset-bottom,0px))!important}}
 @media(prefers-reduced-motion:reduce){html.misioflix-skin #mf-scroll-to-top {transition:none}}
+
+/* v0.4.81: batched infinite scrolling, without a manual "Pokaż kolejne" button. */
+html.misioflix-skin .mf-home-search-feed,
+html.misioflix-skin .mf-collections-page-feed {
+  align-self:center;text-align:center;color:#d7bcd0;
+  font-size:12px;min-height:24px;padding:6px 14px;margin:6px auto 14px;
+}
+html.misioflix-skin .mf-home-search-feed[hidden],
+html.misioflix-skin .mf-collections-page-feed[hidden],
+html.misioflix-skin .mf-collections-page-retry[hidden] {display:none!important}
+html.misioflix-skin .mf-collections-page-retry {align-self:center}

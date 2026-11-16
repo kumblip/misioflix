@@ -34,3 +34,9 @@ Po skompilowaniu i instalacji:
 
 Jeśli etap 2–6 nie przechodzi, nie przechodź do natywnych aplikacji. Sprawdź logi
 Jellyfin i zrezygnuj z wtyczki zgodnie z `INSTALACJA_UGREEN.md`.
+
+## v0.4.81.0
+
+- Testy tytułów nadrzędnych wyłącznie z tvshow.nfo/movie.nfo i niezależnego dopasowania sezonów z season.nfo.
+- Testy automatycznego ładowania wyników wyszukiwarek w porcjach 30 i katalogu Kolekcje po 24 BoxSet.
+- Brak ingerencji w natywne strony bibliotek Jellyfina.
