@@ -1,4 +1,4 @@
-/* MisioFlix Native 0.4.82 — library-only incremental scrolling.
+/* MisioFlix Native 0.4.83 — native library pagination parameter fix.
  * Inspired by the single infinite-scroll approach in KefinTweaks (MIT):
  * use Jellyfin's Users/{id}/Items paging, not another library renderer/router.
  * This implementation is standalone; no KefinTweaks scripts or dependencies.
@@ -6,8 +6,8 @@
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_NATIVE_LIBRARY_SCROLL_082__) return;
-  window.__MISIOFLIX_NATIVE_LIBRARY_SCROLL_082__ = true;
+  if (window.__MISIOFLIX_NATIVE_LIBRARY_SCROLL_083__) return;
+  window.__MISIOFLIX_NATIVE_LIBRARY_SCROLL_083__ = true;
   const LOG = '[MisioFlix Library Scroll]';
   const allowed = new Set(['mixed', 'movies', 'tv', 'music']);
   const PAGE_SIZE = 100;
@@ -89,6 +89,24 @@
     }catch{}
     return candidates.length ? candidates[candidates.length-1] : null;
   }
+  // Jellyfin's API parameter binding is case insensitive. A native request may
+  // use startIndex/limit, while our old v0.4.82 code added StartIndex/Limit.
+  // This generated URLs such as startIndex=0&StartIndex=100, which returned
+  // page 1 again (the observed live failure). Never emit both spellings.
+  function pageParams(base, offset, size){
+    const result = {};
+    const seen = new Set();
+    for (const [key,value] of Object.entries(base || {})) {
+      const normalized=key.toLowerCase();
+      if (normalized==='startindex' || normalized==='limit') continue;
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      result[key]=value;
+    }
+    result.StartIndex=String(offset);
+    result.Limit=String(size);
+    return result;
+  }
   function queryParams(r){
     const observed=perfQuery(r);
     const params={};
@@ -109,8 +127,7 @@
     delete params.parentId;
     delete params.TopParentId;
     delete params.topParentId;
-    params.StartIndex='0'; params.Limit='1';
-    return {params,source:observed?'native-request':'fallback'};
+    return {params:pageParams(params,0,1),source:observed?'native-request':'fallback'};
   }
   function requestUrl(client,user,params){
     return client.getUrl('Users/'+encodeURIComponent(user)+'/Items', params);
@@ -121,7 +138,7 @@
     // node may be item 75, not item 1; validate membership in the native
     // page, not position 0. Do not force its React component to rerender.
     if(s.nativeFirst){
-      const probe={...base.params,StartIndex:String((s.range?.first||1)-1),Limit:String(PAGE_SIZE)};
+      const probe=pageParams(base.params,(s.range?.first||1)-1,PAGE_SIZE);
       const result=await client.getJSON(requestUrl(client,user,probe));
       const sample=Array.isArray(result?.Items)?result.Items.map(item=>id(item)):[];
       const shown=cards(s.container).slice(0,4).map(el=>id(el));
@@ -246,12 +263,20 @@
         if(!s.query){s.complete=true;return;}
       }
       if(s.total!==null && s.next>=s.total){s.complete=true;return;}
-      const params={...s.query,StartIndex:String(s.next),Limit:String(PAGE_SIZE)};
+      const params=pageParams(s.query,s.next,PAGE_SIZE);
       const data=await client.getJSON(requestUrl(client,user,params));
       if(state!==s || s.abort || identity()!==s.identity || route()?.key!==s.route.key)return;
       const items=Array.isArray(data?.Items)?data.Items:[];
       const total=Number(data?.TotalRecordCount);
       if(Number.isFinite(total) && total>=0)s.total=total;
+      // Fail closed if the API repeated the first page instead of advancing.
+      // Do not let a duplicate response make the offset jump past the total.
+      const repeated=items.filter(item=>s.itemIds.has(id(item)));
+      if(repeated.length){
+        console.warn(LOG,'API zwróciło ponownie',repeated.length,'elementów z wcześniej załadowanych stron; zatrzymuję doładowanie, aby nie pomijać wyników.',{offset:s.next,returned:items.length});
+        s.complete=true;
+        return;
+      }
       let appended=0;
       const batch=document.createDocumentFragment();
       for(const item of items){
@@ -273,8 +298,14 @@
         });
         batch.appendChild(node);appended++;
       }
+      if(items.length && !appended){
+        console.warn(LOG,'API zwróciło stronę bez poprawnych nowych kart; zachowuję oryginalną paginację.',{offset:s.next,returned:items.length});
+        s.complete=true;
+        return;
+      }
       s.pane.appendChild(batch);
       s.next+=items.length;
+      if(appended)console.info(LOG,'Doładowano',appended,'kart (offset',s.next,')');
       s.failures=0;
       s.complete=items.length===0 || (s.total!==null && s.next>=s.total);
       // Hide native page arrows only once incremental loading is confirmed.

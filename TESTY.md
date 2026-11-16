@@ -46,3 +46,9 @@ Jellyfin i zrezygnuj z wtyczki zgodnie z `INSTALACJA_UGREEN.md`.
 - Testy `library_scroll_082.cjs` i `test_library_scroll_082.py`: rozpoznawanie tras bibliotek, licznika 1-100 z 602 / 101-200 of 602, tylko dozwolone biblioteki, API z paginacją, weryfikacja kolejności, zachowanie React-owned DOM i poprawne wstrzykiwanie assetów.
 - Zestaw istniejących testów wyszukiwarek, kolekcji, MAL/Simkl i szczegółów wciąż działa.
 - Rzeczywisty infinite scroll na działającym Jellyfinie 12.4 musi zostać sprawdzony po publikacji.
+
+## v0.4.83.0
+
+- Test `library_scroll_paging_083.cjs`: dokładnie jeden StartIndex i Limit w zapytaniu, ponowne użycie natywnych parametrów i weryfikacja kolejnych offsetów.
+- Test `test_library_paging_083.py`: zabezpieczenie przed ponowną pierwszą stroną i zachowanie dotychczasowych wyszukiwarek.
+- Testy starszych wersji zaktualizowane do numeru źródeł v0.4.83.

@@ -25,7 +25,7 @@ assert(src.includes("state.io?.disconnect()"),'IntersectionObserver cleanup');
 assert(src.includes("if(state && (state.route.key!==r.key"),'filter/route state invalidation');
 assert(src.includes("if(!state || state!==s || identity()!==s.identity)return null"),'stale-request guard');
 assert(src.includes("params.ParentId=r.parent"),'parent scoping');
-assert(src.includes("const probe={...base.params"),'native ordering validation');
+assert(src.includes('const probe=pageParams(base.params'),'native ordering validation');
 assert(src.includes("container.insertAdjacentElement('afterend',pane)"),'own deck outside React-owned native cards');
 assert(src.includes("new IntersectionObserver"),'automatic scroll trigger');
 assert(!src.includes('KefinTweaksConfig') && !src.includes('window.cardBuilder'), 'standalone without other Kefin tweaks');
