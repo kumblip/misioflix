@@ -38,11 +38,15 @@ class NativeDOMSafety067(unittest.TestCase):
         self.assertIn('var(--mf-mal-mixed-frame)', (WEB/'mal-frames.css').read_text())
         self.assertIn('var(--mf-simkl-frame)', (WEB/'simkl.css').read_text())
     def test_plugin_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.71.0')
-        self.assertIn('<AssemblyVersion>0.4.71.0</AssemblyVersion>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.72.0')
+        self.assertIn('<AssemblyVersion>0.4.72.0</AssemblyVersion>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
     def test_mal_simkl_backends_and_home_recovery_not_modified(self):
+        # home.js intentionally changes for v0.4.72 search; retain specific
+        # startup crash-recovery guarantees, not a frozen whole-file digest.
+        home=(WEB/'home.js').read_text()
+        self.assertIn("!bodyText.includes('e.addScrollEventListener is not a function')",home)
+        self.assertIn('window.location.reload(); // one retry',home)
         fixed={
-            'src/Jellyfin.Plugin.MisioFlix/Web/home.js':'656dcf4b3ac8abb569af8ba1cbf78713f5c6a72d4332c2c77dad682132258ac6',
             'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixSimklService.cs':'ab31152c93a6ca697c96ac229fca913136011a2805bf6b42beaed56343442d75',
             'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixMalService.cs':'99bf11defee628df411df4d0428c23697b96da6ec5f9814d458ee86a8e9ef193',
         }

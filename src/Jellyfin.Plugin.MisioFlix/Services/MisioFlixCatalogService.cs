@@ -130,7 +130,10 @@ public sealed class MisioFlixCatalogService
                         has_image = HasPrimaryImage(json),
                         date_added = Text(Get(json, "DateCreated")),
                         progress_percent = Progress(json),
-                        season_count = PositiveInt(Get(json, "ChildCount")),
+                        // A season does not contain N seasons: Jellyfin ChildCount
+                        // is the number of episodes. Only a Series has seasons.
+                        season_count = Text(Get(json, "Type")) == "Series"
+                            ? PositiveInt(Get(json, "ChildCount")) : null,
                         episode_count = PositiveInt(Get(json, "RecursiveItemCount")),
                         rating = PersonalRating(json),
                         mal_id = local?.MalId,

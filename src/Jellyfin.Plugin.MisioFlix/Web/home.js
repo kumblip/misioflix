@@ -776,6 +776,14 @@
   }
   function searchTile(item,state){
     const result=toHomeCardItem(item);
+    // A Season/Special is ONE Jellyfin season, not a series with N seasons.
+    // ChildCount/RecursiveItemCount on Season describe episode totals. Only
+    // series may display the orange seasons paw; seasons retain the blue
+    // episode paw (and their independent MAL rating overlay).
+    if(state.kind==='anime'&&item.type==='Season'){
+      result.seasons=null;
+      return result;
+    }
     if(state.kind!=='anime'||item.type!=='Series')return result;
     const children=relatedSeasons(item,state);
     // Prefer authoritative totals from the parent Series. Derive counts only
@@ -790,15 +798,20 @@
     const value=item.type;
     const kind=value==='Series'?'series':value==='Movie'?'movies':value==='Season'?'seasons':'';
     if(!kind)return false;
-    // Old test fixtures and earlier search views may still supply one select.
+    // Checking "Pokaż osobne sezony / Specials" switches anime search to
+    // season-only results instead of adding each season *on top of* the series.
+    // Explicit positive type choices still allow intentionally combining types.
+    const seasonOnly=state.kind==='anime'&&Boolean(state.includeSeasons?.checked);
     if(state.typeStates){
+      const explicitlyIncluded=[...state.typeStates.values()].some(mode=>mode===1);
+      if(!explicitlyIncluded&&seasonOnly&&kind!=='seasons')return false;
       if(!allowGroup(kind,state.typeStates))return false;
-      return kind!=='seasons' || state.includeSeasons.checked;
+      return kind!=='seasons'||seasonOnly;
     }
     if(state.type?.value==='series')return value==='Series';
     if(state.type?.value==='movies')return value==='Movie';
-    if(state.type?.value==='seasons')return value==='Season';
-    return value!=='Season'||state.includeSeasons.checked;
+    if(state.type?.value==='seasons')return value==='Season'&&seasonOnly;
+    return seasonOnly?kind==='seasons':kind!=='seasons';
   }
   function fitsSearch(item,state,withText=true){
     if(state.unmatchedGenre)return false;
@@ -812,9 +825,9 @@
     const q=normalized(state.input.value);
     if(withText&&q){
       if(searchableText(item).includes(q))return true;
-      // Default anime search also reads the NFO titles of linked seasons and
-      // Specials, but returns the ONE main series card. The checkbox adds
-      // individually navigable season cards without replacing that result.
+      // With the checkbox OFF, a linked season/Special title can find its
+      // parent series. With it ON, searchByType instead returns season cards
+      // only (unless the user explicitly selected additional type filters).
       if(state.kind==='anime'&&item.type==='Series'){
         return relatedSeasons(item,state).some(season=>titleMatches(season,q));
       }
@@ -1013,7 +1026,18 @@
     });
     overlay.addEventListener('click',e=>{if(e.target===overlay)closeSearch();});
     toggle.addEventListener('click',()=>{state.genresExpanded=!state.genresExpanded;updateGenreSummary(state);});
-    includeSeasons.addEventListener('change',()=>paintSearchResults(state));
+    includeSeasons.addEventListener('change',()=>{
+      // A manually selected seasons-only type is meaningless while unchecked.
+      if(!includeSeasons.checked&&state.typeStates.get('seasons')===1){
+        state.typeStates.delete('seasons');
+        renderChoiceGroup(typeChoices.choices,typeOptions,state.typeStates,
+          (selected,mode)=>{
+            if(selected==='seasons'&&mode===1)includeSeasons.checked=true;
+            paintSearchResults(state);
+          });
+      }
+      paintSearchResults(state);
+    });
     let debounce;
     input.addEventListener('input',()=>{
       window.clearTimeout(debounce);

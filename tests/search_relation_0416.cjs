@@ -39,7 +39,7 @@ assert.equal(tile.seasons,5,'use all parent seasons, not 1 season');
 assert.equal(tile.episodes,63,'use all parent episodes');
 anime.includeSeasons.checked=true;
 results=anime.pool.filter(i=>ctx.fitsSearch(i,anime));
-assert.deepEqual(results.map(x=>x.id),[P,S], 'checkbox adds directly clickable Special');
+assert.deepEqual(results.map(x=>x.id),[S], 'checkbox switches to only individually clickable seasons, without parent');
 anime.type.value='seasons';
 results=anime.pool.filter(i=>ctx.fitsSearch(i,anime));
 assert.deepEqual(results.map(x=>x.id),[S],'seasons-only searches/open season by its own ID');
