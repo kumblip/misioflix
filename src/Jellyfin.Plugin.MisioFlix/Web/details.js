@@ -141,13 +141,28 @@
     window.location.hash = '#/home?mfSearch=' + encodeURIComponent(kind) +
       '&mfGenre=' + encodeURIComponent(genre);
   }
+  function openDetails(id) {
+    if (valid(id)) window.location.hash = detailsRoute(id);
+  }
+  // Structural anime navigation, not browser history: Episode -> Season ->
+  // Series -> MisioFlix home. Non-anime media retains the original behavior.
   function ensureBackButton(page) {
     const container = page.querySelector('.detailPageWrapperContainer');
     if (!container || container.querySelector(':scope > .mf-detail-back')) return;
     const back = create('button','mf-detail-back','← Wstecz');
     back.type='button';
-    back.setAttribute('aria-label','Wróć do poprzedniej strony');
+    back.setAttribute('aria-label','Wróć poziom wyżej');
     back.addEventListener('click',() => {
+      if (page.dataset.mfAnimeDetails === '1') {
+        const type = page.dataset.mfDetailType;
+        if (type === 'Episode' && valid(page.dataset.mfDetailSeasonId)) {
+          openDetails(page.dataset.mfDetailSeasonId); return;
+        }
+        if ((type === 'Season' || type === 'Episode') && valid(page.dataset.mfDetailSeriesId)) {
+          openDetails(page.dataset.mfDetailSeriesId); return;
+        }
+        if (type === 'Series') {window.location.hash='#/home';return;}
+      }
       if (previousDetailsRoute && previousDetailsRoute !== window.location.hash) {
         window.history.back();
       } else {
@@ -155,6 +170,103 @@
       }
     });
     container.prepend(back);
+  }
+  function clearAnimeSeasonControls(page) {
+    page.classList.remove('mf-detail-anime-season');
+    page.querySelector('.mf-detail-anime-breadcrumb')?.remove();
+    page.querySelector('.mf-detail-season-nav')?.remove();
+  }
+  // Only Jellyfin's actual child seasons are listed: never join productions
+  // based on titles. This uses the same authenticated Shows endpoint as the
+  // native episode reader and does not replace/reparent a Jellyfin element.
+  async function getSeriesSeasons(seriesId) {
+    const uid=userId();
+    if (!valid(uid) || !valid(seriesId) || !token()) return [];
+    const api=client();
+    const q=new URLSearchParams({UserId:compact(uid),IsMissing:'false'});
+    const relative='Shows/'+compact(seriesId)+'/Seasons?'+q.toString();
+    const url=typeof api?.getUrl==='function' ? api.getUrl(relative) : '/'+relative;
+    const response=await fetch(url,{headers:headers(),cache:'no-store'});
+    if(!response.ok) throw new Error('Seasons HTTP '+response.status);
+    const data=await response.json();
+    const rows=(Array.isArray(data.Items)?data.Items:[])
+      .filter(x => valid(x?.Id) && (!x?.Type || x.Type==='Season'));
+    // An unnumbered season is listed by its real name, not a fabricated Sxx.
+    rows.sort((a,b)=>{
+      const na=Number(a.IndexNumber),nb=Number(b.IndexNumber);
+      const aa=a.IndexNumber!=null&&Number.isInteger(na)&&na>=0;
+      const bb=b.IndexNumber!=null&&Number.isInteger(nb)&&nb>=0;
+      return (aa?na:99999)-(bb?nb:99999) || String(a.Name||'').localeCompare(String(b.Name||''),'pl');
+    });
+    return rows;
+  }
+  function seasonButtonLabel(season) {
+    const raw=season?.IndexNumber;
+    const number=Number(raw);
+    return raw!=null && Number.isInteger(number) && number>=0
+      ? 'S'+String(number).padStart(2,'0') : String(season?.Name||'Sezon');
+  }
+  async function syncAnimeDetailsControls(page,item,id,serial) {
+    const type=String(item?.Type||'');
+    const kind=await itemKind(id);
+    if(serial!==generation || itemRoute()!==id || !page.isConnected) return;
+    const anime=kind==='anime';
+    // Some Jellyfin Season DTOs expose ParentId but omit SeriesId.
+    const rawSeriesId=valid(item?.SeriesId)?item.SeriesId
+      :type==='Season' && valid(item?.ParentId)?item.ParentId:'';
+    page.dataset.mfAnimeDetails=anime?'1':'0';
+    page.dataset.mfDetailSeriesId=valid(rawSeriesId)?compact(rawSeriesId):'';
+    page.dataset.mfDetailSeasonId=valid(item?.SeasonId)?compact(item.SeasonId):'';
+    clearAnimeSeasonControls(page);
+    if (!anime || type!=='Season' || !valid(rawSeriesId)) return;
+    const seriesId=compact(rawSeriesId);
+    if(seriesId===id)return;
+    page.classList.add('mf-detail-anime-season');
+    const ribbon=page.querySelector('.detailPagePrimaryContainer > .detailRibbon');
+    const info=ribbon?.querySelector('.infoWrapper');
+    if(info){
+      const crumb=create('div','mf-detail-anime-breadcrumb');
+      crumb.setAttribute('aria-label','Położenie w anime');
+      const parent=create('button','mf-detail-anime-parent','ANIME');
+      parent.type='button';
+      parent.setAttribute('aria-label','Otwórz szczegóły całego anime');
+      parent.addEventListener('click',()=>openDetails(seriesId));
+      const separator=create('span','mf-detail-anime-separator','›');
+      separator.setAttribute('aria-hidden','true');
+      const name=create('span','mf-detail-anime-season-title',String(item.Name||'Sezon'));
+      crumb.append(parent,separator,name);
+      info.prepend(crumb);
+    }
+    const secondary=page.querySelector('.detailPageSecondaryContainer');
+    if(!secondary)return;
+    const nav=create('nav','mf-detail-season-nav');
+    nav.setAttribute('aria-label','Sezony tego anime');
+    const row=create('div','mf-detail-season-buttons');
+    row.append(create('span','mf-detail-season-loading','Ładowanie sezonów…'));
+    nav.append(row);
+    secondary.prepend(nav);
+    try {
+      const seasons=await getSeriesSeasons(seriesId);
+      if(serial!==generation || itemRoute()!==id || !nav.isConnected)return;
+      row.replaceChildren();
+      for(const season of seasons) {
+        const sid=compact(season.Id);
+        const button=create('button','mf-detail-season-switch',seasonButtonLabel(season));
+        button.type='button';
+        const active=sid===id;
+        button.classList.toggle('mf-detail-season-active',active);
+        if(active){button.setAttribute('aria-current','page');button.disabled=true;}
+        const label=String(season.Name||'Sezon');
+        button.title=label;
+        button.setAttribute('aria-label',seasonButtonLabel(season)+' — '+label+(active?' (obecny)':''));
+        if(!active)button.addEventListener('click',()=>openDetails(sid));
+        row.append(button);
+      }
+      if(!seasons.length){nav.remove();}
+    } catch(error) {
+      console.warn('[MisioFlix] Nie można pobrać sezonów tego anime:',error);
+      if(nav.isConnected)nav.remove();
+    }
   }
   function nativePlayButton(page, resume = true) {
     const candidates = resume ? ['.btnResume:not(.hide)', '.btnPlay:not(.hide)', '.btnReplay:not(.hide)'] : ['.btnPlay:not(.hide)', '.btnResume:not(.hide)', '.btnReplay:not(.hide)'];
@@ -267,6 +379,7 @@
     if (serial!==generation || !rail.isConnected) return;
     const type=String(item?.Type||'');
     page.dataset.mfDetailType = type;
+    void syncAnimeDetailsControls(page,item,itemId,serial);
     if (type && !['Movie','Episode','Series','Season'].includes(type)) { restoreLayout(page); return; }
     if (type==='Movie' || type==='Episode') {
       const ticks=Number(item?.UserData?.PlaybackPositionTicks)||0;
@@ -379,11 +492,15 @@
     page.querySelector('.mf-detail-poster-rail')?.remove();
     page.querySelector('.mf-detail-cast-button')?.remove();
     page.querySelector('.mf-detail-cast-panel')?.remove();
+    clearAnimeSeasonControls(page);
     const wrapper=page.querySelector('.detailPageWrapperContainer');
     wrapper?.classList.remove('mf-detail-grid');
     page.querySelector('.detailPageSecondaryContainer')?.classList.remove('mf-detail-series-sections');
     page.classList.remove('mf-detail-compact','mf-detail-has-quick-episode','mf-detail-cast-expanded');
     page.removeAttribute('data-mf-detail-type');
+    page.removeAttribute('data-mf-anime-details');
+    page.removeAttribute('data-mf-detail-series-id');
+    page.removeAttribute('data-mf-detail-season-id');
     page.removeAttribute('data-mf-detail-id');
   }
   function ensureLayout(page) {
@@ -478,6 +595,10 @@
     void itemKind(id);
     page.dataset.mfDetailId=id;
     page.classList.remove('mf-detail-has-quick-episode');
+    page.removeAttribute('data-mf-anime-details');
+    page.removeAttribute('data-mf-detail-series-id');
+    page.removeAttribute('data-mf-detail-season-id');
+    clearAnimeSeasonControls(page);
     page.querySelector('.mf-detail-quick-slot')?.replaceChildren();
     const panel=page.querySelector('.mf-detail-cast-panel');
     if(panel)panel.hidden=true;

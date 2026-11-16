@@ -16,7 +16,7 @@ DETAILS = (WEB/'details.js').read_text(encoding='utf8')
 
 class NativeEpisodePrimary071(unittest.TestCase):
     def test_release(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'], '0.4.76.0')
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'], '0.4.77.0')
     def test_actual_native_children_container_both_providers(self):
         for provider,source in [('MAL',MAL),('Simkl',SIMKL)]:
             with self.subTest(provider=provider):

@@ -1530,3 +1530,57 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .nameContain
 }
 /* 18 suggestions rather than 8. Keep scrolling available inside the popup. */
 html.misioflix-skin .mf-home-suggestions{max-height:min(55dvh,540px)}
+
+
+/* v0.4.77 — season-only anime navigation. Never changes ordinary TV series.
+   Own controls are added, native Jellyfin nodes remain in their original DOM. */
+html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-anime-season .detailRibbon .infoWrapper :is(h1,.itemName,.parentName) {
+  display:none!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-anime-breadcrumb {
+  display:flex;align-items:baseline;flex-wrap:wrap;gap:9px;
+  font-size:clamp(1.05rem,1.4vw,1.43rem)!important;
+  line-height:1.38!important;font-weight:660;
+  color:#ffedf6;margin:0 0 9px;min-width:0;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-anime-parent {
+  border:0!important;background:transparent!important;color:#f5b1d4!important;
+  font:inherit!important;font-weight:750!important;padding:0!important;
+  text-decoration:underline;text-underline-offset:4px;cursor:pointer;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-anime-parent:hover {color:#fff!important}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-anime-separator {color:#b68aa5}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-anime-season-title {
+  min-width:0;overflow-wrap:anywhere;flex:0 1 auto;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-series-sections > .mf-detail-season-nav {
+  order:-100;display:block;min-width:0;padding:10px 12px!important;
+  background:rgba(54,25,52,.73)!important;
+  border:1px solid rgba(245,165,208,.30)!important;
+  border-radius:12px!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-season-buttons {
+  display:flex;flex-wrap:nowrap;gap:7px;overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:thin;max-width:100%;padding:1px 1px 4px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-season-switch {
+  flex:0 0 auto;white-space:nowrap;min-width:49px;
+  background:rgba(83,43,72,.68)!important;color:#fbe9f6!important;
+  border:1px solid rgba(248,177,221,.35)!important;border-radius:8px!important;
+  padding:6px 10px!important;font-size:12px!important;font-weight:700!important;
+  line-height:1.2!important;cursor:pointer;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-season-switch:hover:not(:disabled) {
+  background:rgba(133,65,104,.85)!important;border-color:#eab7d5!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-season-switch.mf-detail-season-active {
+  background:#c44d8c!important;border-color:#ffb6db!important;color:#fff!important;
+  box-shadow:0 0 0 1px rgba(255,182,219,.35) inset;cursor:default;
+  opacity:1!important;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact :is(.mf-detail-season-switch,.mf-detail-anime-parent):focus-visible {
+  outline:2px solid #ffd5eb!important;outline-offset:3px;
+}
+html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-season-loading {
+  color:#e2bad1;font-size:12px;padding:5px 2px;
+}
