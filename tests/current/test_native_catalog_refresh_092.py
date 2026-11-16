@@ -1,4 +1,5 @@
 """Source-contract tests for Jellyfin 12.4's real package-manager refresh."""
+from version_contract import CURRENT_RELEASE
 import json
 import re
 import subprocess
@@ -50,8 +51,8 @@ class NativeCatalog092(unittest.TestCase):
         self.assertIn("query('Packages/Installed/MisioFlix?'+params.toString(),'POST')", UI)
 
     def test_version_and_javascript_syntax(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.92.0')
-        self.assertIn('<AssemblyVersion>0.4.92.0</AssemblyVersion>', (BASE/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], CURRENT_RELEASE)
+        self.assertIn(f'<AssemblyVersion>{CURRENT_RELEASE}</AssemblyVersion>', (BASE/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
         body=UI.split('<script>',1)[1].split('</script>',1)[0]
         result=subprocess.run(['node','--check','-'],input=body,text=True,capture_output=True)
         self.assertEqual(result.returncode,0,result.stderr)

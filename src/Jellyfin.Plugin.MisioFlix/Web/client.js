@@ -242,7 +242,11 @@
         stack.appendChild(stat);
       }
       if(collectionSize){
-        const mark=makeEl('span','mf-native-collection-member',String(collectionSize)+' 📦');
+        const mark=makeEl('div','mf-native-stat mf-native-stat-collection mf-native-collection-member');
+        mark.appendChild(makeEl('span','mf-native-stat-number',collectionSize));
+        const icon=makeEl('span','mf-native-box-icon','📦');
+        icon.setAttribute('aria-hidden','true');
+        mark.appendChild(icon);
         mark.setAttribute('title',`Kolekcja: ${card.getAttribute('data-mf-member-collection-name')||'bez nazwy'} · ${collectionSize} pozycji`);
         stack.appendChild(mark);
       }

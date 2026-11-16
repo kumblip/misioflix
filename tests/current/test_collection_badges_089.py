@@ -1,4 +1,5 @@
 """v0.4.89 contract: all three collection-count presentations, CSS isolated to BoxSets."""
+from version_contract import CURRENT_RELEASE
 import json,re,subprocess,unittest
 from pathlib import Path
 R=Path(__file__).resolve().parents[2]
@@ -6,7 +7,7 @@ H=(R/'src/Jellyfin.Plugin.MisioFlix/Web/home.js').read_text(encoding='utf-8')
 C=(R/'src/Jellyfin.Plugin.MisioFlix/Web/theme.css').read_text(encoding='utf-8')
 class CollectionBadges089(unittest.TestCase):
  def test_current_version_and_outside_changes_log(self):
-  self.assertEqual(json.loads((R/'meta.json').read_text(encoding='utf-8'))['version'],'0.4.92.0')
+  self.assertEqual(json.loads((R/'meta.json').read_text(encoding='utf-8'))['version'],CURRENT_RELEASE)
   self.assertTrue((R/'zrobionepozamisioflixem.txt').exists())
  def test_shared_home_card_for_both_views(self):
   self.assertIn("badge(link,collectionSize+' 🎬','mf-home-collection-count')",H)

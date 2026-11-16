@@ -1,4 +1,5 @@
 """v0.4.51: Simkl ratings and mobile cards; no network or .NET runtime needed."""
+from version_contract import CURRENT_RELEASE
 import json
 import re
 import subprocess
@@ -18,7 +19,7 @@ MAL=(SRC/'Web/mal.js').read_text()
 class SimklPosters051(unittest.TestCase):
     def test_version_consistency(self):
         version=json.loads((ROOT/'meta.json').read_text())['version']
-        self.assertEqual(version,'0.4.92.0')
+        self.assertEqual(version,CURRENT_RELEASE)
         self.assertIn(f'<AssemblyVersion>{version}</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
     def test_uses_personal_nas_backup_never_jellyfin_user_rating(self):

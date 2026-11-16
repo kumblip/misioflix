@@ -1,4 +1,5 @@
 """v0.4.80: DOM anchor, search label, and single global scroll control."""
+from version_contract import CURRENT_RELEASE
 import json
 import unittest
 from pathlib import Path
@@ -28,6 +29,6 @@ class SeasonAndTop080(unittest.TestCase):
         self.assertIn('html.misioflix-skin #mf-scroll-to-top',css)
         self.assertIn('.detailPagePrimaryContent .mf-detail-season-nav',css)
     def test_version(self):
-        self.assertEqual(json.loads((R/'meta.json').read_text('utf8'))['version'],'0.4.92.0')
+        self.assertEqual(json.loads((R/'meta.json').read_text('utf8'))['version'],CURRENT_RELEASE)
 
 if __name__=='__main__':unittest.main()

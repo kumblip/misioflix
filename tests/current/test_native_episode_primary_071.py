@@ -4,6 +4,7 @@ The v0.4.67 no-reparent change kept the native DOM structure intact.
 In v0.4.70 MAL/Simkl still scanned the secondary container, causing no
 state classes to be applied despite correct CSS. Do not regress to that.
 """
+from version_contract import CURRENT_RELEASE
 from pathlib import Path
 import unittest
 import json
@@ -16,7 +17,7 @@ DETAILS = (WEB/'details.js').read_text(encoding='utf8')
 
 class NativeEpisodePrimary071(unittest.TestCase):
     def test_release(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'], '0.4.92.0')
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'], CURRENT_RELEASE)
     def test_actual_native_children_container_both_providers(self):
         for provider,source in [('MAL',MAL),('Simkl',SIMKL)]:
             with self.subTest(provider=provider):

@@ -1,4 +1,5 @@
 """Regression checks for Jellyfin's native watched checkmark and 80% threshold."""
+from version_contract import CURRENT_RELEASE
 from pathlib import Path
 import unittest
 
@@ -51,7 +52,7 @@ class JellyfinNativeWatched057(unittest.TestCase):
         self.assertNotIn('po 75%',WEB)
 
     def test_version(self):
-        self.assertIn('0.4.92.0',(ROOT/'meta.json').read_text())
-        self.assertIn('<AssemblyVersion>0.4.92.0</AssemblyVersion>',(BASE/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertIn(CURRENT_RELEASE,(ROOT/'meta.json').read_text())
+        self.assertIn(f'<AssemblyVersion>{CURRENT_RELEASE}</AssemblyVersion>',(BASE/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__': unittest.main()

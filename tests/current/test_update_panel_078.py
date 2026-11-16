@@ -1,3 +1,4 @@
+from version_contract import CURRENT_RELEASE
 import json
 from pathlib import Path
 import subprocess
@@ -61,8 +62,8 @@ class UpdatePanel078(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
 
     def test_package_version_is_latest(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.92.0')
-        self.assertIn('<AssemblyVersion>0.4.92.0</AssemblyVersion>',
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],CURRENT_RELEASE)
+        self.assertIn(f'<AssemblyVersion>{CURRENT_RELEASE}</AssemblyVersion>',
                       (BASE/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__': unittest.main()

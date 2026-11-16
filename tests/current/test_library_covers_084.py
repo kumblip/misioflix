@@ -1,4 +1,5 @@
 """Doładowane karty must use original MisioFlix styling without moving native React DOM."""
+from version_contract import CURRENT_RELEASE
 from pathlib import Path
 import json
 import unittest
@@ -24,7 +25,7 @@ class LibraryCovers084(unittest.TestCase):
         self.assertIn("card.hasAttribute('data-mf-library-infinite-card')",src)
         self.assertIn('mixedActiveList?.contains(card)',src)
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.92.0')
-        self.assertIn('<AssemblyVersion>0.4.92.0</AssemblyVersion>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],CURRENT_RELEASE)
+        self.assertIn(f'<AssemblyVersion>{CURRENT_RELEASE}</AssemblyVersion>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__':unittest.main()

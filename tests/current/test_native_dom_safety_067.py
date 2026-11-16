@@ -1,4 +1,5 @@
 """Guards the reported attachedCallback regression in Jellyfin 12.4."""
+from version_contract import CURRENT_RELEASE
 import hashlib, json, unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
@@ -38,8 +39,8 @@ class NativeDOMSafety067(unittest.TestCase):
         self.assertIn('var(--mf-mal-mixed-frame)', (WEB/'mal-frames.css').read_text())
         self.assertIn('var(--mf-simkl-frame)', (WEB/'simkl.css').read_text())
     def test_plugin_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.92.0')
-        self.assertIn('<AssemblyVersion>0.4.92.0</AssemblyVersion>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],CURRENT_RELEASE)
+        self.assertIn(f'<AssemblyVersion>{CURRENT_RELEASE}</AssemblyVersion>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
     def test_mal_simkl_backends_and_home_recovery_not_modified(self):
         # home.js intentionally changes for v0.4.72 search; retain specific
         # startup crash-recovery guarantees, not a frozen whole-file digest.

@@ -2,6 +2,7 @@
 
 These inspect the integration sources; they do NOT imply remote API calls or a .NET compile.
 """
+from version_contract import CURRENT_RELEASE
 import re
 import unittest
 from pathlib import Path
@@ -139,7 +140,7 @@ class SimklIsolated046(unittest.TestCase):
         self.assertNotIn('mf-simkl-native-score',mal)
 
     def test_version_beta(self):
-        self.assertIn('0.4.92.0',(ROOT/'meta.json').read_text())
-        self.assertIn('<AssemblyVersion>0.4.92.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertIn(CURRENT_RELEASE,(ROOT/'meta.json').read_text())
+        self.assertIn(f'<AssemblyVersion>{CURRENT_RELEASE}</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__':unittest.main()

@@ -125,7 +125,7 @@ public sealed class MisioFlixNativeCatalogRefreshService
     private async Task<string> ReadCurrentCommitAsync(CancellationToken cancel)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, CommitApi);
-        req.Headers.UserAgent.ParseAdd("MisioFlix-Jellyfin/0.4.94");
+        req.Headers.UserAgent.ParseAdd("MisioFlix-Jellyfin/0.4.93");
         req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         req.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
         using var result = await _clients.CreateClient("MisioFlixUpdates")

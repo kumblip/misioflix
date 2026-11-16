@@ -1,4 +1,5 @@
 """v0.4.81 search title boundary + infinite scroll source invariants."""
+from version_contract import CURRENT_RELEASE
 from pathlib import Path
 import json
 import unittest
@@ -29,4 +30,4 @@ class Infinite081(unittest.TestCase):
         self.assertIn('.mf-collections-page-feed',CSS)
         self.assertIn('root:null',HOME) # observer honors any scroll ancestor
     def test_version(self):
-        self.assertEqual(json.loads((R/'meta.json').read_text('utf8'))['version'],'0.4.92.0')
+        self.assertEqual(json.loads((R/'meta.json').read_text('utf8'))['version'],CURRENT_RELEASE)

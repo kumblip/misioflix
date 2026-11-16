@@ -1,4 +1,5 @@
 """Native library-only infinite scroll must not touch MisioFlix search or React owned card roots."""
+from version_contract import CURRENT_RELEASE
 from pathlib import Path
 import json, unittest
 R=Path(__file__).resolve().parents[2]
@@ -28,6 +29,6 @@ class LibraryScroll082(unittest.TestCase):
     self.assertIn("if(modernMixedRoute())",client)
     self.assertIn('mf-library-extra-deck', (WEB/'theme.css').read_text())
   def test_versions(self):
-    self.assertEqual(json.loads((R/'meta.json').read_text())['version'],'0.4.92.0')
-    self.assertIn('<AssemblyVersion>0.4.92.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+    self.assertEqual(json.loads((R/'meta.json').read_text())['version'],CURRENT_RELEASE)
+    self.assertIn(f'<AssemblyVersion>{CURRENT_RELEASE}</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 if __name__=='__main__':unittest.main()

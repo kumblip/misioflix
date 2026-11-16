@@ -1,4 +1,5 @@
 """Contract and regression checks for 0.4.50. These do not compile C# or call Simkl."""
+from version_contract import CURRENT_RELEASE
 from pathlib import Path
 import re
 import unittest
@@ -91,6 +92,6 @@ class Simkl050(unittest.TestCase):
   self.assertNotIn('MisioFlixMalService',SERVICE)
   self.assertNotIn('mal.js',MON)
  def test_version(self):
-  self.assertIn('0.4.92.0',(ROOT/'meta.json').read_text('utf8'))
-  self.assertIn('0.4.92.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
+  self.assertIn(CURRENT_RELEASE,(ROOT/'meta.json').read_text('utf8'))
+  self.assertIn(CURRENT_RELEASE,(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
 if __name__=='__main__':unittest.main()

@@ -23,7 +23,9 @@ for(const type of ['Movie','Series']){
  const poster=ctx.makePoster({...common,type,memberCollectionCount:3,memberCollectionName:'Test collection',seasons:2,episodes:22});
  const badge=childrenOf(poster).find(x=>x.className.includes('mf-home-member-collection'));
  assert(badge,`${type} must have collection badge`);
- assert.equal(badge.textContent,'3 📦');
+ assert.deepEqual(badge.children.map(c=>c.textContent),['3','📦'],'separate number/icon in one stats row');
+ assert.equal(badge.children[0].className,'mf-home-stat-number');
+ assert.equal(badge.children[1].className,'mf-home-box-icon');
  assert(badge.attributes.title.includes('Test collection'));
  assert(badge.parent.className.includes('mf-home-stats'),'must be right-top under paws');
 }

@@ -1,4 +1,5 @@
 """Regression: BoxSet membership count comes from Jellyfin, and CSS backup stays external."""
+from version_contract import CURRENT_RELEASE
 from pathlib import Path
 import json,re,unittest
 R=Path(__file__).resolve().parents[2]
@@ -18,8 +19,9 @@ class MemberCollection090(unittest.TestCase):
   self.assertIn('tile.memberCollectionCount = details.Count',S)
   self.assertIn('info.memberCollectionCount = details.Count',S)
   self.assertIn("item.type==='Movie'||item.type==='Series'",H)
-  self.assertIn("String(size)+' 📦'",H)
-  self.assertIn("'mf-native-collection-member',String(collectionSize)+' 📦'",C)
+  self.assertIn("own('span','mf-home-box-icon','📦')",H)
+  self.assertIn("mf-native-collection-member",C)
+  self.assertIn("makeEl('span','mf-native-box-icon','📦')",C)
  def test_not_based_on_unplayed_indicator_or_text_matching(self):
   self.assertNotIn('UnplayedItemCount',S[S.index('private async Task<Dictionary<Guid, (int Count, string Name)>>'):S.index('public async Task<HomeShelfResponse>')])
   self.assertIn('if(pawStats.length||collectionSize)',C)
@@ -34,5 +36,5 @@ class MemberCollection090(unittest.TestCase):
   self.assertNotIn('/* Standardowe oceny Jellyfina: gwiazdka',CSS)
   self.assertTrue((R/'zrobionepozamisioflixem.txt').exists())
  def test_version(self):
-  self.assertEqual(json.loads((R/'meta.json').read_text())['version'],'0.4.92.0')
+  self.assertEqual(json.loads((R/'meta.json').read_text())['version'],CURRENT_RELEASE)
 if __name__=='__main__':unittest.main()

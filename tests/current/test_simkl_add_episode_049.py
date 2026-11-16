@@ -1,4 +1,5 @@
 """v0.4.49 Simkl new-item and standalone episode contract checks (not an integration test)."""
+from version_contract import CURRENT_RELEASE
 import unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
@@ -41,8 +42,8 @@ class NewItemsAndEpisodes049(unittest.TestCase):
   self.assertIn("['true','Obejrzany']",episode)
   self.assertIn('return;',episode)
  def test_isolation_and_version(self):
-  self.assertIn('0.4.92.0',(ROOT/'meta.json').read_text('utf8'))
-  self.assertIn('0.4.92.0',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
+  self.assertIn(CURRENT_RELEASE,(ROOT/'meta.json').read_text('utf8'))
+  self.assertIn(CURRENT_RELEASE,(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text('utf8'))
   self.assertNotIn('/scrobble/',SVC)
   self.assertNotIn('mf-mal-',UI)
   self.assertIn('AnimeRoot',CAT)

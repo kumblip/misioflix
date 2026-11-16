@@ -246,7 +246,9 @@
       // A real BoxSet membership is independent of watched state and Simkl.
       const size=Number(item.memberCollectionCount);
       if((item.type==='Movie'||item.type==='Series')&&Number.isInteger(size)&&size>0){
-        const mark=own('span','mf-home-stat mf-home-member-collection',String(size)+' 📦');
+        const mark=own('span','mf-home-stat mf-home-member-collection');
+        mark.appendChild(own('span','mf-home-stat-number',size));
+        mark.appendChild(set(own('span','mf-home-box-icon','📦'),'aria-hidden','true'));
         mark.setAttribute('title',`Kolekcja: ${item.memberCollectionName||'bez nazwy'} · ${size} pozycji`);
         count.appendChild(mark);
       }

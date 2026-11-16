@@ -1675,7 +1675,7 @@ html.misioflix-skin .mf-library-extra-deck .mf-library-cover-img{
   opacity:1;z-index:0;pointer-events:none;
 }
 
-/* v0.4.94: refine the collection-member row so the number+box pair follows
+/* v0.4.93: refine the collection-member row so the number+box pair follows
    exactly the same two-column rhythm as the paw counters: right-aligned number,
    fixed icon column, no nested frame and no drifting emoji width. */
 html.misioflix-skin .mf-home-stats > .mf-home-stat.mf-home-member-collection,
