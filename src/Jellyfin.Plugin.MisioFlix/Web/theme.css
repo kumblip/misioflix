@@ -1675,23 +1675,23 @@ html.misioflix-skin .mf-library-extra-deck .mf-library-cover-img{
   opacity:1;z-index:0;pointer-events:none;
 }
 
-/* v0.4.90: a real collection's size, never an unplayed/pink indicator.
-   The badge joins the existing right-top stack; first-party native card DOM,
-   poster links, MAL/Simkl ratings and infinite scroll remain untouched. */
-html.misioflix-skin .mf-home-member-collection,
-html.misioflix-skin .mf-native-collection-member {
-  display:inline-flex;align-items:center;justify-content:center;gap:4px;
-  min-width:34px;max-width:100%;box-sizing:border-box;
-  padding:3px 6px;border:1px solid rgba(255,229,241,.48);
-  border-radius:7px;background:rgba(13,7,19,.78);
-  color:#fff;font-size:12px;font-weight:800;line-height:1.2;
-  white-space:nowrap;font-variant-numeric:tabular-nums;
+/* v0.4.91: one frame shared by the paw rows and BoxSet membership.
+   The parent .mf-home-stats/.mf-native-stats already draws the dark frame.
+   Do NOT draw another border, background, shadow or padding for N 📦.
+   Simkl ratings (pink paw) and season/episode paws always precede it. */
+html.misioflix-skin .mf-home-stats > .mf-home-stat.mf-home-member-collection,
+html.misioflix-skin .mf-native-stats > .mf-native-collection-member {
+  display:flex;align-items:center;justify-content:flex-end;gap:3px;
+  align-self:stretch;box-sizing:border-box;min-width:0;max-width:100%;
+  margin:0;padding:0;border:0;border-radius:0;box-shadow:none;
+  background:transparent;color:#fff;font-weight:800;font-size:12px;
+  line-height:1.15;white-space:nowrap;font-variant-numeric:tabular-nums;
   text-shadow:0 1px 2px rgba(0,0,0,.4);
 }
-html.misioflix-skin .mf-home-stat.mf-home-member-collection {
-  justify-content:center;
-  margin-top:2px;
-}
-html.misioflix-skin .mf-native-collection-member {
-  margin-top:2px;align-self:stretch;
+/* In smaller media grids use the same size as the existing Simkl/episode paws. */
+@media(max-width:680px){
+  html.misioflix-skin .mf-home-stats > .mf-home-stat.mf-home-member-collection,
+  html.misioflix-skin .mf-native-stats > .mf-native-collection-member {
+    font-size:10px;line-height:1.03;gap:2px;
+  }
 }

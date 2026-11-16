@@ -14,7 +14,7 @@ REGISTRATOR = (SRC / 'Services' / 'ScriptInjection.cs').read_text('utf-8')
 
 class ReadOnlyArchive060(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.90.0')
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.91.0')
     def test_complete_unfiltered_paginated_list(self):
         self.assertIn('FetchFullArchiveAsync', MAL)
         self.assertIn('users/@me/animelist?fields={fields}', MAL)
@@ -57,12 +57,12 @@ class ReadOnlyArchive060(unittest.TestCase):
         self.assertIn('mal-archive.css', REGISTRATOR)
         self.assertIn('mf-mal-archive', (SRC/'Web'/'mal-archive.css').read_text('utf8'))
     def test_separate_simkl_files_restricted_to_approved_visual_delta(self):
-        # Simkl v0.4.71 has only the native episode-list selector and SVG path fixes; services unchanged.
+        # v0.4.91 additionally reorders ONLY the Simkl paw before BoxSet N 📦 in the existing card frame; services unchanged.
         # Fixed SHA-256 protects that approved version plus the unchanged C#
         # synchronization and database modules, with no external ZIP needed.
         import hashlib
         expected_sha256 = {
-            'src/Jellyfin.Plugin.MisioFlix/Web/simkl.js': 'da2b0a322fce9bdfe58d75084eb4296d2ab1dcd3b30471f77482f858873c245d',
+            'src/Jellyfin.Plugin.MisioFlix/Web/simkl.js': '54820d94422fd5f7abbf1336199cfc7499b8a0d9051b175abd0a1e28a87f43d8',
             'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixSimklService.cs': 'ab31152c93a6ca697c96ac229fca913136011a2805bf6b42beaed56343442d75',
             'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixSimklLocalStore.cs': 'af0ff76d3f2a8e07849df22db37ef6b83f7750b9d2b4bc1fbbb148777daaa117',
         }

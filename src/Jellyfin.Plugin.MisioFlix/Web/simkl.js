@@ -780,12 +780,20 @@
       ? card.querySelector('.mf-native-top .mf-native-stats')||card.querySelector('.mf-native-top')
       : card.querySelector('.mf-home-stats')||(()=>{const h=el('div','mf-home-stats');card.append(h);return h;})();
     if(!container)return; // Jellyfin's native overlay is not ready yet.
-    if(old&&old.parentElement===container&&old.textContent===String(score))return;
+    // Membership belongs to the SAME frame, but all personal rating paws
+    // must come first. This also repairs already-mounted cards after a refresh.
+    const member=container.querySelector('.mf-home-member-collection,.mf-native-collection-member');
+    if(old&&old.parentElement===container&&old.textContent===String(score)){
+      if(member&&old.nextElementSibling!==member)container.insertBefore(old,member);
+      return;
+    }
     old?.remove();
     const badge=el('span',cls);
     badge.title='Moja ocena Simkl';
     badge.append(el('span','mf-simkl-score-number',String(score)),simklPaw());
-    container.append(badge);card.setAttribute('data-mf-simkl-score',String(score));
+    if(member)container.insertBefore(badge,member);
+    else container.append(badge);
+    card.setAttribute('data-mf-simkl-score',String(score));
   }
   function nearby(card){
     const box=typeof card.getBoundingClientRect==='function'?card.getBoundingClientRect():null;
