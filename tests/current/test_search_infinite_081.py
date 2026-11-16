@@ -29,4 +29,4 @@ class Infinite081(unittest.TestCase):
         self.assertIn('.mf-collections-page-feed',CSS)
         self.assertIn('root:null',HOME) # observer honors any scroll ancestor
     def test_version(self):
-        self.assertEqual(json.loads((R/'meta.json').read_text('utf8'))['version'],'0.4.85.0')
+        self.assertEqual(json.loads((R/'meta.json').read_text('utf8'))['version'],'0.4.86.0')

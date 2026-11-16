@@ -60,8 +60,8 @@ class UpdatePanel078(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
 
     def test_package_version_is_latest(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.85.0')
-        self.assertIn('<AssemblyVersion>0.4.85.0</AssemblyVersion>',
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.86.0')
+        self.assertIn('<AssemblyVersion>0.4.86.0</AssemblyVersion>',
                       (BASE/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__': unittest.main()

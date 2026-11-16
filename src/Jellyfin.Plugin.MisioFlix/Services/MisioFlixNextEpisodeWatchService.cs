@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Entities;
+using User = Jellyfin.Database.Implementations.Entities.User;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
@@ -13,10 +14,11 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.MisioFlix.Services;
 
 /// <summary>
-/// User-initiated NEXT episode -> the previous episode is marked watched in
-/// JELLYFIN (not in a MisioFlix database), irrespective of playback position.
-/// Ordinary stop/seek/autoplay never arms this feature and Jellyfin's normal
-/// 90% completion threshold is unchanged. Does not touch MAL archive/NFO.
+/// Confirmed playback of the immediate next episode -> the previous episode
+/// is marked watched in JELLYFIN, and its resume position is cleared.
+/// Includes user NEXT and direct start of the next episode shortly after the
+/// previous playback on the same device. Ordinary stop/seek alone never marks
+/// watched. Jellyfin's normal 90% threshold is unchanged. No NFO/MAL writes.
 /// </summary>
 public sealed class MisioFlixNextEpisodeWatchService : IHostedService
 {
@@ -75,10 +77,14 @@ public sealed class MisioFlixNextEpisodeWatchService : IHostedService
                 // before setting the final watched flag (~one second).
                 await Task.Delay(850).ConfigureAwait(false);
                 var data = _userData.GetUserData(previous.User, previous.Item);
-                if (data?.Played != true)
+                // A watched episode must never retain a resume point. If Jellyfin
+                // already marked it watched, clear any remaining resume position
+                // without incrementing its PlayCount or overwriting LastPlayedDate.
+                if (data is null || !data.Played || data.PlaybackPositionTicks != 0)
                 {
-                    previous.Item.MarkPlayed(previous.User);
-                    _log.LogInformation("MisioFlix: marked skipped-to-next episode {Id} watched for {User} in Jellyfin",
+                    DateTime? playedDate = data?.Played == true ? null : DateTime.UtcNow;
+                    previous.Item.MarkPlayed(previous.User, playedDate, resetPosition: true);
+                    _log.LogInformation("MisioFlix: marked previous episode {Id} watched and cleared resume position for user {User}",
                         previous.ItemId, previous.User.Id);
                 }
             }
@@ -158,9 +164,14 @@ public sealed class MisioFlixNextEpisodeWatchService : IHostedService
                     state.Previous = previous;
                     state.Current = current;
                     state.ChangedUtc = now;
+                    // User may click NEXT in the player or open the immediate next
+                    // episode directly. A recent playback/stop on this same device,
+                    // for the same Jellyfin user and series, qualifies; old sessions,
+                    // skips over episodes and unrelated navigation do not.
+                    var explicitNext = state.ArmedEpisodeId == previous?.ItemId && state.ArmedUntil >= now;
+                    var recentNext = state.LastEventUtc >= now.AddSeconds(-45);
                     if (previous is not null &&
-                        state.ArmedEpisodeId == previous.ItemId &&
-                        state.ArmedUntil >= now && NextInSequence(previous, current) &&
+                        (explicitNext || recentNext) && NextInSequence(previous, current) &&
                         state.LastMarkedEpisodeId != previous.ItemId)
                     {
                         mark = previous;

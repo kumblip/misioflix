@@ -1,4 +1,4 @@
-/* MisioFlix 0.4.85: Intentional NEXT episode marks the previous episode
+/* MisioFlix 0.4.86: Intentional NEXT episode marks the previous episode
  * watched in Jellyfin after the native player confirms the transition.
  * No player replacement, no edits to NFO/MAL, no auto-next interception.
  */
@@ -41,7 +41,7 @@
       method: 'POST', credentials:'same-origin', cache:'no-store', keepalive:true,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-next", Version="0.4.85", Token="${token.replace(/["\r\n]/g, '')}"`
+        Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-next", Version="0.4.86", Token="${token.replace(/["\r\n]/g, '')}"`
       },
       body: JSON.stringify({deviceId:typeof deviceId === 'string' ? deviceId : null})
     }).then(r=>{if(!r.ok) console.warn('[MisioFlix Next Watch] HTTP',r.status);})

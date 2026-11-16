@@ -63,5 +63,19 @@ Jellyfin i zrezygnuj z wtyczki zgodnie z `INSTALACJA_UGREEN.md`.
 - 387 testów Python + 36 podtestów (przejście po aktualizacji oczekiwanej wersji) — OK.
 - 36 skryptów testowych JavaScript, w tym 8 asercji nowej akcji NEXT — OK.
 - Front-end nie przechwytuje samodzielnego automatycznego przejścia, Stop ani Seek.
-- Serwer czeka na potwierdzone sąsiadujące przejście; zapis `MarkPlayed(User)` jest w Jellyfinie.
+- Serwer czeka na potwierdzone sąsiadujące przejście; zapis `MarkPlayed(User, DateTime, bool)` jest w Jellyfinie.
 - Nie wykonano kompilacji .NET 10 i integracyjnego testu na NAS-ie.
+
+## v0.4.86 — poprawki kompilacji Jellyfin API
+- Przestrzeń nazw `Jellyfin.Database.Implementations.Entities.User`.
+- Wywołanie `MarkPlayed(user, playedDate, resetPosition: true)` i reset punktu wznowienia również wtedy, gdy status `Played` był już zapisany.
+- Regresja `test_next_episode_api_compile_086.py`.
+- Pełny publish .NET 10 nie jest dostępny lokalnie — wymaga potwierdzenia w CI.
+
+- Nowy test `test_next_episode_reset_086.py`: wyzerowanie PlaybackPositionTicks, brak podbijania PlayCount przy już obejrzanym, poprawność bezpośredniego przejścia i ograniczenia do tej samej serii oraz urządzenia.
+
+## v0.4.86 – pełne testy regresyjne po poprawce kompilacji
+
+- 393 testy unittest Python + 36 skryptów Node zakończone poprawnie.
+- Trzy moduły regresji `next_episode_*` działają jako `unittest.TestCase` (wcześniej część definicji `def test_...` nie była wykonywana przez domyślny runner).
+- Dotnet SDK 10 niedostępny w środowisku; `dotnet publish` wymaga GitHub Actions.
