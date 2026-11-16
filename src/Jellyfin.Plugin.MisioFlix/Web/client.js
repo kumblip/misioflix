@@ -320,7 +320,7 @@
         else card.removeAttribute('data-mf-watch');
       }
       // v0.4.29's exact paw/genre/year badge DOM, pointer-events:none.
-      if(n++<220)attachOverlay(card);
+      if(n++<220 || card.hasAttribute('data-mf-library-infinite-card'))attachOverlay(card);
     }
   }
   // Nonblocking, permission-filtered metadata for VISIBLE original cards only.
@@ -391,7 +391,14 @@
   }
   function useMetadata(card,data){
     if(!data||typeof data!=='object')return;
-    if(modernMixedRoute() && (!mixedDecorationsAllowed() || !mixedActiveList?.contains(card)))return;
+    if(modernMixedRoute()){
+      // React's native cards must belong to the stable mounted list, but the
+      // infinite-scroll cards deliberately live in a sibling deck. Both are
+      // valid on AnimePL; allowing ONLY mixedActiveList dropped all NFO/MAL
+      // metadata on page 2+ and left the cards with generic SERIAL badges.
+      const added=card.matches?.('.mf-library-extra-deck .card[data-mf-library-infinite-card="1"]');
+      if(!mixedDecorationsAllowed() || (!mixedActiveList?.contains(card) && !added))return;
+    }
     // One visual component for Home's native cards, AnimePL and other libraries:
     // restore the proven v0.4.29 overlay instead of the pseudo-content imitation.
     const before=card.getAttribute('data-mf-mal-id')||'';
@@ -877,6 +884,21 @@
       for(const card of document.querySelectorAll('.card[data-mf-card="1"][data-mf-anime="1"]')){
         if(modernMixedRoute())paintMixedCard(card);
         else attachOverlay(card);
+      }
+    });
+    // v0.4.84: the native library infinite-scroll module creates stand-alone
+    // cards below the React list. Reuse THIS module's authenticated, batched
+    // metadata path so their NFO/MAL/Simkl labels match the original cards,
+    // even if the next page starts outside IntersectionObserver's viewport.
+    window.addEventListener('misioflix-library-cards-added',event=>{
+      schedule();
+      if(!apiToken() || overlayDisabled)return;
+      const added=Array.isArray(event.detail?.cards)?event.detail.cards:[];
+      for(const card of added){
+        if(!card?.isConnected || !card.matches?.('.mf-library-extra-deck .card[data-mf-library-infinite-card="1"]'))continue;
+        seenCards.add(card);
+        io?.unobserve(card);
+        queueMetadata(card);
       }
     });
     window.addEventListener('pageshow',schedule);

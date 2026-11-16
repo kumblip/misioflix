@@ -1,4 +1,4 @@
-/* MisioFlix Native 0.4.83 — native library pagination parameter fix.
+/* MisioFlix Native 0.4.84 — restore real artwork and MisioFlix decoration on loaded cards.
  * Inspired by the single infinite-scroll approach in KefinTweaks (MIT):
  * use Jellyfin's Users/{id}/Items paging, not another library renderer/router.
  * This implementation is standalone; no KefinTweaks scripts or dependencies.
@@ -6,8 +6,8 @@
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_NATIVE_LIBRARY_SCROLL_083__) return;
-  window.__MISIOFLIX_NATIVE_LIBRARY_SCROLL_083__ = true;
+  if (window.__MISIOFLIX_NATIVE_LIBRARY_SCROLL_084__) return;
+  window.__MISIOFLIX_NATIVE_LIBRARY_SCROLL_084__ = true;
   const LOG = '[MisioFlix Library Scroll]';
   const allowed = new Set(['mixed', 'movies', 'tv', 'music']);
   const PAGE_SIZE = 100;
@@ -157,6 +157,57 @@
     }
     for(const el of root.querySelectorAll('.mf-native-overlay,.mf-native-description,.mf-collection-preview,.mf-home-stats,.mf-home-mal-score,.mf-mal-episode-frame'))el.remove();
   }
+  // An actual Jellyfin 12.4 card contains an <img> inside
+  // .cardContent > .cardImageContainer. Cloning a card and replacing the
+  // container's background does NOT replace that image; a missing image leaves
+  // a black box. Use the current item's Primary URL and rebuild only the media.
+  function imageUrl(item,kind){
+    const itemId=guid(item?.Id);
+    if(!itemId)return '';
+    const tag=item?.ImageTags?.[kind] || '';
+    let url='/Items/'+encodeURIComponent(itemId)+'/Images/'+encodeURIComponent(kind)+'?maxHeight=460&quality=90';
+    if(tag)url+='&tag='+encodeURIComponent(tag);
+    return url;
+  }
+  function imageCandidates(item){
+    const result=[];
+    // Try Primary even when the lightweight Items response omits ImageTags.
+    // Jellyfin still resolves /Images/Primary for a real poster in that case.
+    if(item?.ImageTags?.Primary || item?.HasPrimaryImage || item?.Type==='Series' || item?.Type==='Movie' || item?.Type==='BoxSet'){
+      result.push(imageUrl(item,'Primary'));
+    }
+    if(item?.ImageTags?.Thumb)result.push(imageUrl(item,'Thumb'));
+    if(item?.ImageTags?.Backdrop?.length)result.push(imageUrl(item,'Backdrop'));
+    if(!result.length)result.push(imageUrl(item,'Primary'));
+    return [...new Set(result.filter(Boolean))];
+  }
+  function installPoster(card,item){
+    const surface=card.querySelector('.cardContent .cardImageContainer');
+    if(!surface)return;
+    // Remove the prior item's poster and badge/placeholder wrappers: those
+    // belong to the template's React-owned original card, not this new item.
+    surface.replaceChildren();
+    surface.style.removeProperty('background-image');
+    surface.removeAttribute('data-src');
+    surface.classList.remove('lazy','lazy-hidden','lazy-hidden-children','blurhashed');
+    const cover=document.createElement('div');
+    cover.className='mf-library-cover';
+    const image=document.createElement('img');
+    image.className='mf-library-cover-img';
+    image.alt=String(item.Name||'');
+    image.loading='lazy';
+    image.decoding='async';
+    const urls=imageCandidates(item);
+    let index=0;
+    image.addEventListener('error',()=>{
+      index++;
+      if(index<urls.length)image.src=urls[index];
+      else image.remove();
+    });
+    if(urls.length)image.src=urls[0];
+    cover.appendChild(image);
+    surface.appendChild(cover);
+  }
   function makeCard(item,s){
     const template=s.template;
     if(!template || !item?.Id)return null;
@@ -172,30 +223,37 @@
     node.setAttribute('data-id',newId);
     node.setAttribute('data-type',item.Type||'');
     node.setAttribute('data-isfolder',String(!!item.IsFolder));
+    for(const stale of ['data-positionticks','data-enddate','data-prefix','data-context','data-mediatype'])node.removeAttribute(stale);
     node.setAttribute('data-mf-library-infinite-card','1');
-    node.removeAttribute('data-mf-card');
-    node.removeAttribute('data-mf-anime');
+    node.setAttribute('data-mf-card','1');
+    node.setAttribute('data-mf-item-id',newId);
+    // These cards are not React children. Give the existing MisioFlix
+    // decoration pipeline the correct library kind immediately; its own
+    // /api/overlays then fills in NFO genres, season/episode counts and MAL.
+    if(s.animeLibrary)node.setAttribute('data-mf-anime','1');
+    else node.removeAttribute('data-mf-anime');
+    if(item.ProductionYear)node.setAttribute('data-mf-year',String(item.ProductionYear));
+    if(s.animeLibrary)node.setAttribute('data-mf-anime-poster','1');
+    // Never show the copied template's stale '12 unplayed' bubble, play state,
+    // description, thumbnail, poster or React-only actions on the new anime.
+    for(const el of node.querySelectorAll('.countIndicator,.playedIndicator,.itemProgressBar,.itemProgressBarForeground,.resumeProgress,.blurhash-canvas'))el.remove();
     const name=node.querySelector('.cardText-first bdi,.cardText-first,.cardText-first a');
     if(name)name.textContent=String(item.Name||item.OriginalTitle||'');
     const year=node.querySelector('.cardText-secondary bdi,.cardText-secondary');
     if(year)year.textContent=item.ProductionYear ? String(item.ProductionYear) : '';
-    const img=node.querySelector('.cardImageContainer');
-    if(img){
-      // Start from the item's own artwork, never the cloned template artwork.
-      for(const extra of img.querySelectorAll('img,.mf-collection-preview'))extra.remove();
-      const primary=item.ImageTags?.Primary;
-      const tag=primary || item.SeriesPrimaryImageTag || '';
-      const imageId=primary ? newId : item.SeriesId || newId;
-      const url=tag ? '/Items/'+encodeURIComponent(imageId)+'/Images/Primary?maxWidth=400&quality=90&tag='+encodeURIComponent(tag) : '';
-      img.style.backgroundImage=url ? 'url("'+url+'")' : 'none';
-      img.removeAttribute('data-src');
-      img.classList.remove('lazy','lazy-hidden','lazy-hidden-children','blurhashed');
-    }
+    installPoster(node,item);
     const pad=node.querySelector('.cardPadder');
     pad?.classList.remove('lazy-hidden-children');
-    // Cloned React nodes have no React handlers. Use native-looking cards with
-    // explicit per-item navigation; leave originals entirely owned by Jellyfin.
-    for(const el of node.querySelectorAll('button,.cardOverlayButton,[data-action="play"],[data-action="resume"],.playedIndicator,.itemProgressBar'))el.remove();
+    // Cloned React event handlers do not survive cloneNode. Preserve real
+    // per-item links for pointer, keyboard and new-tab navigation.
+    const target=itemLink(item,s);
+    for(const link of node.querySelectorAll('a[href]')){
+      if(target)link.setAttribute('href',target);
+      link.setAttribute('aria-label','Otwórz: '+String(item.Name||''));
+    }
+    // Never leave copies of buttons that only work through the original
+    // React card's closures. The original library cards remain untouched.
+    for(const el of node.querySelectorAll('button,.cardOverlayButton,[data-action="play"],[data-action="resume"]'))el.remove();
     node.setAttribute('tabindex','0');node.setAttribute('role','link');
     node.setAttribute('aria-label','Otwórz: '+String(item.Name||''));
     return node;
@@ -226,7 +284,8 @@
     if(total!==null && displayed>=total)return;
     const s={route:r,container,identity:identity(),queryIdentity:queryIdentity(r),nativeFirst:id(native[0]),range,
       next:displayed,total,loading:false,complete:false,abort:false,pane:null,sentinel:null,
-      template:native[0].cloneNode(true),itemIds:new Set(native.map(id)),query:null,failures:0};
+      template:native[0].cloneNode(true),animeLibrary:r.page==='mixed' && (native.some(card=>card.getAttribute('data-mf-anime')==='1') || /anime/i.test(document.getElementById('mixed')?.getAttribute('data-title')||'')),
+      itemIds:new Set(native.map(id)),query:null,failures:0};
     // The additional cards are a separate non-React deck. It follows the
     // native grid within the existing library view, never rewrites its children.
     const pane=document.createElement('div');
@@ -278,6 +337,7 @@
         return;
       }
       let appended=0;
+      const appendedCards=[];
       const batch=document.createDocumentFragment();
       for(const item of items){
         const iid=id(item);
@@ -296,7 +356,7 @@
           const target=itemLink(item,s);if(!target)return;
           event.preventDefault();location.hash=target;
         });
-        batch.appendChild(node);appended++;
+        batch.appendChild(node);appendedCards.push(node);appended++;
       }
       if(items.length && !appended){
         console.warn(LOG,'API zwróciło stronę bez poprawnych nowych kart; zachowuję oryginalną paginację.',{offset:s.next,returned:items.length});
@@ -304,6 +364,11 @@
         return;
       }
       s.pane.appendChild(batch);
+      // The original MisioFlix decorator has a visibility-gated metadata queue.
+      // Loaded cards may arrive below its IntersectionObserver root; explicitly
+      // hand their actual DOM nodes to that SAME queue for NFO/MAL/Simkl data.
+      // This does not create a second overlay engine or modify React cards.
+      if(appendedCards.length)window.dispatchEvent(new CustomEvent('misioflix-library-cards-added',{detail:{cards:appendedCards}}));
       s.next+=items.length;
       if(appended)console.info(LOG,'Doładowano',appended,'kart (offset',s.next,')');
       s.failures=0;

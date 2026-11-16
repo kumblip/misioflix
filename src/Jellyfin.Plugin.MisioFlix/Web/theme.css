@@ -1625,6 +1625,15 @@ html.misioflix-skin .mf-collections-page-retry[hidden] {display:none!important}
 html.misioflix-skin .mf-collections-page-retry {align-self:center}
 
 /* v0.4.82: additional pages on native Jellyfin library views only. */
-.mf-library-extra-deck.itemsContainer{display:flex;flex-wrap:wrap;align-content:flex-start;gap:1em;padding-top:1.2em;padding-bottom:1em;box-sizing:border-box;}
+.mf-library-extra-deck.itemsContainer{align-content:flex-start;padding-top:1.2em;padding-bottom:1em;box-sizing:border-box;}
 .mf-library-extra-deck.itemsContainer .card{cursor:pointer;}
 .mf-library-load-sentinel{min-height:8px;text-align:center;color:var(--theme-text-color,#eee);font-size:.85em;pointer-events:none;}
+
+/* v0.4.84: unloaded-library cards keep the native card shape and real posters.
+ * These rules only apply to the extra infinite-scroll deck, not the React list. */
+html.misioflix-skin .mf-library-extra-deck .cardContent .cardImageContainer{position:relative;overflow:hidden;}
+html.misioflix-skin .mf-library-extra-deck .mf-library-cover{position:absolute;inset:0;overflow:hidden;}
+html.misioflix-skin .mf-library-extra-deck .mf-library-cover-img{
+  display:block;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  opacity:1;z-index:0;pointer-events:none;
+}

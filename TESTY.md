@@ -52,3 +52,9 @@ Jellyfin i zrezygnuj z wtyczki zgodnie z `INSTALACJA_UGREEN.md`.
 - Test `library_scroll_paging_083.cjs`: dokładnie jeden StartIndex i Limit w zapytaniu, ponowne użycie natywnych parametrów i weryfikacja kolejnych offsetów.
 - Test `test_library_paging_083.py`: zabezpieczenie przed ponowną pierwszą stroną i zachowanie dotychczasowych wyszukiwarek.
 - Testy starszych wersji zaktualizowane do numeru źródeł v0.4.83.
+
+## v0.4.84.0
+
+- Test regresji `library_card_posters_084.cjs`: rzeczywiste obrazy `<img>` z nowym item ID, brak starych liczników, poprawne linki i most do kolejki metadanych, bez zmiany paginacji.
+- Test `test_library_covers_084.py`: brak ingerencji w siatkę React, kontrola selektorów i wersji.
+- Test lokalny Chromium/Playwright na syntetycznym fragmencie struktury karty Jellyfin 12.4: nowy obraz, typ ANIME, link, opis, łapki 2/24 i gatunki z przykładowych metadanych.

@@ -28,6 +28,6 @@ class SeasonAndTop080(unittest.TestCase):
         self.assertIn('html.misioflix-skin #mf-scroll-to-top',css)
         self.assertIn('.detailPagePrimaryContent .mf-detail-season-nav',css)
     def test_version(self):
-        self.assertEqual(json.loads((R/'meta.json').read_text('utf8'))['version'],'0.4.83.0')
+        self.assertEqual(json.loads((R/'meta.json').read_text('utf8'))['version'],'0.4.84.0')
 
 if __name__=='__main__':unittest.main()
