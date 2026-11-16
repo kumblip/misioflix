@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.89: jednolity licznik filmów kolekcji (liczba + klaps) w prawym górnym rogu",
+  "description": "MisioFlix v0.4.90: liczba pozycji kolekcji na kafelkach filmów i seriali, osobny TXT z CSS Jellyfina",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.89.0",
+  "version": "0.4.90.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

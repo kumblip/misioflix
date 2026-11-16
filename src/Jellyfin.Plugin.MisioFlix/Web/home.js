@@ -243,6 +243,13 @@
         addStat(item.episodes,'Odcinki','#6bd1f6');
       }
       // Simkl scores for films/series are decorated by simkl.js, never from Jellyfin's UserRating.
+      // A real BoxSet membership is independent of watched state and Simkl.
+      const size=Number(item.memberCollectionCount);
+      if((item.type==='Movie'||item.type==='Series')&&Number.isInteger(size)&&size>0){
+        const mark=own('span','mf-home-stat mf-home-member-collection',String(size)+' 📦');
+        mark.setAttribute('title',`Kolekcja: ${item.memberCollectionName||'bez nazwy'} · ${size} pozycji`);
+        count.appendChild(mark);
+      }
     }
     if(count.childElementCount)link.appendChild(count);
     const chips=own('div','mf-home-genres'+(nonAnimeMedia?' mf-simkl-media-genres':''));

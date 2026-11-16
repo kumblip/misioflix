@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
+using MediaBrowser.Controller.Collections;
 using MediaBrowser.Common.Configuration;
 using System.Globalization;
 using System.IO;
@@ -26,14 +28,20 @@ public sealed class MisioFlixCatalogService
 {
     private readonly HttpClient _client;
     private readonly ILibraryManager _library;
+    private readonly ICollectionManager _collections;
+    private readonly IUserManager _users;
+    private readonly ConcurrentDictionary<string, (int Count, DateTimeOffset Until)> _collectionCountCache = new();
     private readonly string _hiddenResumePath;
     private readonly string _removedResumePath;
     private static readonly SemaphoreSlim HiddenGate = new(1, 1);
 
-    public MisioFlixCatalogService(HttpClient client, ILibraryManager library, IApplicationPaths applicationPaths)
+    public MisioFlixCatalogService(HttpClient client, ILibraryManager library, IApplicationPaths applicationPaths,
+        ICollectionManager collections, IUserManager users)
     {
         _client = client;
         _library = library;
+        _collections = collections;
+        _users = users;
         // Separate JSON state, never the Jellyfin database, media or NFO files.
         _hiddenResumePath = Path.Combine(applicationPaths.DataPath, "misioflix", "hidden-resume.json");
         _removedResumePath = Path.Combine(applicationPaths.DataPath, "misioflix", "removed-resume.json");
@@ -225,6 +233,74 @@ public sealed class MisioFlixCatalogService
         return result;
     }
 
+    // v0.4.90: Membership is read from Jellyfin's real collection manager,
+    // not guessed from series names, genres, TMDb tags or other metadata.
+    // The same *authenticated* Jellyfin user is used for membership and size.
+    // One number is shown per media card; if an item belongs to multiple
+    // collections, use the first alphabetical collection for a stable badge.
+    private async Task<Dictionary<Guid, (int Count, string Name)>> ReadCollectionMembershipAsync(
+        Uri origin, string auth, string userId, IEnumerable<Guid> ids, CancellationToken cancel)
+    {
+        var result = new Dictionary<Guid, (int Count, string Name)>();
+        if (!Guid.TryParse(userId, out var userGuid)) return result;
+        var user = _users.GetUserById(userGuid);
+        if (user is null) return result;
+        var chosen = new Dictionary<Guid, (Guid CollectionId, string Name)>();
+        foreach (var itemId in ids.Distinct())
+        {
+            cancel.ThrowIfCancellationRequested();
+            try
+            {
+                // The manager enforces collection visibility for the authenticated user.
+                var boxSet = _collections.GetCollectionsContainingItem(user, itemId)
+                    .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(c => c.Id)
+                    .FirstOrDefault();
+                if (boxSet is not null) chosen[itemId] = (boxSet.Id, boxSet.Name);
+            }
+            catch (Exception) when (!cancel.IsCancellationRequested)
+            {
+                // Bad/legacy BoxSet metadata must never break the user's
+                // existing home shelf or the native Jellyfin poster overlays.
+            }
+        }
+        if (chosen.Count == 0) return result;
+        // A bounded number of requests; cache counts per user because one BoxSet
+        // commonly appears across many home and native library cards.
+        var unique = chosen.Values.Select(x => x.CollectionId).Distinct().ToArray();
+        var counts = new Dictionary<Guid, int>();
+        foreach (var collectionId in unique)
+        {
+            cancel.ThrowIfCancellationRequested();
+            var key = userGuid.ToString("N") + ":" + collectionId.ToString("N");
+            if (_collectionCountCache.TryGetValue(key, out var cached) && cached.Until > DateTimeOffset.UtcNow)
+            {
+                counts[collectionId] = cached.Count;
+                continue;
+            }
+            try
+            {
+                // TotalRecordCount describes the actual visible children, not
+                // the unplayed count from Jellyfin's pink poster indicator.
+                var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
+                    $"&ParentId={collectionId:N}&Recursive=false&CollapseBoxSetItems=false" +
+                    "&EnableTotalRecordCount=true&Limit=1";
+                using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
+                var total = Get(doc.RootElement, "TotalRecordCount");
+                if (total.ValueKind == JsonValueKind.Number && total.TryGetInt32(out var size) && size > 0)
+                {
+                    counts[collectionId] = size;
+                    _collectionCountCache[key] = (size, DateTimeOffset.UtcNow.AddMinutes(3));
+                }
+            }
+            catch (HttpRequestException) { /* Decoration is optional; no impact on the native library. */ }
+        }
+        foreach (var (itemId, entry) in chosen)
+            if (counts.TryGetValue(entry.CollectionId, out var count) && count > 0)
+                result[itemId] = (count, entry.Name);
+        return result;
+    }
+
     public async Task<HomeShelfResponse> ReadHomeShelfAsync(HttpRequest caller, Guid libraryId,
         string? mode, int startIndex, int limit, CancellationToken cancel)
     {
@@ -273,6 +349,14 @@ public sealed class MisioFlixCatalogService
                 var tile = MakeHomeTile(item, view.category);
                 if (tile is not null) list.Add(tile);
             }
+        }
+        if (!collections)
+        {
+            var membership = await ReadCollectionMembershipAsync(origin, auth, userId,
+                list.Where(t => t.type is "Movie" or "Series").Select(t => Guid.Parse(t.id)), cancel).ConfigureAwait(false);
+            foreach (var tile in list)
+                if (Guid.TryParse(tile.id, out var id) && membership.TryGetValue(id, out var details))
+                { tile.memberCollectionCount = details.Count; tile.memberCollectionName = details.Name; }
         }
         var hasMore = !random && items.ValueKind == JsonValueKind.Array && items.GetArrayLength() > limit;
         return new HomeShelfResponse(view.id, view.name, random ? "random" : "latest", startIndex, hasMore, list);
@@ -414,6 +498,7 @@ public sealed class MisioFlixCatalogService
         using var doc = await GetJsonAsync(origin, query, auth, cancel).ConfigureAwait(false);
         var items = Get(doc.RootElement, "Items");
         var output = new List<OverlayInfo>();
+        var mediaIds = new HashSet<Guid>();
         if (items.ValueKind != JsonValueKind.Array) return output;
         var allowedIds = requested.ToHashSet();
         var root = Path.GetFullPath(Plugin.Instance?.Configuration.AnimeRoot
@@ -424,6 +509,7 @@ public sealed class MisioFlixCatalogService
             var libItem = _library.GetItemById(id);
             if (libItem is null) continue;
             var type = Text(Get(item,"Type"));
+            if (type is "Movie" or "Series") mediaIds.Add(id);
             var anime = IsBelowRoot(libItem.Path, root);
             var nfo = anime ? ReadNfo(libItem.Path, type) : null;
             // A few Jellyfin 12 item DTOs omit SeriesId/IndexNumber for Season.
@@ -479,6 +565,11 @@ public sealed class MisioFlixCatalogService
             };
             output.Add(info);
         }
+        var membership = await ReadCollectionMembershipAsync(origin, auth, userId,
+            mediaIds, cancel).ConfigureAwait(false);
+        foreach (var info in output)
+            if (Guid.TryParse(info.id, out var id) && membership.TryGetValue(id, out var details))
+            { info.memberCollectionCount = details.Count; info.memberCollectionName = details.Name; }
         return output;
     }
 
@@ -1512,6 +1603,8 @@ public sealed class OverlayInfo
     public double? userRating { get; set; }
     public string watchStatus { get; set; } = string.Empty;
     public int? malId { get; set; }
+    public int? memberCollectionCount { get; set; }
+    public string? memberCollectionName { get; set; }
 }
 
 // Personal home rows; every instance is derived from an allowed user-scoped Jellyfin item.
@@ -1533,6 +1626,8 @@ public sealed class HomeTile
     public int? seasons { get; set; }
     public int? episodes { get; set; }
     public int? collectionCount { get; set; }
+    public int? memberCollectionCount { get; set; }
+    public string? memberCollectionName { get; set; }
     public double? userRating { get; set; }
     public string watchStatus { get; set; } = string.Empty;
     public int? malId { get; set; }

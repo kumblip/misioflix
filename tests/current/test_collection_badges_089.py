@@ -6,7 +6,7 @@ H=(R/'src/Jellyfin.Plugin.MisioFlix/Web/home.js').read_text(encoding='utf-8')
 C=(R/'src/Jellyfin.Plugin.MisioFlix/Web/theme.css').read_text(encoding='utf-8')
 class CollectionBadges089(unittest.TestCase):
  def test_current_version_and_outside_changes_log(self):
-  self.assertEqual(json.loads((R/'meta.json').read_text(encoding='utf-8'))['version'],'0.4.89.0')
+  self.assertEqual(json.loads((R/'meta.json').read_text(encoding='utf-8'))['version'],'0.4.90.0')
   self.assertTrue((R/'zrobionepozamisioflixem.txt').exists())
  def test_shared_home_card_for_both_views(self):
   self.assertIn("badge(link,collectionSize+' 🎬','mf-home-collection-count')",H)

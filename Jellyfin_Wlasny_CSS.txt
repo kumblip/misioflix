@@ -1,0 +1,26 @@
+/* MisioFlix — znane reguły własnego CSS Jellyfina (poza wtyczką).
+   Kopia rekonstrukcyjna z ustaleń rozmowy; użytkownik nie przesłał pełnej
+   aktualnej zawartości pola Branding -> Własny CSS.
+   Wklej/połącz z istniejącym CSS, nie zastępuj automatycznie całego pola.
+   Zakres: tylko #itemDetailPage; MAL / Simkl / Gatunki pozostają widoczne. */
+
+/* Standardowe oceny Jellyfina: gwiazdka i ocena krytyków */
+#itemDetailPage .starRatingContainer,
+#itemDetailPage .mediaInfoCriticRating { display: none !important; }
+
+/* Kategoria wiekowa (PL-16, TV-14 itd.) */
+#itemDetailPage .mediaInfoOfficialRating { display: none !important; }
+
+/* IMDb, TMDB — wiersz linków zewnętrznych */
+#itemDetailPage .itemExternalLinks { display: none !important; }
+
+/* Znaczniki tekstowe (nie usuwa tagów z Jellyfina / NFO) */
+#itemDetailPage .itemTags { display: none !important; }
+
+/* Wiersze z osobami (Reżyser / Scenariusz) i wytwórniami.
+   Uwaga: selektor osoby może również ukrywać inne wiersze, np. Twórca.
+   Gatunki mają genreId, więc pozostają widoczne i działające. */
+#itemDetailPage .itemDetailsGroup > div:has(> .detailsGroupItem a[href^="#/details?id="]),
+#itemDetailPage .itemDetailsGroup > div:has(> .detailsGroupItem a[href^="#/list?studioId="]) {
+  display: none !important;
+}

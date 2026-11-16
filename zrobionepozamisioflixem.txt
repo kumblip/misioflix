@@ -1,6 +1,6 @@
 MISIOFLIX — ZMIANY WYKONYWANE POZA WTYCZKĄ
 ==========================================
-Plik informacyjny do dołączenia w katalogu głównym paczki źródłowej MisioFlix Native v0.4.89.
+Plik informacyjny do dołączenia w katalogu głównym paczki źródłowej MisioFlix Native v0.4.90.
 
 Data zgłoszenia: 2026-11-16
 Stan: reguły uzgodnione; ich zapisanie w tym pliku nie oznacza, że zostały już zastosowane w ustawieniach Jellyfina.
@@ -84,7 +84,7 @@ status jego wdrożenia nie został potwierdzony.
 7. ZASADY NA KOLEJNE WYDANIA MISIOFLIX
 --------------------------------------
 - Umieścić niniejszy plik pod nazwą `zrobionepozamisioflixem.txt` w katalogu
-  głównym pełnej paczki GitHub v0.4.89.
+  głównym pełnej paczki GitHub v0.4.90.
 - Są to modyfikacje WYGLĄDU wykonane na poziomie CSS Jellyfina, POZA wtyczką.
 - Nie dodawać tych samych reguł domyślnie do CSS MisioFlixa bez osobnego polecenia.
 - Nie usuwać ocen, list gatunków, danych twórców, tagów, kategorii wiekowych
@@ -92,3 +92,9 @@ status jego wdrożenia nie został potwierdzony.
 - Nie ukrywać ocen MAL i Simkl oraz wiersza „Gatunki”.
 - Po wklejeniu CSS sprawdzić film, serial, anime, sezon i odcinek;
   odświeżyć interfejs Ctrl+F5. Reguły dotyczą Jellyfin Web, nie aplikacji TV.
+
+8. OSOBNY PLIK Z SAMEGO CSS (v0.4.90)
+-------------------------------------
+Jellyfin_Wlasny_CSS.txt zawiera reguły CSS z pkt. 5 i 6 w postaci gotowej
+do kopiowania. To rekonstrukcja znanych zmian z rozmowy, NIE eksport całego
+indywidualnego CSS ustawionego obecnie przez użytkownika w panelu Jellyfina.

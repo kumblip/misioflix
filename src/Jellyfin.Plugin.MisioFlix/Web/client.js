@@ -210,9 +210,11 @@
     // Other lists and native detail pages retain their original metadata.
     const format=(info&&kind!=='film'&&!(modernMixedRoute()&&kind==='anime'))?` · ${info}`:'';
     const pawStats=stats(card,kind), chips=genres(card);
+    const memberCount=(kind==='film'||kind==='serial') ? Number(card.getAttribute('data-mf-member-collection-count')) : 0;
+    const collectionSize=Number.isInteger(memberCount)&&memberCount>0?memberCount:0;
     // The effective displayed label, not the raw format, owns the signature:
     // a reused card updates correctly after navigating in/out of /mixed.
-    const stamp=JSON.stringify([kind,year,format,pawStats.map(s=>s.value),chips]);
+    const stamp=JSON.stringify([kind,year,format,pawStats.map(s=>s.value),chips,collectionSize]);
     let overlay=surface.querySelector(':scope > .mf-native-overlay');
     if(overlay?.getAttribute('data-mf-signature')===stamp)return;
     if(overlay)overlay.remove();
@@ -230,7 +232,7 @@
       topLeft.appendChild(makeEl('span','mf-native-year',year+format));
     }
     top.appendChild(topLeft);
-    if(pawStats.length){
+    if(pawStats.length||collectionSize){
       const stack=makeEl('div','mf-native-stats');
       for(const s of pawStats){
         const stat=makeEl('div',`mf-native-stat mf-native-stat-${s.cls}`);
@@ -238,6 +240,11 @@
         stat.appendChild(makeEl('span','mf-native-stat-number',s.value));
         stat.appendChild(paw(s.color));
         stack.appendChild(stat);
+      }
+      if(collectionSize){
+        const mark=makeEl('span','mf-native-collection-member',String(collectionSize)+' 📦');
+        mark.setAttribute('title',`Kolekcja: ${card.getAttribute('data-mf-member-collection-name')||'bez nazwy'} · ${collectionSize} pozycji`);
+        stack.appendChild(mark);
       }
       top.appendChild(stack);
     }
@@ -370,7 +377,8 @@
       seenCards.delete(card);
       for(const cards of overlayQueue.values())cards.delete(card);
       for(const attr of ['data-mf-year','data-mf-format','data-mf-genres',
-        'data-mf-seasons','data-mf-episodes','data-mf-user-rating','data-mf-anime',
+        'data-mf-seasons','data-mf-episodes','data-mf-member-collection-count',
+        'data-mf-member-collection-name','data-mf-user-rating','data-mf-anime',
         'data-mf-overlay-ready','data-mf-watch','data-mf-mal-id','data-mf-primary-image',
         'data-mf-simkl-series','data-mf-simkl-season','data-mf-simkl-watch',
         'data-mf-mal-series','data-mf-mal-season','data-mf-mal-frame',
@@ -413,6 +421,8 @@
     set('data-mf-format',data.format);
     set('data-mf-seasons',data.seasons);
     set('data-mf-episodes',data.episodes);
+    set('data-mf-member-collection-count',data.memberCollectionCount);
+    set('data-mf-member-collection-name',data.memberCollectionName);
     // Simkl seasonal frame binding stays distinct from AnimePL and MAL.
     set('data-mf-simkl-series',data.anime?null:data.simklSeriesId);
     set('data-mf-simkl-season',data.anime?null:data.simklSeasonNumber);
