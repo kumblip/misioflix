@@ -1,14 +1,16 @@
-/* MisioFlix v0.4.87 — Jellyfin Web player toolbar Back -> current episode.
+/* MisioFlix v0.4.88 — Jellyfin Web player toolbar Back -> current season.
  * Only intercepts the native ArrowBackIcon while a visible video is playing.
- * Resolve the CURRENT episode from the authenticated server playback events;
+ * Resolve the CURRENT episode from the authenticated server playback events,
+ * and its parent season from the authenticated Jellyfin user-items endpoint.
  * NEVER use browser history or the previously opened detail URL.
- * Navigating away triggers Jellyfin's own viewbeforehide playback stop/report.
- * A delayed real reload then refreshes watched/progress metadata.
+ * One direct route transition to the season; no appRouter.back(),
+ * no second redirect and no full-page reload. The native player lifecycle
+ * is responsible for reporting PlaybackStopped as its view is torn down.
  */
 (() => {
   'use strict';
-  if (window.__MISIOFLIX_PLAYER_BACK_087__) return;
-  window.__MISIOFLIX_PLAYER_BACK_087__ = true;
+  if (window.__MISIOFLIX_PLAYER_BACK_088__) return;
+  window.__MISIOFLIX_PLAYER_BACK_088__ = true;
 
   const ID = /^[a-f\d]{32}$/i;
   let busy = false;
@@ -37,7 +39,7 @@
   function authHeader(currentApi) {
     const token = typeof currentApi?.accessToken === 'function' ? currentApi.accessToken() : currentApi?.accessToken;
     if (typeof token !== 'string' || !token) return null;
-    return `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-player-back", Version="0.4.87", Token="${token.replace(/["\r\n]/g, '')}"`;
+    return `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-player-back", Version="0.4.88", Token="${token.replace(/["\r\n]/g, '')}"`;
   }
 
   async function currentEpisode() {
@@ -56,11 +58,26 @@
     return item?.type === 'Episode' && ID.test(id) ? id : null;
   }
 
-  function detailRoute(episodeId) {
+  // Read the parent from Jellyfin itself. In particular, an episode reached
+  // through Next in the player may be in a DIFFERENT season from the episode
+  // whose details were open when playback began.
+  async function seasonOfCurrentEpisode(episodeId) {
+    const currentApi = api();
+    const userId = compact(currentApi?.getCurrentUserId?.());
+    if (!ID.test(userId) || typeof currentApi?.getJSON !== 'function' ||
+        typeof currentApi?.getUrl !== 'function') return null;
+    const path = 'Users/' + encodeURIComponent(userId) + '/Items/' + encodeURIComponent(episodeId);
+    const item = await currentApi.getJSON(currentApi.getUrl(path));
+    if (compact(item?.Id) !== episodeId || String(item?.Type || '').toLowerCase() !== 'episode') return null;
+    const seasonId = compact(item?.SeasonId || item?.ParentId);
+    return ID.test(seasonId) ? seasonId : null;
+  }
+
+  function detailRoute(itemId) {
     const currentApi = api();
     const serverId = typeof currentApi?.serverId === 'function' ? currentApi.serverId() : currentApi?.serverId;
     const sid = compact(serverId);
-    return '#/details?id=' + encodeURIComponent(episodeId) +
+    return '#/details?id=' + encodeURIComponent(itemId) +
       (ID.test(sid) ? '&serverId=' + encodeURIComponent(sid) : '');
   }
 
@@ -78,23 +95,23 @@
     }
   }
 
-  async function navigateToCurrentEpisode(button) {
+  async function navigateToCurrentSeason(button) {
     try {
       const episodeId = await currentEpisode();
       if (!episodeId || !activeVideo()) { nativeFallback(button); return; }
-      const route = detailRoute(episodeId);
-      window.location.hash = route; // Jellyfin's viewbeforehide stops/reports playback.
+      const seasonId = await seasonOfCurrentEpisode(episodeId);
+      if (!seasonId || !activeVideo()) { nativeFallback(button); return; }
+      const route = detailRoute(seasonId);
+      // The button does not have an href: React owns its original onClick.
+      // Capture the click and replace that ACTION with exactly one destination.
+      // Do not invoke the native Back handler, change to an episode first,
+      // or try to repair a later navigation with setTimeout/reload.
+      window.location.hash = route;
       try { window.scrollTo(0, 0); } catch { /* embedded WebView */ }
-      // Do not reload immediately: the native player must report PlaybackStopped
-      // first. Full reload avoids stale details/Continue Watching in the SPA.
-      window.setTimeout(() => {
-        // Native onPlaybackStopped can itself call appRouter.back(). Enforce the
-        // requested episode even when that callback briefly changed the hash.
-        if (window.location.hash !== route) window.location.hash = route;
-        window.location.reload();
-      }, 950);
+      console.info('[MisioFlix Player Back] Przejście bezpośrednio do sezonu', seasonId);
+
     } catch (error) {
-      console.warn('[MisioFlix Player Back] Unable to resolve current episode:', error?.message || error);
+      console.warn('[MisioFlix Player Back] Unable to resolve current season:', error?.message || error);
       nativeFallback(button);
     } finally {
       busy = false;
@@ -110,6 +127,6 @@
     event.stopImmediatePropagation?.();
     if (busy) return;
     busy = true;
-    void navigateToCurrentEpisode(button);
+    void navigateToCurrentSeason(button);
   }, true);
 })();

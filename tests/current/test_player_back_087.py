@@ -20,7 +20,10 @@ class PlayerBack087(unittest.TestCase):
         self.assertNotIn('itemId =',CONTROLLER.split('HttpGet("current-episode")')[1].split('HttpPost(')[0].split('var id =')[0])
     def test_no_browser_history_or_player_override(self):
         self.assertIn("window.location.hash = route;",JS)
-        self.assertIn('window.location.reload()',JS)
+        self.assertNotIn('window.location.reload()',JS)
+        self.assertNotIn('window.setTimeout(',JS)
+        self.assertIn('seasonOfCurrentEpisode(episodeId)',JS)
+        self.assertIn('item?.SeasonId || item?.ParentId',JS)
         self.assertNotIn('history.back(',JS)
         self.assertNotIn('playbackManager.stop(',JS)
         self.assertNotIn('document.querySelectorAll(\'button\')',JS)

@@ -1,4 +1,4 @@
-/* MisioFlix Native 0.4.84 — restore real artwork and MisioFlix decoration on loaded cards.
+/* MisioFlix Native 0.4.88 — recover library loading after React navigation / playback.
  * Inspired by the single infinite-scroll approach in KefinTweaks (MIT):
  * use Jellyfin's Users/{id}/Items paging, not another library renderer/router.
  * This implementation is standalone; no KefinTweaks scripts or dependencies.
@@ -107,6 +107,17 @@
     result.Limit=String(size);
     return result;
   }
+  function fallbackQueryParams(r) {
+    // Use native Jellyfin's default library query if a performance entry from
+    // an earlier route has gone stale. The probe below MUST validate this query
+    // against the actual native cards before it is used for infinite scrolling.
+    const types={mixed:'Series',tv:'Series',movies:'Movie',music:'MusicAlbum'};
+    return {params:pageParams({
+      ParentId:r.parent, Recursive:'false', SortBy:'SortName', SortOrder:'Ascending',
+      IncludeItemTypes:types[r.page]||'Series', Fields:'PrimaryImageAspectRatio',
+      ImageTypeLimit:'1', EnableImageTypes:'Backdrop'
+    },0,1),source:'verified-default'};
+  }
   function queryParams(r){
     const observed=perfQuery(r);
     const params={};
@@ -117,10 +128,7 @@
         params[key]=value;
       }
     }else{
-      params.ParentId=r.parent;
-      params.SortBy='SortName,ProductionYear';
-      params.SortOrder='Ascending';
-      params.Recursive='true';
+      return fallbackQueryParams(r);
     }
     // Exact parent must match the currently open native library.
     params.ParentId=r.parent;
@@ -133,23 +141,25 @@
     return client.getUrl('Users/'+encodeURIComponent(user)+'/Items', params);
   }
   async function verifyNativeQuery(s,client,user){
-    const base=queryParams(s.route);
-    // Modern /mixed can virtualize its FIRST 100 cards. The first mounted
-    // node may be item 75, not item 1; validate membership in the native
-    // page, not position 0. Do not force its React component to rerender.
-    if(s.nativeFirst){
-      const probe=pageParams(base.params,(s.range?.first||1)-1,PAGE_SIZE);
+    // A React library just returned from playback can expose stale native
+    // cards while its new query is mounting. A one-time mismatch is NOT a
+    // permanent failure: the caller retries after React settles.
+    const native=queryParams(s.route);
+    const attempts=[native];
+    if(native.source==='native-request')attempts.push(fallbackQueryParams(s.route));
+    const shown=cards(s.container).slice(0,4).map(el=>id(el));
+    if(!shown.length)return null;
+    for(const attempt of attempts){
+      const probe=pageParams(attempt.params,(s.range?.first||1)-1,PAGE_SIZE);
       const result=await client.getJSON(requestUrl(client,user,probe));
+      if(state!==s || s.abort || identity()!==s.identity || route()?.key!==s.route.key)return null;
       const sample=Array.isArray(result?.Items)?result.Items.map(item=>id(item)):[];
-      const shown=cards(s.container).slice(0,4).map(el=>id(el));
       const positions=shown.map(value=>sample.indexOf(value));
-      if(!positions.length||positions.some(i=>i<0)||positions.some((n,i)=>i>0&&n<=positions[i-1])){
-        console.warn(LOG,'Natywna biblioteka ma inne filtry lub sortowanie; pozostawiam oryginalną paginację.');
-        return null;
-      }
+      if(positions.length && positions.every((n,i)=>n>=0 && (i===0 || n>positions[i-1])))
+        return attempt.params;
     }
-    if(!state || state!==s || identity()!==s.identity)return null;
-    return base.params;
+    if(s.verifyAttempts===0)console.info(LOG,'Oczekiwanie na stabilną siatkę React / aktualne filtry biblioteki. Ponowię weryfikację.');
+    return null;
   }
   function removeMisioFlixAttrs(root){
     for(const el of [root,...root.querySelectorAll('*')]){
@@ -283,6 +293,7 @@
     const total=range?.total || null;
     if(total!==null && displayed>=total)return;
     const s={route:r,container,identity:identity(),queryIdentity:queryIdentity(r),nativeFirst:id(native[0]),range,
+      nativeSignature:firstSignature(container),verifyAttempts:0,
       next:displayed,total,loading:false,complete:false,abort:false,pane:null,sentinel:null,
       template:native[0].cloneNode(true),animeLibrary:r.page==='mixed' && (native.some(card=>card.getAttribute('data-mf-anime')==='1') || /anime/i.test(document.getElementById('mixed')?.getAttribute('data-title')||'')),
       itemIds:new Set(native.map(id)),query:null,failures:0};
@@ -318,8 +329,24 @@
     s.sentinel.setAttribute('aria-hidden','false');
     try{
       if(!s.query){
+        if(firstSignature(s.container)!==s.nativeSignature){reset();schedule();return;}
         s.query=await verifyNativeQuery(s,client,user);
-        if(!s.query){s.complete=true;return;}
+        if(!s.query){
+          if(state!==s || s.abort)return;
+          s.verifyAttempts++;
+          // Do not permanently disable infinite scroll because React was
+          // between old and new pages when the first verification ran.
+          if(s.verifyAttempts>=20){
+            console.warn(LOG,'Nie udało się potwierdzić filtrów i kolejności. Pozostawiam natywną paginację.',{attempts:s.verifyAttempts});
+            s.complete=true;return;
+          }
+          setTimeout(()=>{
+            if(state!==s || s.abort)return;
+            if(firstSignature(s.container)!==s.nativeSignature){reset();schedule();return;}
+            loadMore(s);
+          },Math.min(1400,300+s.verifyAttempts*100));
+          return;
+        }
       }
       if(s.total!==null && s.next>=s.total){s.complete=true;return;}
       const params=pageParams(s.query,s.next,PAGE_SIZE);
@@ -395,7 +422,8 @@
     if(!r || !container){reset();return;}
     const q=queryIdentity(r);
     if(state && (state.route.key!==r.key || state.container!==container || !state.pane?.isConnected || state.identity!==identity() ||
-       (state.queryIdentity && q && state.queryIdentity!==q)))reset();
+       (state.queryIdentity && q && state.queryIdentity!==q) ||
+       (!state.query && firstSignature(container)!==state.nativeSignature)))reset();
     if(!state)configure(r,container);
   }
   function schedule(){if(!scanTimer)scanTimer=setTimeout(reconcile,190);}

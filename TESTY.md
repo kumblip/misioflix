@@ -83,3 +83,9 @@ Jellyfin i zrezygnuj z wtyczki zgodnie z `INSTALACJA_UGREEN.md`.
 ## v0.4.87 — Wstecz odtwarzacza → aktywny odcinek
 - Osobne testy Node i Python dla identyfikacji aktualnego odcinka, wymuszenia szczegółów po zatrzymaniu, pełnego odświeżenia oraz bezpieczeństwa innych widoków.
 - Integracja na żywym odtwarzaczu wymaga sprawdzenia po instalacji.
+
+## v0.4.88 — Wstecz odtwarzacza bezpośrednio do sezonu + powrót do biblioteki
+- 399 testów Python i 37 skryptów JavaScript — OK.
+- Test akcji ArrowBackIcon: jedno bezpośrednie przejście do sezonu, bez przeładowania i timera powrotu.
+- Weryfikacja paginacji po ponownym montażu React oraz ochrona przed zduplikowanym StartIndex.
+- Bez lokalnej kompilacji .NET 10 i bez testu integracyjnego na NAS.
