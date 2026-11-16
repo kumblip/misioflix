@@ -13,8 +13,8 @@ REG=(BASE/'Services/ScriptInjection.cs').read_text(encoding='utf8')
 
 class UpdatePanel078(unittest.TestCase):
     def test_native_schedule_and_package_install_only(self):
-        self.assertIn("query('ScheduledTasks'", UI)
-        self.assertIn("query('ScheduledTasks/Running/'+encodeURIComponent(id),'POST')", UI)
+        self.assertIn("query('Repositories','POST',updated)", UI)
+        self.assertIn('forceLiveRepositoryRead()', UI)
         self.assertIn("query('Packages/Installed/MisioFlix?'+params.toString(),'POST')", UI)
         self.assertNotIn('File.WriteAllBytes',SERVICE)
         self.assertNotIn('Directory.CreateDirectory',SERVICE)
@@ -26,7 +26,7 @@ class UpdatePanel078(unittest.TestCase):
         self.assertIn('raw.githubusercontent.com/kumblip/misioflix/main/manifest.json', SERVICE)
         self.assertIn("query('Packages')", UI)
         self.assertIn("query('Repositories')", UI)
-        self.assertIn("compare(github,manifest)===0", UI)
+        self.assertIn("releaseCompatible", UI)
         self.assertIn('!matchingCatalog',UI)
         self.assertIn("'12.4.0.0'",UI)
         self.assertIn('repoOK',UI)
@@ -42,15 +42,15 @@ class UpdatePanel078(unittest.TestCase):
     def test_no_arbitrary_download_url_or_repository_update(self):
         self.assertIn('AllowAutoRedirect=false',REG)
         self.assertIn('PluginGuid',SERVICE)
-        self.assertNotIn('POST /Repositories',UI)
-        self.assertNotIn("query('Repositories','POST')",UI)
+        self.assertIn('POST /Repositories',UI)
+        self.assertIn("query('Repositories','POST',updated)",UI)
         self.assertNotIn('rm -rf',UI)
 
     def test_all_media_details_deterministic_back_and_tv_seasons(self):
         self.assertNotIn('window.history.back()',DETAILS)
         self.assertIn("if(type==='Episode' && valid(parentSeason))",DETAILS)
         self.assertIn("if((type==='Season'||type==='Episode') && valid(parentSeries))",DETAILS)
-        self.assertIn('window.location.hash=\'#/home\';',DETAILS)
+        self.assertIn("navigateTop('#/home')",DETAILS)
         self.assertIn("if(type==='Season' && valid(rawSeriesId)",DETAILS)
         self.assertIn("if(!anime || type!=='Season'",DETAILS)
 
@@ -60,8 +60,8 @@ class UpdatePanel078(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
 
     def test_package_version_is_latest(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.78.0')
-        self.assertIn('<AssemblyVersion>0.4.78.0</AssemblyVersion>',
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.79.0')
+        self.assertIn('<AssemblyVersion>0.4.79.0</AssemblyVersion>',
                       (BASE/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__': unittest.main()

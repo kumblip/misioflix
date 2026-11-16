@@ -17,6 +17,7 @@
   let lastPage = null;
   let observer;
   const kindRequests = new Map();
+  const nfoOverlayCache = new Map();
   // Native metadata editor runs on original Jellyfin node hierarchy.
   // CSS-only arrangement leaves the hierarchy unchanged even on editor clicks.
   let nativeEditSuspended = false;
@@ -108,6 +109,7 @@
         return response.json();
       }).then(rows => {
         const item = Array.isArray(rows) ? rows.find(row => compact(row.id) === id) : null;
+        if (item) nfoOverlayCache.set(id, item);
         return item ? (item.anime === true ? 'anime' : 'media') : null;
       }).catch(error => {
         kindRequests.delete(id);
@@ -139,8 +141,29 @@
     window.location.hash = '#/home?mfSearch=' + encodeURIComponent(kind) +
       '&mfGenre=' + encodeURIComponent(genre);
   }
+  // Jellyfin's detail page scrolls inside its own SPA container, not always
+  // document.scrollingElement. Reset the actual scroll panes on navigation.
+  function resetDetailScroll() {
+    try { window.scrollTo(0, 0); } catch { /* embedded webviews */ }
+    const nodes = [document.scrollingElement, ...document.querySelectorAll(
+      '#itemDetailPage, .mainAnimatedPages, .mainScrollFrame, .page.scrollY, .page.scrollable, .mainDrawerScrollContainer')];
+    for (const node of nodes) {
+      if (!node) continue;
+      try { node.scrollTop = 0; } catch { /* detached view */ }
+    }
+  }
+  function navigateTop(route) {
+    window.location.hash = route;
+    resetDetailScroll();
+    // Jellyfin can restore an old scroll offset after the hash transition.
+    for (const delay of [0, 120, 320]) {
+      window.setTimeout(() => {
+        if (window.location.hash === route) resetDetailScroll();
+      }, delay);
+    }
+  }
   function openDetails(id) {
-    if (valid(id)) window.location.hash = detailsRoute(id);
+    if (valid(id)) navigateTop(detailsRoute(id));
   }
   // Deterministic, one-level navigation for ALL supported detail types.
   // No browser history: Episode -> Season -> Series -> MisioFlix home;
@@ -162,7 +185,7 @@
       if((type==='Season'||type==='Episode') && valid(parentSeries)){
         openDetails(parentSeries);return;
       }
-      window.location.hash='#/home';
+      navigateTop('#/home');
     });
     container.prepend(back);
   }
@@ -214,13 +237,13 @@
     // Season switcher must not wait for potentially slow NFO classification.
     if(type==='Season' && valid(rawSeriesId) && compact(rawSeriesId)!==id){
       const seriesId=compact(rawSeriesId);
-      const secondary=page.querySelector('.detailPageSecondaryContainer');
-      if(secondary){
+      const primary=page.querySelector('.detailPagePrimaryContainer > .detailPagePrimaryContent');
+      if(primary){
         const nav=create('nav','mf-detail-season-nav');
         nav.setAttribute('aria-label','Wybierz sezon serialu');
         const row=create('div','mf-detail-season-buttons');
         row.append(create('span','mf-detail-season-loading','Ładowanie sezonów…'));
-        nav.append(row); secondary.prepend(nav);
+        nav.append(row); primary.append(nav);
         try{
           const seasons=await getSeriesSeasons(seriesId);
           if(serial!==generation || itemRoute()!==id || !nav.isConnected)return;
@@ -264,7 +287,13 @@
       parent.addEventListener('click',()=>openDetails(seriesId));
       const separator=create('span','mf-detail-anime-separator','›');
       separator.setAttribute('aria-hidden','true');
-      const name=create('span','mf-detail-anime-season-title',String(item.Name||'Sezon'));
+      // The authoritative type is <tag>Typ: ...</tag> in this season.nfo.
+      // The authenticated, bounded overlay API already reads that NFO.
+      const seasonType = String(nfoOverlayCache.get(id)?.format || '').trim();
+      let seasonName = String(item.Name || 'Sezon');
+      if (seasonType && !seasonName.toLocaleLowerCase('pl').endsWith(('('+seasonType+')').toLocaleLowerCase('pl')))
+        seasonName += ' (' + seasonType + ')';
+      const name=create('span','mf-detail-anime-season-title',seasonName);
       crumb.append(parent,separator,name);
       info.prepend(crumb);
     }
@@ -381,7 +410,12 @@
     const type=String(item?.Type||'');
     page.dataset.mfDetailType = type;
     void syncAnimeDetailsControls(page,item,itemId,serial);
-    if (type && !['Movie','Episode','Series','Season'].includes(type)) { restoreLayout(page); return; }
+    if (type && !['Movie','Episode','Series','Season'].includes(type)) {
+      restoreLayout(page);
+      // A collection is otherwise untouched; change ONLY its title font size.
+      if (type==='BoxSet') page.classList.add('mf-detail-collection-title-small');
+      return;
+    }
     if (type==='Movie' || type==='Episode') {
       const ticks=Number(item?.UserData?.PlaybackPositionTicks)||0;
       setQuickCard(rail,{id:itemId,label:ticks>0?'Wznów oglądanie':'Odtwórz',subtitle: type==='Episode' ? `S${item.ParentIndexNumber||'?'}:E${item.IndexNumber||'?'}` : 'Film',active:ticks>0},serial,'native');
@@ -497,7 +531,7 @@
     const wrapper=page.querySelector('.detailPageWrapperContainer');
     wrapper?.classList.remove('mf-detail-grid');
     page.querySelector('.detailPageSecondaryContainer')?.classList.remove('mf-detail-series-sections');
-    page.classList.remove('mf-detail-compact','mf-detail-has-quick-episode','mf-detail-cast-expanded');
+    page.classList.remove('mf-detail-compact','mf-detail-has-quick-episode','mf-detail-cast-expanded','mf-detail-collection-title-small');
     page.removeAttribute('data-mf-detail-type');
     page.removeAttribute('data-mf-anime-details');
     page.removeAttribute('data-mf-detail-series-id');

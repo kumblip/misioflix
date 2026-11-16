@@ -879,7 +879,7 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .infoWrapper
 }
 html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .nameContainer h1,
 html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .itemName {
-  font-size:clamp(1.35rem,2vw,2.15rem);line-height:1.18!important;
+  font-size:clamp(1.12rem,1.55vw,1.68rem)!important;line-height:1.21!important;
   margin:0 0 8px!important;
 }
 html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .mainDetailButtons {
@@ -1532,14 +1532,14 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact .detailRibbon .nameContain
 html.misioflix-skin .mf-home-suggestions{max-height:min(55dvh,540px)}
 
 
-/* v0.4.77 — season-only anime navigation. Never changes ordinary TV series.
+/* v0.4.79 — anime breadcrumb, navigation for both anime and TV series.
    Own controls are added, native Jellyfin nodes remain in their original DOM. */
 html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-anime-season .detailRibbon .infoWrapper :is(h1,.itemName,.parentName) {
   display:none!important;
 }
 html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-anime-breadcrumb {
   display:flex;align-items:baseline;flex-wrap:wrap;gap:9px;
-  font-size:clamp(1.05rem,1.4vw,1.43rem)!important;
+  font-size:clamp(1.0rem,1.25vw,1.31rem)!important;
   line-height:1.38!important;font-weight:660;
   color:#ffedf6;margin:0 0 9px;min-width:0;
 }
@@ -1553,8 +1553,9 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-anime-separator
 html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-anime-season-title {
   min-width:0;overflow-wrap:anywhere;flex:0 1 auto;
 }
-html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-series-sections > .mf-detail-season-nav {
-  order:-100;display:block;min-width:0;padding:10px 12px!important;
+html.misioflix-skin #itemDetailPage.mf-detail-compact .detailPagePrimaryContent > .mf-detail-season-nav {
+  display:block;min-width:0;width:100%;padding:10px 12px!important;
+  margin:14px 0 3px!important;
   background:rgba(54,25,52,.73)!important;
   border:1px solid rgba(245,165,208,.30)!important;
   border-radius:12px!important;
@@ -1583,4 +1584,12 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact :is(.mf-detail-season-swit
 }
 html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-season-loading {
   color:#e2bad1;font-size:12px;padding:5px 2px;
+}
+
+/* 0.4.79 — collections keep their native layout, only the heading is smaller. */
+html.misioflix-skin #itemDetailPage.mf-detail-collection-title-small .detailRibbon .nameContainer :is(h1,.itemName,.parentName) {
+  font-size:clamp(1.12rem,1.55vw,1.68rem)!important;
+  line-height:1.21!important;
+  white-space:normal!important;
+  overflow-wrap:anywhere!important;
 }

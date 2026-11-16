@@ -24,11 +24,11 @@ class Element {
   remove(){this.isConnected=false;}
   querySelector(q){if(q===':scope > .mf-detail-back')return this.children.find(e=>e.className==='mf-detail-back')||null;return null;}
 }
-const ribbon=new Element(),info=new Element(),secondary=new Element(),wrapper=new Element();
+const ribbon=new Element(),info=new Element(),secondary=new Element(),primary=new Element(),wrapper=new Element();
 ribbon.querySelector=q=>q==='.infoWrapper'?info:null;
 const page=new Element();
-page.querySelector=q=>({'.detailPagePrimaryContainer > .detailRibbon':ribbon,'.detailPageSecondaryContainer':secondary,'.detailPageWrapperContainer':wrapper,'.mf-detail-anime-breadcrumb':info.children.find(x=>x.className==='mf-detail-anime-breadcrumb'),'.mf-detail-season-nav':secondary.children.find(x=>x.className==='mf-detail-season-nav')}[q]||null);
-const win={location:{hash:'#/details?id='+season},ApiClient:{getCurrentUserId:()=> 'f'.repeat(32),accessToken:()=> 'token',serverId:()=> '9'.repeat(32),getUrl:s=>'/'+s}};
+page.querySelector=q=>({'.detailPagePrimaryContainer > .detailRibbon':ribbon,'.detailPageSecondaryContainer':secondary,'.detailPagePrimaryContainer > .detailPagePrimaryContent':primary,'.detailPageWrapperContainer':wrapper,'.mf-detail-anime-breadcrumb':info.children.find(x=>x.className==='mf-detail-anime-breadcrumb'),'.mf-detail-season-nav':primary.children.find(x=>x.className==='mf-detail-season-nav')}[q]||null);
+const win={scrollTo(){},setTimeout(){},location:{hash:'#/details?id='+season},ApiClient:{getCurrentUserId:()=> 'f'.repeat(32),accessToken:()=> 'token',serverId:()=> '9'.repeat(32),getUrl:s=>'/'+s}};
 let queries=0;
 const fetch=async (url)=>{
   if(url.startsWith('/MisioFlix/api/overlays')) {
@@ -44,7 +44,7 @@ const fetch=async (url)=>{
   }
   throw Error('Unexpected fetch: '+url);
 };
-const document={readyState:'loading',addEventListener(){},createElement:tag=>new Element(tag)};
+const document={readyState:'loading',addEventListener(){},createElement:tag=>new Element(tag),querySelectorAll:()=>[],scrollingElement:null};
 const sandbox={window:win,document,fetch,console,URLSearchParams,URL,Map,Set,Promise};
 const patched=source.replace('  if(document.readyState===\'loading\')', '  window.__mf077={syncAnimeDetailsControls,ensureBackButton,seasonButtonLabel,clearAnimeSeasonControls};\n  if(document.readyState===\'loading\')');
 vm.runInNewContext(patched,sandbox,{filename:'details.js'});
@@ -61,7 +61,7 @@ assert.ok(win.__mf077);
  const crumb=info.children[0];
  assert.equal(crumb.className,'mf-detail-anime-breadcrumb');
  assert.deepEqual(crumb.children.map(x=>x.textContent),['ANIME','›','Drugi sezon']);
- const nav=secondary.children[0];
+ const nav=primary.children[0];
  assert.equal(nav.className,'mf-detail-season-nav');
  const row=nav.children[0];
  assert.deepEqual(row.children.map(x=>x.textContent),['S01','S02','S03']);
@@ -85,7 +85,7 @@ assert.ok(win.__mf077);
  assert.equal(page.dataset.mfAnimeDetails,'0');
  assert.equal(page.classList.contains('mf-detail-anime-season'),false);
  assert.equal(info.children[0].isConnected,false);
- const ordinaryNav=secondary.children[0];
+ const ordinaryNav=primary.children[0];
  assert.equal(ordinaryNav.className,'mf-detail-season-nav');
  assert.deepEqual(ordinaryNav.children[0].children.map(x=>x.textContent),['S01','S02','S03']);
  // Even when navigating from a film, back has a fixed destination.
@@ -94,6 +94,6 @@ assert.ok(win.__mf077);
  wrapper.children[0].click();
  assert.equal(win.location.hash,'#/home');
  assert.ok(css.includes('.mf-detail-season-switch.mf-detail-season-active'));
- assert.ok(css.includes('.mf-detail-series-sections > .mf-detail-season-nav'));
+ assert.ok(css.includes('.detailPagePrimaryContent > .mf-detail-season-nav'));
  console.log('PASS v0.4.78: anime + ordinary TV season buttons, anime-only breadcrumb, deterministic back for all details');
 })().catch(e=>{console.error(e);process.exitCode=1;});

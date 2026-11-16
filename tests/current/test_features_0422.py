@@ -35,7 +35,7 @@ class Features0422(unittest.TestCase):
         self.assertNotIn('window.history.back()',DETAILS)
         self.assertIn("if(type==='Episode' && valid(parentSeason))",DETAILS)
         self.assertIn("if((type==='Season'||type==='Episode') && valid(parentSeries))",DETAILS)
-        self.assertIn("window.location.hash='#/home'",DETAILS)
+        self.assertIn("navigateTop('#/home')",DETAILS)
         self.assertIn('#itemDetailPage .mainDetailButtons .btnShuffle',CSS)
         self.assertIn('mf-home-shuffle',HOME) # homepage random remains
     def test_separate_genre_navigation_from_real_jellyfin_markup(self):

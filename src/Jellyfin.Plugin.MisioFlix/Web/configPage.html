@@ -51,7 +51,7 @@
     <span>Automatyczne sprawdzanie co 15 minut (bez automatycznego instalowania)</span>
    </label>
    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0">
-    <button type="button" class="raised emby-button" id="mf-update-check">Wymuś sprawdzenie aktualizacji</button>
+    <button type="button" class="raised emby-button" id="mf-update-check">Wymuś pobranie aktualnego katalogu</button>
     <button type="button" class="emby-button" id="mf-update-install" disabled>Zainstaluj aktualizację</button>
    </div>
    <p id="mf-update-status" role="status" aria-live="polite">Gotowe do sprawdzenia.</p>
@@ -75,6 +75,7 @@
    const REPO='https://raw.githubusercontent.com/kumblip/misioflix/main/manifest.json';
    let snapshot=null;
    let timer=null;
+   let refreshSeq=0;
    const get=(obj,...names)=>{for(const name of names){if(obj&&obj[name]!==undefined)return obj[name];}return undefined;};
    const norm=v=>String(v||'').replace(/^v/i,'').trim();
    const compare=(a,b)=>{const aa=norm(a).split('.').map(Number),bb=norm(b).split('.').map(Number);
@@ -85,89 +86,164 @@
    const auth=()=>{
      const t=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
      if(!t)throw Error('Brak aktywnego tokenu Jellyfin.');
-     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.78", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
+     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.79", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
    };
-   async function query(path,method='GET'){
-    const response=await fetch(api(path),{method,headers:auth(),cache:'no-store'});
+   async function query(path,method='GET',payload=null){
+    const h=auth();
+    if(payload!==null)h['Content-Type']='application/json';
+    const response=await fetch(api(path),{method,headers:h,cache:'no-store',
+      ...(payload!==null?{body:JSON.stringify(payload)}:{})});
     if(!response.ok)throw Error(method+' '+path+': HTTP '+response.status);
     if(response.status===204||response.status===202||method==='POST')return null;
     return await response.json();
+   }
+   // Compare registered repositories without mistaking a safe CDN cache buster
+   // for an unrelated repository. No arbitrary repository can be modified.
+   const isOwnRepo=url=>String(url||'').split('?')[0].replace(/\/$/,'')===REPO;
+   async function forceLiveRepositoryRead(){
+    const repositories=await query('Repositories');
+    if(!Array.isArray(repositories))throw Error('Jellyfin nie zwrócił listy repozytoriów.');
+    const matching=repositories.filter(r=>isOwnRepo(get(r,'Url','url')));
+    if(matching.length!==1)throw Error('Wymagane jest dokładnie jedno repozytorium MisioFlix w Jellyfin.');
+    if(get(matching[0],'Enabled','enabled')===false)throw Error('Repozytorium MisioFlix jest wyłączone.');
+    const updatedUrl=REPO+'?mf_refresh='+Date.now();
+    // POST /Repositories replaces the entire list: preserve every other
+    // repository's Name, Url, Enabled exactly as Jellyfin returned them.
+    const updated=repositories.map(r=>({
+      Name:get(r,'Name','name'),
+      Url:isOwnRepo(get(r,'Url','url'))?updatedUrl:get(r,'Url','url'),
+      Enabled:get(r,'Enabled','enabled')!==false
+    }));
+    await query('Repositories','POST',updated);
+    const verified=await query('Repositories');
+    if(!Array.isArray(verified)||!verified.some(r=>get(r,'Url','url')===updatedUrl))
+      throw Error('Jellyfin nie potwierdził nowego adresu repozytorium.');
+    return updatedUrl;
    }
    async function readCatalog(){
     const [packages,repositories]=await Promise.all([query('Packages'),query('Repositories')]);
     const items=Array.isArray(packages)?packages:get(packages,'Items','items')||[];
     const repoList=Array.isArray(repositories)?repositories:[];
-    const repoOK=repoList.some(r=>String(get(r,'Url','url')||'').replace(/\/$/,'')===REPO && get(r,'Enabled','enabled')!==false);
+    const ownRepo=repoList.find(r=>isOwnRepo(get(r,'Url','url')) && get(r,'Enabled','enabled')!==false);
+    const repoOK=!!ownRepo;
     const pkg=items.find(p=>String(get(p,'Guid','guid')||'').toLowerCase()===GUID)
       ||items.find(p=>String(get(p,'Name','name')||'').toLowerCase()==='misioflix');
     const versions=get(pkg,'Versions','versions')||[];
     const max=versions.map(v=>({version:norm(get(v,'Version','version')),abi:get(v,'TargetAbi','targetAbi')}))
       .filter(v=>/^\d+(\.\d+){2,3}$/.test(v.version))
       .sort((a,b)=>compare(b.version,a.version));
-    return {repoOK,versions:max};
+    return {repoOK,repoUrl:get(ownRepo,'Url','url')||REPO,versions:max};
    }
    async function refresh(force){
-    refs.check.disabled=true; refs.install.disabled=true;
-    status(force?'Wymuszam odczyt GitHub i repozytorium…':'Sprawdzam aktualizacje…');
-    try{
-     const remote=await query('MisioFlix/api/updates/status'+(force?'?force=true':''));
-     let catalog=null,catError=null;
-     try{catalog=await readCatalog();}catch(error){catError=error.message;}
-     snapshot={remote,catalog};
-     refs.installed.textContent=remote.installedVersion||'Nieznana';
-     refs.github.textContent=remote.gitHubVersion||('Brak danych: '+(remote.gitHubError||'nie opublikowano Release'));
-     refs.manifest.textContent=remote.repositoryVersion ? remote.repositoryVersion+' (ABI '+(remote.repositoryTargetAbi||'?')+')'
-       :'Brak danych: '+(remote.repositoryError||'nie znaleziono wersji');
-     refs.catalog.textContent=catError?'Błąd: '+catError:
-       catalog && !catalog.repoOK?'Brak aktywnego repozytorium MisioFlix w Jellyfin':
-       catalog?.versions?.length?catalog.versions[0].version:'MisioFlix nie jest jeszcze widoczny';
-     refs.checked.textContent=remote.checkedAt?new Date(remote.checkedAt).toLocaleString('pl-PL'):'—';
-     const github=remote.gitHubVersion,manifest=remote.repositoryVersion,installed=remote.installedVersion;
-     const matchingCatalog=catalog?.versions?.find(v=>norm(v.version)===norm(manifest));
-     const abiCompatible=norm(remote.repositoryTargetAbi)==='12.4.0.0' &&
-       (!matchingCatalog?.abi||norm(matchingCatalog.abi)==='12.4.0.0');
-     const installable=!!(github&&manifest&&catalog?.repoOK&&matchingCatalog&&abiCompatible &&
-       compare(github,manifest)===0 && compare(manifest,installed)>0);
-     refs.install.disabled=!installable;
-     if(!catalog?.repoOK)status('Dodaj repozytorium MisioFlix w Jellyfin: '+REPO);
-     else if(github && manifest && compare(github,manifest)>0)
-       status('Nowy Release jest na GitHubie, ale manifest repozytorium nie został jeszcze zaktualizowany.');
-     else if(manifest && catalog && !matchingCatalog)
-       status('Manifest ma już wersję '+manifest+', lecz katalog Jellyfina jeszcze jej nie pokazuje. Uruchom „Wymuś sprawdzenie”.');
-     else if(!abiCompatible && manifest)status('Wersja z manifestu nie jest oznaczona jako zgodna z Jellyfin 12.4.');
-     else if(installable)status('Wykryto aktualizację '+manifest+'. Możesz zlecić instalację do Jellyfina.');
-     else if(github&&compare(github,installed)<=0)status('Brak nowszego opublikowanego wydania MisioFlix.');
-     else status('Sprawdzono źródła. Instalacja będzie możliwa po pojawieniu się zgodnej wersji w katalogu Jellyfina.');
-    }catch(error){status('Nie udało się sprawdzić aktualizacji: '+error.message);}
-    finally{refs.check.disabled=false;}
+    const seq=++refreshSeq;
+    refs.check.disabled=true;refs.install.disabled=true;
+    status(force?'Odczytuję aktualne dane ze wszystkich źródeł…':'Sprawdzam aktualizacje…');
+    // The server may serialize record properties as PascalCase while browser
+    // clients normally expect camelCase. Accept BOTH without losing dates,
+    // versions or useful source error messages.
+    const raw=await Promise.allSettled([
+      query('MisioFlix/api/updates/status'+(force?'?force=true':'')),
+      readCatalog(),
+      query('Plugins')
+    ]);
+    if(seq!==refreshSeq)return null; // never let an older request erase fresh results
+    const remoteError=raw[0].status==='rejected'?String(raw[0].reason?.message||raw[0].reason):null;
+    const source=raw[0].status==='fulfilled'?raw[0].value:null;
+    const remote=source?{
+      installedVersion:get(source,'installedVersion','InstalledVersion'),
+      gitHubVersion:get(source,'gitHubVersion','GitHubVersion'),
+      gitHubError:get(source,'gitHubError','GitHubError'),
+      repositoryVersion:get(source,'repositoryVersion','RepositoryVersion'),
+      repositoryTargetAbi:get(source,'repositoryTargetAbi','RepositoryTargetAbi'),
+      repositoryError:get(source,'repositoryError','RepositoryError'),
+      checkedAt:get(source,'checkedAt','CheckedAt')
+    }:null;
+    const catalog=raw[1].status==='fulfilled'?raw[1].value:null;
+    const catError=raw[1].status==='rejected'?String(raw[1].reason?.message||raw[1].reason):null;
+    const plugins=raw[2].status==='fulfilled'?raw[2].value:null;
+    const pluginError=raw[2].status==='rejected'?String(raw[2].reason?.message||raw[2].reason):null;
+    const installedItem=Array.isArray(plugins)?plugins.find(p=>
+      String(get(p,'Id','id')||'').toLowerCase()===GUID ||
+      String(get(p,'Name','name')||'').toLowerCase()==='misioflix'):null;
+    const installedFromJellyfin=get(installedItem,'Version','version');
+    const installed=norm(installedFromJellyfin||remote?.installedVersion);
+    const installedValid=/^\d+(\.\d+){2,3}$/.test(installed);
+    const gh=norm(remote?.gitHubVersion),manifest=norm(remote?.repositoryVersion);
+    const githubError=remote?.gitHubError||remoteError;
+    const manifestError=remote?.repositoryError||remoteError;
+    snapshot={remote,catalog,installed:installedValid?installed:null};
+    refs.installed.textContent=installedValid?installed:('Błąd odczytu: '+(pluginError||remoteError||
+      'Jellyfin nie zwrócił wersji wtyczki'));
+    refs.github.textContent=/^\d+(\.\d+){2,3}$/.test(gh)?gh:
+      'Brak odczytu GitHub Release: '+(githubError||'odpowiedź nie zawiera wersji');
+    refs.manifest.textContent=/^\d+(\.\d+){2,3}$/.test(manifest)?
+      manifest+' (ABI '+(remote?.repositoryTargetAbi||'?')+')':
+      'Brak odczytu manifestu: '+(manifestError||'odpowiedź nie zawiera wersji');
+    refs.catalog.textContent=catError?'Błąd katalogu: '+catError:
+      catalog&&!catalog.repoOK?'Brak aktywnego repozytorium MisioFlix':
+      catalog?.versions?.length?catalog.versions[0].version:'MisioFlix nie jest widoczny w katalogu';
+    const checked=remote?.checkedAt?new Date(remote.checkedAt):new Date();
+    refs.checked.textContent=(Number.isNaN(checked.getTime())?new Date():checked).toLocaleString('pl-PL')+
+      (remote?.checkedAt?'':' (odczyt lokalny)');
+    const matchingCatalog=catalog?.versions?.find(v=>norm(v.version)===manifest);
+    const abiCompatible=norm(remote?.repositoryTargetAbi)==='12.4.0.0' &&
+      (!matchingCatalog?.abi||norm(matchingCatalog.abi)==='12.4.0.0');
+    // A GitHub API failure must not block installing an independently validated
+    // version from Jellyfin's repository. Never use GitHub data as an install URL.
+    const releaseCompatible=!/^\d+(\.\d+){2,3}$/.test(gh)||compare(gh,manifest)===0;
+    const installable=!!(installedValid&&manifest&&catalog?.repoOK&&matchingCatalog&&
+      abiCompatible&&releaseCompatible&&compare(manifest,installed)>0);
+    refs.install.disabled=!installable;
+    if(catError)status('Nie udało się odczytać katalogu Jellyfin: '+catError);
+    else if(!catalog?.repoOK)status('Repozytorium MisioFlix jest nieaktywne w Jellyfin.');
+    else if(!remote)status('Katalog Jellyfin odczytany, ale serwerowy odczyt GitHub/manifestu zakończył się błędem: '+remoteError);
+    else if(!manifest)status('Katalog Jellyfin odczytany. Manifest: '+(manifestError||'brak dostępnej wersji'));
+    else if(gh&&compare(gh,manifest)>0)status('GitHub Release '+gh+' jest nowszy niż manifest '+manifest+'.');
+    else if(!matchingCatalog)status('Manifest wskazuje '+manifest+', a katalog Jellyfin nie zawiera tej wersji. Wybierz wymuszenie.');
+    else if(!abiCompatible)status('Wersja '+manifest+' ma niezgodne ABI względem Jellyfin 12.4.');
+    else if(installable)status('Dostępna aktualizacja '+manifest+'. Możesz zlecić instalację przez Jellyfin.');
+    else if(installedValid&&compare(manifest,installed)<=0)
+      status('Dane odświeżono. MisioFlix '+installed+' jest aktualny wg manifestu i katalogu Jellyfin.'+
+        (!gh?' Odczyt GitHub Release nie powiódł się.':''));
+    else status('Dane odświeżono. Instalacja jest obecnie niedostępna; sprawdź szczegóły pól powyżej.');
+    refs.check.disabled=false;
+    return {remote,catalog,installed:installedValid?installed:null,errors:{remoteError,catError,pluginError}};
    }
    async function forceCheck(){
-    await refresh(true);
-    refs.check.disabled=true;
-    try{
-     const tasks=await query('ScheduledTasks');
-     const all=Array.isArray(tasks)?tasks:[];
-     const task=all.find(t=>/plugin.*update|update.*plugin|aktualiz.*wtycz|wtycz.*aktualiz/i.test(
-       [get(t,'Key','key'),get(t,'Name','name'),get(t,'Description','description')].join(' ')));
-     const id=get(task,'Id','id');
-     if(!id){status(refs.status.textContent+' Zadania „Update Plugins” nie znaleziono; uruchom je ręcznie w panelu zadań Jellyfina.');return;}
-     const running=String(get(task,'State','state')||'').toLowerCase()==='running';
-     if(!running)await query('ScheduledTasks/Running/'+encodeURIComponent(id),'POST');
-     status('Odświeżanie wtyczek Jellyfina '+(running?'już działa.':'zostało uruchomione.')+
-      ' Po zakończeniu naciśnij „Wymuś sprawdzenie”, aby pobrać nowy stan katalogu.');
-    }catch(error){status('Odczyt GitHub zakończony. Nie udało się uruchomić zadania Jellyfin: '+error.message);}
-    finally{refs.check.disabled=false;}
+    refs.check.disabled=true;refs.install.disabled=true;
+    status('Wymuszam świeże pobranie manifestu MisioFlix i katalogu Jellyfin…');
+    let forceError=null;
+    try{await forceLiveRepositoryRead();}
+    catch(error){forceError=String(error?.message||error);}
+    // Even if forcing the repository URL fails, ALWAYS reload displayed data
+    // instead of leaving stale 'unknown' fields in place.
+    let result;
+    try{result=await refresh(true);}
+    catch(error){status('Nie udało się ponownie odczytać danych: '+String(error?.message||error));}
+    if(result){
+      const manifest=norm(result.remote?.repositoryVersion);
+      const visible=!!(manifest&&result.catalog?.versions?.some(v=>norm(v.version)===manifest));
+      if(forceError)status('Dane zostały ponownie odczytane, ale wymuszenie pobrania katalogu nie powiodło się: '+forceError);
+      else if(visible)status('Katalog odświeżony: MisioFlix '+manifest+' jest dostępny w Jellyfin.'+
+        (result.installed===''+manifest?' Jest już zainstalowany.':''));
+      else if(manifest)status('Wymuszono pobranie repozytorium. Manifest wskazuje '+manifest+', ale Jellyfin nie udostępnia tej wersji.'+
+        (result.errors.catError?' Błąd katalogu: '+result.errors.catError:''));
+      else status('Ponownie odczytano katalog Jellyfin; nie można potwierdzić manifestu: '+
+        (result.remote?.repositoryError||result.errors.remoteError||'brak odczytu'));
+    }
+    refs.check.disabled=false;
    }
    async function install(){
     if(!snapshot||refs.install.disabled)return;
     const version=norm(snapshot.remote.repositoryVersion);
     // Only exact version verified in both GitHub and native Jellyfin catalog.
     if(!snapshot.catalog?.repoOK||!snapshot.catalog.versions.some(v=>norm(v.version)===version)||
-       norm(snapshot.remote.gitHubVersion)!==version||norm(snapshot.remote.repositoryTargetAbi)!=='12.4.0.0')return;
+       norm(snapshot.remote.repositoryTargetAbi)!=='12.4.0.0'||
+       (snapshot.remote.gitHubVersion&&norm(snapshot.remote.gitHubVersion)!==version))return;
     if(!window.confirm('Zlecić instalację MisioFlix '+version+' przez Jellyfin? Po zakończeniu może być wymagany restart serwera.'))return;
     refs.install.disabled=true;
     try{
-     const params=new URLSearchParams({assemblyGuid:GUID,version,repositoryUrl:REPO});
+     const params=new URLSearchParams({assemblyGuid:GUID,version,repositoryUrl:snapshot.catalog.repoUrl});
      await query('Packages/Installed/MisioFlix?'+params.toString(),'POST');
      status('Jellyfin przyjął zlecenie instalacji '+version+'. Sprawdź stan instalacji w panelu wtyczek. Po aktualizacji może być wymagany restart.');
     }catch(error){status('Nie udało się zlecić instalacji: '+error.message);}

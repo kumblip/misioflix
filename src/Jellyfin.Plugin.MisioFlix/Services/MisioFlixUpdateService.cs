@@ -59,7 +59,7 @@ public sealed class MisioFlixUpdateService : BackgroundService
             if (!force && current is not null && DateTimeOffset.UtcNow - current.CheckedAt < Period)
                 return current;
             var github = await ReadLatestReleaseAsync(cancel).ConfigureAwait(false);
-            var repository = await ReadRepositoryAsync(cancel).ConfigureAwait(false);
+            var repository = await ReadRepositoryAsync(force, cancel).ConfigureAwait(false);
             var installed = typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "nieznana";
             var snapshot = new UpdateSnapshot(installed, github.version, github.url,
                 repository.version, repository.abi, ManifestUrl, DateTimeOffset.UtcNow,
@@ -96,11 +96,13 @@ public sealed class MisioFlixUpdateService : BackgroundService
         { return (null, null, "Nie udało się odczytać GitHub Release: " + ex.GetType().Name); }
     }
 
-    private async Task<(string? version, string? abi, string? error)> ReadRepositoryAsync(CancellationToken cancel)
+    private async Task<(string? version, string? abi, string? error)> ReadRepositoryAsync(bool force, CancellationToken cancel)
     {
         try
         {
-            using var response = await RequestAsync(ManifestUrl, "application/json", cancel).ConfigureAwait(false);
+            // A fresh URL bypasses the upstream CDN's cached copy when requested by an admin.
+            var url = force ? ManifestUrl + "?mf_refresh=" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture) : ManifestUrl;
+            using var response = await RequestAsync(url, "application/json", cancel).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) return (null, null, "Manifest: HTTP " + (int)response.StatusCode);
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancel).ConfigureAwait(false));
             if (doc.RootElement.ValueKind != JsonValueKind.Array)
@@ -140,7 +142,7 @@ public sealed class MisioFlixUpdateService : BackgroundService
     private async Task<HttpResponseMessage> RequestAsync(string url, string accept, CancellationToken cancel)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.UserAgent.ParseAdd("MisioFlix-Jellyfin/0.4.78");
+        request.Headers.UserAgent.ParseAdd("MisioFlix-Jellyfin/0.4.79");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(accept));
         request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
         return await _clients.CreateClient("MisioFlixUpdates").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancel).ConfigureAwait(false);
