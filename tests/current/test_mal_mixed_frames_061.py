@@ -15,8 +15,8 @@ SIMKL = (SRC/'Web/simkl.js').read_bytes()
 
 class MALGoldGreenFrame061(unittest.TestCase):
     def test_version_and_new_css_asset(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.74.0')
-        self.assertIn('AssemblyVersion>0.4.74.0', (SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'], '0.4.75.0')
+        self.assertIn('AssemblyVersion>0.4.75.0', (SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
         self.assertIn('assets/mal-frames.css?v=',STARTUP)
         self.assertIn('"mal-frames.css" => ("Web.mal-frames.css"', ROUTES)
         self.assertIn('<EmbeddedResource Include="Web/**/*" />',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())

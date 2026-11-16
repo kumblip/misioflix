@@ -1477,3 +1477,27 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact.mf-detail-mal-rating[data-
     width:100%!important;max-width:min(100%,330px)!important;
   }
 }
+
+/* v0.4.75: compact horizontal search filters, single row on desktop. */
+html.misioflix-skin .mf-home-search-dialog[aria-label="Wyszukiwarka anime"] .mf-home-choice-groups{
+  display:grid;grid-template-columns:minmax(135px,.72fr) minmax(335px,1.72fr) minmax(140px,.65fr);
+  align-items:start;column-gap:18px;row-gap:10px;margin:3px 0 5px;
+}
+html.misioflix-skin .mf-home-search-dialog[aria-label="Wyszukiwarka anime"] .mf-home-choice-group{
+  min-width:0;gap:6px;
+}
+html.misioflix-skin .mf-home-choice-watched .mf-home-watched-button{min-width:102px}
+html.misioflix-skin .mf-home-card-search-alias{
+  display:block;font-size:11px;color:#f4b6d2;line-height:1.4;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+}
+@media(max-width:940px){
+  html.misioflix-skin .mf-home-search-dialog[aria-label="Wyszukiwarka anime"] .mf-home-choice-groups{
+    grid-template-columns:minmax(135px,1fr) minmax(265px,2fr);
+  }
+  html.misioflix-skin .mf-home-search-dialog[aria-label="Wyszukiwarka anime"] .mf-home-choice-watched{grid-column:1/-1}
+}
+@media(max-width:580px){
+  html.misioflix-skin .mf-home-search-dialog[aria-label="Wyszukiwarka anime"] .mf-home-choice-groups{grid-template-columns:1fr}
+  html.misioflix-skin .mf-home-search-dialog[aria-label="Wyszukiwarka anime"] .mf-home-choice-watched{grid-column:auto}
+}

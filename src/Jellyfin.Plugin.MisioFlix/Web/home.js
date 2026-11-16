@@ -255,6 +255,7 @@
     append(card,makePoster(item));
     const content=own('div','mf-home-card-body');
     const title=set(own('a','mf-home-card-title'+(nonAnimeMedia?' mf-simkl-media-title':''),item.title||'Brak tytułu'), 'href',nativeDetails(item.id,item.serverId));
+    if(item.matchedAlias)content.appendChild(own('span','mf-home-card-search-alias',`Dopasowano: ${item.matchedAlias}`));
     const description=own('p','mf-home-card-desc'+(nonAnimeMedia?' mf-simkl-media-desc':''),item.description||'');
     append(content,title,description);
     append(card,content);
@@ -740,6 +741,8 @@
   function closeSearch(){
     if(!searchModal)return;
     const opener=activeSearch?.opener;
+    if(activeSearch?.kind==='anime'&&activeSearch.watchCacheHandler)
+      window.removeEventListener('misioflix-mal-cache-changed',activeSearch.watchCacheHandler);
     searchModal.remove();searchModal=null;activeSearch=null;
     document.body.classList.remove('mf-home-search-open');
     if(opener?.isConnected)opener.focus();
@@ -781,12 +784,16 @@
     relatedSeasons(item,state).forEach(season=>all.push(...catalogGenres(season,'anime')));
     return new Set(all.map(normalized));
   }
-  function searchableText(item){
-    return normalized([item.title,...(Array.isArray(item.search_titles)?item.search_titles:[]),
-      item.year,item.plot,...(Array.isArray(item.genres)?item.genres:[])].join(' '));
-  }
   function searchTile(item,state){
     const result=toHomeCardItem(item);
+    const q=normalized(state.input?.value);
+    if(q&&!normalized(item.title).includes(q)){
+      const alt=(Array.isArray(item.search_titles)?item.search_titles:[])
+        .find(title=>normalized(title).includes(q)&&normalized(title)!==normalized(item.title));
+      const child=!alt&&item.type==='Series'&&state.kind==='anime'
+        ? relatedSeasons(item,state).find(season=>titleMatches(season,q)) : null;
+      if(alt||child)result.matchedAlias=alt||child.title;
+    }
     // A Season/Special is ONE Jellyfin season, not a series with N seasons.
     // ChildCount/RecursiveItemCount on Season describe episode totals. Only
     // series may display the orange seasons paw; seasons retain the blue
@@ -824,10 +831,82 @@
     if(state.type?.value==='seasons')return value==='Season'&&seasonOnly;
     return seasonOnly?kind==='seasons':kind!=='seasons';
   }
+  // On anime, use the same account-scoped MAL statuses as the card frames.
+  // A missing title is "not watched" only with a complete MAL list; never
+  // silently call an unverified title watched or borrow another user's cache.
+  // If MAL is disconnected/unavailable the search uses Jellyfin UserData,
+  // explicitly identifying this fallback in the result status line.
+  function watchClassification(item,state){
+    const snapshot=state.watchSnapshot;
+    if(state.kind==='anime'&&snapshot?.connected){
+      const id=Number(item.mal_id??item.malId);
+      if(!Number.isSafeInteger(id)||id<=0)return 'unknown';
+      const entry=snapshot.entries?.[String(id)];
+      if(!entry)return 'unwatched'; // /mal/status returns a complete list.
+      const data=entry.entry||entry.Entry||entry;
+      const status=String(data.status??data.Status??'').toLowerCase();
+      if(status==='completed')return 'watched';
+      if(['watching','on_hold','plan_to_watch','dropped'].includes(status))return 'unwatched';
+      return 'unknown';
+    }
+    const jellyfin=String(item.watch_status??item.watchStatus??'');
+    if(jellyfin==='watched')return 'watched';
+    if(jellyfin==='started'||jellyfin==='unwatched')return 'unwatched';
+    return 'unknown';
+  }
+  function watchModeMatches(item,state){
+    if(!state.watchMode)return true;
+    if(state.watchLoading)return false;
+    const status=watchClassification(item,state);
+    return status!=='unknown' && (state.watchMode===1
+      ? status==='watched' : status==='unwatched');
+  }
+  function drawWatchFilter(state){
+    if(!state.watchChoices)return;
+    const mode=state.watchMode||0;
+    const label=['Obojętnie','✓ Tak','✕ Nie'][mode];
+    const button=own('button',`mf-home-choice mf-home-watched-button ${mode===1?'mf-genre-on':mode===2?'mf-genre-no':''}`,label);
+    button.type='button';
+    button.setAttribute('data-filter-state',String(mode));
+    button.setAttribute('aria-label',`Obejrzane: ${['obojętnie','tak','nie'][mode]}`);
+    button.setAttribute('aria-pressed',String(mode!==0));
+    button.title='Klikaj: obojętnie → obejrzane (zielone) → nieobejrzane (czerwone) → obojętnie';
+    button.addEventListener('click',()=>{
+      state.watchMode=(mode+1)%3;
+      drawWatchFilter(state);
+      paintSearchResults(state);
+      if(state.watchMode&&!state.watchSnapshot)void loadWatchStatusSnapshot(state);
+    });
+    state.watchChoices.replaceChildren(button);
+  }
+  async function loadWatchStatusSnapshot(state){
+    if(state.kind!=='anime'||state.watchSnapshot||state.watchLoading)return;
+    const job=++state.watchRequestId;
+    state.watchLoading=true;
+    paintSearchResults(state);
+    try{
+      // Read-only endpoint, refresh=false: existing MAL list cache, no writes.
+      const response=await request('/mal/status?refresh=false','GET',undefined,60000);
+      if(state!==activeSearch||!state.overlay.isConnected||job!==state.watchRequestId)return;
+      state.watchSnapshot=response?.connected&&response.entries
+        ? {connected:true,entries:response.entries} : {connected:false};
+      state.watchFallback=false;
+    }catch(_error){
+      if(state!==activeSearch||!state.overlay.isConnected||job!==state.watchRequestId)return;
+      state.watchSnapshot={connected:false};
+      state.watchFallback=true;
+    }finally{
+      if(state===activeSearch&&job===state.watchRequestId){
+        state.watchLoading=false;
+        paintSearchResults(state);
+      }
+    }
+  }
   function fitsSearch(item,state,withText=true){
     if(state.unmatchedGenre)return false;
     if(state.libraryStates && !allowGroup(compactId(item.library_id),state.libraryStates))return false;
     if(!searchByType(item,state))return false;
+    if(!watchModeMatches(item,state))return false;
     const terms=termsForFilter(item,state);
     for(const [term,mode] of state.genreStates){
       if(mode===1&&!terms.has(term))return false;
@@ -835,7 +914,7 @@
     }
     const q=normalized(state.input.value);
     if(withText&&q){
-      if(searchableText(item).includes(q))return true;
+      if(titleMatches(item,q))return true;
       // With the checkbox OFF, a linked season/Special title can find its
       // parent series. With it ON, searchByType instead returns season cards
       // only (unless the user explicitly selected additional type filters).
@@ -858,7 +937,12 @@
     for(const item of state.matches.slice(0,state.shown))state.grid.appendChild(makeCard(searchTile(item,state)));
     if(!state.matches.length)state.grid.appendChild(own('p','mf-home-empty','Brak wyników dla wybranych warunków.'));
     state.more.hidden=state.shown>=state.matches.length;
-    state.status.textContent=`Wyniki: ${state.matches.length} · pokazano ${state.shown} · lista źródłowa: ${state.pool.length}`;
+    const source=state.watchMode
+      ? state.watchLoading?' · pobieranie statusów MAL…'
+        : state.watchSnapshot?.connected?' · obejrzane wg MAL'
+        : ' · obejrzane wg Jellyfin'+(state.watchFallback?' (MAL niedostępny)':'')
+      : '';
+    state.status.textContent=`Wyniki: ${state.matches.length} · pokazano ${state.shown} · lista źródłowa: ${state.pool.length}${source}`;
     suggestSearch(state);
   }
   function appendMoreResults(state){
@@ -1026,6 +1110,8 @@
     const libraryChoices=makeFilterGroup('Biblioteki', 'Zielony: uwzględnij · czerwony: wyklucz · ponownie: obojętne');
     const libraryOptions=scopedLibraries.map(lib=>({id:compactId(lib.id),label:lib.name}));
     const typeChoices=makeFilterGroup('Typy produkcji', 'Możesz zaznaczyć kilka typów jednocześnie');
+    const watchChoice=kind==='anime'?makeFilterGroup('Obejrzane','Trzy stany: tak · nie · obojętnie'):null;
+    if(watchChoice)watchChoice.wrap.classList.add('mf-home-choice-watched');
     const typeOptions=[{id:'series',label:'Serie'},{id:'movies',label:'Filmy'}];
     if(kind==='anime')typeOptions.push({id:'seasons',label:'Sezony / OVA / ONA / Specials'});
     const seasonLabel=own('label','mf-home-search-seasons');
@@ -1038,6 +1124,7 @@
     tool.append(searchWrap,seasonLabel,reset,refresh);
     const choicesWrap=own('div','mf-home-choice-groups');
     append(choicesWrap,libraryChoices.wrap,typeChoices.wrap);
+    if(watchChoice)choicesWrap.appendChild(watchChoice.wrap);
     const genresHead=own('div','mf-home-genres-head');
     const genresTitle=own('h3','',kind==='anime'?'Gatunki anime':'Gatunki filmów i seriali');
     const toggle=own('button','mf-home-button','Pokaż gatunki');toggle.type='button';
@@ -1054,10 +1141,12 @@
     dialog.append(header,main);overlay.appendChild(dialog);
     const state={kind, overlay, input, suggestions, includeSeasons, reset, refresh,
       scopedLibraries, libraryOptions, typeOptions, libraryChoices, typeChoices,
-      libraryStates:new Map(), typeStates:new Map(),
+      libraryStates:new Map(), typeStates:new Map(),watchChoices:watchChoice?.choices||null,
+      watchMode:0,watchSnapshot:null,watchLoading:false,watchRequestId:0,watchFallback:false,
       genres,genreStates:new Map(),genreNames:new Map(),genreCounts:new Map(),genresExpanded:true,
       toggle,summary,help,status,grid,more,pool:[],matches:[],shown:0,requestId:0};
     renderChoiceGroup(libraryChoices.choices,libraryOptions,state.libraryStates,()=>paintSearchResults(state));
+    drawWatchFilter(state);
     renderChoiceGroup(typeChoices.choices,typeOptions,state.typeStates,(selected,mode)=>{
       if(selected==='seasons'&&mode===1)includeSeasons.checked=true;
       paintSearchResults(state);
@@ -1086,6 +1175,7 @@
     reset.addEventListener('click',()=>{
       input.value='';includeSeasons.checked=false;
       state.libraryStates.clear();state.typeStates.clear();state.genreStates.clear();
+      state.watchMode=0;drawWatchFilter(state);
       state.unmatchedGenre='';state.initialGenre='';
       renderChoiceGroup(libraryChoices.choices,libraryOptions,state.libraryStates,()=>paintSearchResults(state));
       renderChoiceGroup(typeChoices.choices,typeOptions,state.typeStates,()=>paintSearchResults(state));
@@ -1095,8 +1185,18 @@
     more.addEventListener('click',()=>appendMoreResults(state));
     refresh.addEventListener('click',()=>{
       for(const lib of state.scopedLibraries)catalogCache.delete(compactId(lib.id));
+      state.watchSnapshot=null;state.watchFallback=false;
+      ++state.watchRequestId;state.watchLoading=false;
       loadSearch(state);
+      if(state.watchMode)void loadWatchStatusSnapshot(state);
     });
+    state.watchCacheHandler=()=>{
+      if(state!==activeSearch||!state.watchMode)return;
+      state.watchSnapshot=null;state.watchLoading=false;
+      ++state.watchRequestId;
+      void loadWatchStatusSnapshot(state);
+    };
+    if(kind==='anime')window.addEventListener('misioflix-mal-cache-changed',state.watchCacheHandler);
     closeWhenNavigate(state);
     return state;
   }
