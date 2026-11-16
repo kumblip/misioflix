@@ -1054,7 +1054,44 @@ html.misioflix-skin .card.mf-collection-card .cardOverlayContainer{z-index:8}
 
 /* v0.4.26: dedicated home Collections shelf is independent of Jellyfin grouping. */
 html.misioflix-skin .mf-home-collection-card .mf-home-poster{outline:1px solid rgba(235,159,202,.48);outline-offset:-1px}
-html.misioflix-skin .mf-home-collection-count{background:rgba(25,17,29,.8);padding:3px 6px;border-radius:5px;font-size:11px;color:#ffd7eb;font-weight:650}
+/* v0.4.89: One shared visual language for all collection counters.
+   Home shelves and the paged Collections directory use .mf-home-collection-count.
+   Native Jellyfin BoxSet cards use the original countIndicator value, including
+   collection cards embedded in the movie details page. No card cloning or DOM
+   changes on the React-owned/native cards. */
+html.misioflix-skin .mf-home-collection-card .mf-home-collection-count,
+html.misioflix-skin #itemDetailPage .collectionItems .card .countIndicator,
+html.misioflix-skin .card[data-type="BoxSet"] .countIndicator,
+html.misioflix-skin .card.mf-collection-card[data-mf-collection-type="boxset"] .countIndicator {
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  gap:4px!important;min-width:0!important;width:auto!important;height:auto!important;
+  padding:5px 7px!important;border:1px solid rgba(255,224,240,.5)!important;
+  border-radius:10px!important;background:rgba(22,10,24,.84)!important;
+  color:#fff!important;box-shadow:0 4px 12px rgba(0,0,0,.30)!important;
+  font-size:13px!important;font-weight:800!important;line-height:1.1!important;
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+/* The home badge is moved from the kind/year stack to the top-right corner. */
+html.misioflix-skin .mf-home-collection-card .mf-home-collection-count {
+  position:absolute!important;top:8px!important;right:8px!important;left:auto!important;
+  z-index:3!important;pointer-events:none;
+}
+/* Jellyfin already supplies the BoxSet's real child count. Add only a clapper
+   icon; never replace or duplicate the number. */
+html.misioflix-skin #itemDetailPage .collectionItems .card .countIndicator::after,
+html.misioflix-skin .card[data-type="BoxSet"] .countIndicator::after,
+html.misioflix-skin .card.mf-collection-card[data-mf-collection-type="boxset"] .countIndicator::after {
+  content:"🎬";display:inline-block;font-size:13px;line-height:1;
+}
+/* Keep the native collection badge at the same upper-right corner. */
+html.misioflix-skin #itemDetailPage .collectionItems .card .cardIndicators,
+html.misioflix-skin .card[data-type="BoxSet"] .cardIndicators,
+html.misioflix-skin .card.mf-collection-card[data-mf-collection-type="boxset"] .cardIndicators {
+  position:absolute!important;top:7px!important;right:7px!important;
+  bottom:auto!important;left:auto!important;z-index:6!important;
+  display:flex!important;align-items:flex-start!important;justify-content:flex-end!important;
+}
+
 html.misioflix-skin .card.mf-physical-folder .mf-collection-label{background:rgba(54,85,115,.92);border-color:rgba(156,207,250,.44)}
 html.misioflix-skin .card.mf-empty-folder .cardImageContainer{opacity:.78}
 

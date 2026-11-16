@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.88: Wstecz odtwarzacza bezpośrednio do sezonu oraz odporne doładowywanie bibliotek po powrocie z odtwarzania",
+  "description": "MisioFlix 0.4.89: jednolity licznik filmów kolekcji (liczba + klaps) w prawym górnym rogu",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.88.0",
+  "version": "0.4.89.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

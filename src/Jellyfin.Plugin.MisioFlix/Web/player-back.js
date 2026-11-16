@@ -39,7 +39,7 @@
   function authHeader(currentApi) {
     const token = typeof currentApi?.accessToken === 'function' ? currentApi.accessToken() : currentApi?.accessToken;
     if (typeof token !== 'string' || !token) return null;
-    return `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-player-back", Version="0.4.88", Token="${token.replace(/["\r\n]/g, '')}"`;
+    return `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-player-back", Version="0.4.89", Token="${token.replace(/["\r\n]/g, '')}"`;
   }
 
   async function currentEpisode() {

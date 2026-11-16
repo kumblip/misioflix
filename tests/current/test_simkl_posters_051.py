@@ -18,7 +18,7 @@ MAL=(SRC/'Web/mal.js').read_text()
 class SimklPosters051(unittest.TestCase):
     def test_version_consistency(self):
         version=json.loads((ROOT/'meta.json').read_text())['version']
-        self.assertEqual(version,'0.4.88.0')
+        self.assertEqual(version,'0.4.89.0')
         self.assertIn(f'<AssemblyVersion>{version}</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
     def test_uses_personal_nas_backup_never_jellyfin_user_rating(self):
@@ -67,9 +67,9 @@ class SimklPosters051(unittest.TestCase):
         self.assertIn('@media(max-width:680px)',STYLE)
 
     def test_collection_count_movie_clapper_not_word(self):
-        self.assertIn("count+' 🎬'",HOME)
-        self.assertNotIn("badge(left,count+' filmów'",HOME)
-        self.assertIn("aria-label',count+' filmów w kolekcji'",HOME)
+        self.assertIn("collectionSize+' 🎬'",HOME)
+        self.assertNotIn("badge(left,collectionSize+' 🎬'",HOME)
+        self.assertIn("aria-label',collectionSize+' filmów w kolekcji'",HOME)
 
     def test_javascript_syntax(self):
         for name in ('home.js','client.js','simkl.js'):

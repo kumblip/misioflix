@@ -219,8 +219,14 @@
       count.appendChild(stat);
     };
     if(item.type==='BoxSet'){
-      const count=short(item.collectionCount);
-      if(count){const b=badge(left,count+' 🎬','mf-home-collection-count');b.setAttribute('aria-label',count+' filmów w kolekcji');}
+      // The same right-top collection counter is used in the home shelf and
+      // the full Collections directory. Keep the left kind/year stack intact.
+      const collectionSize=short(item.collectionCount);
+      if(collectionSize){
+        const b=badge(link,collectionSize+' 🎬','mf-home-collection-count');
+        b.setAttribute('aria-label',collectionSize+' filmów w kolekcji');
+        b.setAttribute('title',collectionSize+' filmów w kolekcji');
+      }
     }else{
       if(item.type!=='Movie'){
         // On the *separate anime Season search tile*, show the literal NFO

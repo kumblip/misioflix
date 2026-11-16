@@ -1,0 +1,94 @@
+MISIOFLIX — ZMIANY WYKONYWANE POZA WTYCZKĄ
+==========================================
+Plik informacyjny do dołączenia w katalogu głównym paczki źródłowej MisioFlix Native v0.4.89.
+
+Data zgłoszenia: 2026-11-16
+Stan: reguły uzgodnione; ich zapisanie w tym pliku nie oznacza, że zostały już zastosowane w ustawieniach Jellyfina.
+Miejsce zastosowania: Jellyfin Web 12.4 → Panel administracyjny → Branding / Personalizacja marki → Własny CSS.
+Nie ingerować w pliki /jellyfin-web ani nie usuwać metadanych z NFO lub Jellyfina.
+
+1. OCENY NA STRONACH SZCZEGÓŁÓW — UKRYĆ
+------------------------------------------------
+Ukryć DWIE standardowe oceny z interfejsu Jellyfina:
+  <div class="starRatingContainer mediaInfoItem">…</div>
+  <div class="mediaInfoItem mediaInfoCriticRating mediaInfoCriticRatingRotten">…</div>
+Przykład: żółta gwiazdka 6.8 oraz zielony wynik krytyków 46.
+NIE ukrywać niezależnych ocen użytkownika MAL i Simkl dostarczanych przez MisioFlix.
+
+2. DANE O TWÓRCACH I WYTWÓRNIACH — UKRYĆ; GATUNKI — ZACHOWAĆ
+------------------------------------------------------------------------
+Na stronach szczegółów ukryć wiersze:
+  - Reżyser
+  - Scenariusz
+  - Wytwórnie
+
+Wiersz „Gatunki” ma POZOSTAĆ widoczny i klikalny.
+Nie ukrywać całej grupy `.itemDetailsGroup`, bo zawiera również gatunki.
+
+3. OZNACZENIE WIEKOWE — UKRYĆ
+-----------------------------------
+Ukryć natywne oznaczenie kategorii wiekowej Jellyfina, np. PL-16:
+  <div class="mediaInfoItem mediaInfoText mediaInfoOfficialRating">PL-16</div>
+Nie ukrywać innych elementów paska informacyjnego, zwłaszcza oceny MAL / Simkl.
+
+4. LINKI ZEWNĘTRZNE — UKRYĆ
+-----------------------------------
+Ukryć natywny blok linków zewnętrznych w szczegółach, np. IMDb i TMDB:
+  <div class="itemExternalLinks focuscontainer-x">… IMDb, TMDB …</div>
+Nie usuwać identyfikatorów IMDb/TMDb z NFO ani bazy Jellyfina.
+
+5. CSS DO WSTAWIENIA W JELLYFINIE (wariant bez osobnego JS)
+---------------------------------------------------------------
+/* Tylko standardowe oceny Jellyfina, bez MAL i Simkl */
+#itemDetailPage .starRatingContainer,
+#itemDetailPage .mediaInfoCriticRating {
+    display: none !important;
+}
+
+/* Oznaczenie wiekowe PL-16 / TV-14 / itp. */
+#itemDetailPage .mediaInfoOfficialRating {
+    display: none !important;
+}
+
+/* Natywny blok odnośników IMDb / TMDB / itp. */
+#itemDetailPage .itemExternalLinks {
+    display: none !important;
+}
+
+/* Wiersze twórców i wytwórni w natywnej grupie metadanych.
+   Gatunki, których odnośniki prowadzą do #/list?genreId=..., zostają. */
+#itemDetailPage .itemDetailsGroup > div:has(> .detailsGroupItem a[href^="#/details?id="]),
+#itemDetailPage .itemDetailsGroup > div:has(> .detailsGroupItem a[href^="#/list?studioId="]) {
+    display: none !important;
+}
+
+UWAGA: Wariant CSS identyfikuje wiersze po linkach, nie po polskich nazwach pól.
+Dlatego oprócz „Reżyser” i „Scenariusz” może ukryć także np. „Twórca” albo inne
+wiersze z odnośnikami do osób. Wiersz „Gatunki” pozostaje, bo ma linki genreId.
+Jeśli trzeba ukrywać WYŁĄCZNIE trzy dokładne etykiety bez innych osób,
+wymagany jest skrypt rozpoznający tekst etykiety (CSS sam nie obsługuje selekcji
+po zawartości tekstowej). Nie używać `nth-child()` jako globalnego rozwiązania,
+ponieważ kolejność pól różni się między filmami i serialami.
+
+6. POPRZEDNIA PROPOZYCJA — ZNACZNIKI
+-----------------------------------
+Wcześniej omówiono ukrywanie wiersza „Znaczniki:” za pomocą:
+
+#itemDetailPage .itemTags {
+    display: none !important;
+}
+
+Nie zakładać, że użytkownik zastosował już ten wcześniejszy CSS;
+status jego wdrożenia nie został potwierdzony.
+
+7. ZASADY NA KOLEJNE WYDANIA MISIOFLIX
+--------------------------------------
+- Umieścić niniejszy plik pod nazwą `zrobionepozamisioflixem.txt` w katalogu
+  głównym pełnej paczki GitHub v0.4.89.
+- Są to modyfikacje WYGLĄDU wykonane na poziomie CSS Jellyfina, POZA wtyczką.
+- Nie dodawać tych samych reguł domyślnie do CSS MisioFlixa bez osobnego polecenia.
+- Nie usuwać ocen, list gatunków, danych twórców, tagów, kategorii wiekowych
+  ani identyfikatorów IMDb/TMDb z API, NFO ani bazy.
+- Nie ukrywać ocen MAL i Simkl oraz wiersza „Gatunki”.
+- Po wklejeniu CSS sprawdzić film, serial, anime, sezon i odcinek;
+  odświeżyć interfejs Ctrl+F5. Reguły dotyczą Jellyfin Web, nie aplikacji TV.

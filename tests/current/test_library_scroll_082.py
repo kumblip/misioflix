@@ -28,6 +28,6 @@ class LibraryScroll082(unittest.TestCase):
     self.assertIn("if(modernMixedRoute())",client)
     self.assertIn('mf-library-extra-deck', (WEB/'theme.css').read_text())
   def test_versions(self):
-    self.assertEqual(json.loads((R/'meta.json').read_text())['version'],'0.4.88.0')
-    self.assertIn('<AssemblyVersion>0.4.88.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
+    self.assertEqual(json.loads((R/'meta.json').read_text())['version'],'0.4.89.0')
+    self.assertIn('<AssemblyVersion>0.4.89.0</AssemblyVersion>',(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
 if __name__=='__main__':unittest.main()
