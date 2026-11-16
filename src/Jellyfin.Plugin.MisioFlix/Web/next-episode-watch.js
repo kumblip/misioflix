@@ -41,7 +41,7 @@
       method: 'POST', credentials:'same-origin', cache:'no-store', keepalive:true,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-next", Version="0.4.86", Token="${token.replace(/["\r\n]/g, '')}"`
+        Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-next", Version="0.4.87", Token="${token.replace(/["\r\n]/g, '')}"`
       },
       body: JSON.stringify({deviceId:typeof deviceId === 'string' ? deviceId : null})
     }).then(r=>{if(!r.ok) console.warn('[MisioFlix Next Watch] HTTP',r.status);})

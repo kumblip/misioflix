@@ -79,3 +79,7 @@ Jellyfin i zrezygnuj z wtyczki zgodnie z `INSTALACJA_UGREEN.md`.
 - 393 testy unittest Python + 36 skryptów Node zakończone poprawnie.
 - Trzy moduły regresji `next_episode_*` działają jako `unittest.TestCase` (wcześniej część definicji `def test_...` nie była wykonywana przez domyślny runner).
 - Dotnet SDK 10 niedostępny w środowisku; `dotnet publish` wymaga GitHub Actions.
+
+## v0.4.87 — Wstecz odtwarzacza → aktywny odcinek
+- Osobne testy Node i Python dla identyfikacji aktualnego odcinka, wymuszenia szczegółów po zatrzymaniu, pełnego odświeżenia oraz bezpieczeństwa innych widoków.
+- Integracja na żywym odtwarzaczu wymaga sprawdzenia po instalacji.

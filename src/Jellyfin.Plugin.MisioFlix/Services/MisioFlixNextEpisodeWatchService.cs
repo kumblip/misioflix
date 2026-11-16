@@ -137,6 +137,34 @@ public sealed class MisioFlixNextEpisodeWatchService : IHostedService
         return true;
     }
 
+    /// <summary>
+    /// Read-only playback navigation lookup. Uses the same authenticated Jellyfin
+    /// user and optional browser device identifier as the NEXT tracking service.
+    /// Never changes watched status, resume position or any playback event.
+    /// Returns nothing for ambiguous or stale device sessions.
+    /// </summary>
+    public Guid? CurrentEpisodeId(Guid userId, string? deviceHint)
+    {
+        var now = DateTimeOffset.UtcNow;
+        lock (_gate)
+        {
+            var candidates = _states.Where(p =>
+                p.Key.StartsWith(userId.ToString("N") + ":", StringComparison.OrdinalIgnoreCase) &&
+                p.Value.Current is not null &&
+                p.Value.LastEventUtc >= now.AddMinutes(-15))
+                .Select(p => p.Value).ToArray();
+            if (candidates.Length == 0) return null;
+            if (!string.IsNullOrWhiteSpace(deviceHint))
+            {
+                var matched = candidates.Where(s => s.DeviceId.Equals(deviceHint, StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (matched.Length == 1) return matched[0].Current!.ItemId;
+                // No cross-device fallback when multiple sessions are active.
+                if (matched.Length > 1 || candidates.Length > 1) return null;
+            }
+            return candidates.Length == 1 ? candidates[0].Current!.ItemId : null;
+        }
+    }
+
     private void Record(PlaybackProgressEventArgs e, bool isStart, bool isStop)
     {
         if (e.Item is not Episode episode || e.Users is null || e.Users.Count == 0 ||

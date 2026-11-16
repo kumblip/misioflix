@@ -11,7 +11,7 @@ HOME=(SRC/'Web/home.js').read_text('utf8')
 CSS=(SRC/'Web/theme.css').read_text('utf8')
 class OfflineMalSearch076(unittest.TestCase):
  def test_version(self):
-  self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.86.0')
+  self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.87.0')
  def test_read_only_endpoint_and_authenticated_user(self):
   self.assertRegex(CTL,r'\[HttpGet\("api/mal/archive/watch-status"\)\]\s*\[Authorize\]')
   method=CTL.split('public async Task<IActionResult> MalArchiveWatchStatus',1)[1].split('[HttpGet("api/mal/archive/download")]',1)[0]

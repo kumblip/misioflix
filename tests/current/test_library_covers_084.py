@@ -24,7 +24,7 @@ class LibraryCovers084(unittest.TestCase):
         self.assertIn("card.hasAttribute('data-mf-library-infinite-card')",src)
         self.assertIn('mixedActiveList?.contains(card)',src)
     def test_version(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.86.0')
-        self.assertIn('<AssemblyVersion>0.4.86.0</AssemblyVersion>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text())['version'],'0.4.87.0')
+        self.assertIn('<AssemblyVersion>0.4.87.0</AssemblyVersion>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text())
 
 if __name__=='__main__':unittest.main()

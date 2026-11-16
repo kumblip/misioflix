@@ -42,6 +42,7 @@ public sealed class MisioFlixController : ControllerBase
             "details.js" => ("Web.details.js", "text/javascript; charset=utf-8"),
             "library-scroll.js" => ("Web.library-scroll.js", "text/javascript; charset=utf-8"),
             "next-episode-watch.js" => ("Web.next-episode-watch.js", "text/javascript; charset=utf-8"),
+            "player-back.js" => ("Web.player-back.js", "text/javascript; charset=utf-8"),
             "mal.js" => ("Web.mal.js", "text/javascript; charset=utf-8"),
             "mal-archive.css" => ("Web.mal-archive.css", "text/css; charset=utf-8"),
             "mal-frames.css" => ("Web.mal-frames.css", "text/css; charset=utf-8"),
