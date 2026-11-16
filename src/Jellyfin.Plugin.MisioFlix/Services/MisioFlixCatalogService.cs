@@ -126,6 +126,9 @@ public sealed class MisioFlixCatalogService
                         year = local?.Year ?? string.Empty,
                         plot = local?.Plot ?? string.Empty,
                         kind = local?.Kind ?? string.Empty,
+                        // Use exactly <seasonnumber> in this season.nfo, not a
+                        // sequential guess, the TV-season name or Series ChildCount.
+                        season_number = Text(Get(json, "Type")) == "Season" ? local?.SeasonNumber : null,
                         genres = local?.Genres ?? new List<string>(),
                         has_image = HasPrimaryImage(json),
                         date_added = Text(Get(json, "DateCreated")),
@@ -1328,7 +1331,9 @@ public sealed class MisioFlixCatalogService
                     ParseNfoRating(nfo),
                     int.TryParse(nfo.Elements("uniqueid").FirstOrDefault(e =>
                         string.Equals((string?)e.Attribute("type"), "mal", StringComparison.OrdinalIgnoreCase))?.Value,
-                        NumberStyles.None, CultureInfo.InvariantCulture, out var malId) && malId > 0 ? malId : null);
+                        NumberStyles.None, CultureInfo.InvariantCulture, out var malId) && malId > 0 ? malId : null,
+                    int.TryParse(V("seasonnumber"), NumberStyles.None, CultureInfo.InvariantCulture, out var seasonOrdinal)
+                        && seasonOrdinal > 0 ? seasonOrdinal : null);
                 if (requireMalId && !parsed.MalId.HasValue) continue;
                 return parsed;
             }
@@ -1436,7 +1441,7 @@ public sealed class MisioFlixCatalogService
             .Select(x => x.GetString() ?? string.Empty).Where(x => x.Length > 0).ToList();
     }
 
-    private sealed record LocalNfo(string OriginalTitle, string DisplayTitle, string Year, string Plot, string Kind, List<string> Genres, double? Rating, int? MalId);
+    private sealed record LocalNfo(string OriginalTitle, string DisplayTitle, string Year, string Plot, string Kind, List<string> Genres, double? Rating, int? MalId, int? SeasonNumber);
 }
 
 public sealed record GenreSets(string[] anime, string[] media);
@@ -1459,6 +1464,8 @@ public sealed class CatalogItem
     public bool has_image { get; set; }
     public string date_added { get; set; } = string.Empty;
     public double progress_percent { get; set; }
+    // Actual season.nfo <seasonnumber>; absent/invalid is null (never fabricated).
+    public int? season_number { get; set; }
     public int? season_count { get; set; }
     public int? episode_count { get; set; }
     public double? rating { get; set; }

@@ -210,8 +210,8 @@
     if(item.year)badge(left,String(item.year).slice(0,14),'mf-home-year'+(nonAnimeMedia?' mf-simkl-media-year':''));
     link.appendChild(left);
     const count=own('div','mf-home-stats'+(nonAnimeMedia?' mf-simkl-media-stats':''));
-    const addStat=(v,label,color,rating=false)=>{
-      const val=short(v,rating);
+    const addStat=(v,label,color,rating=false,overrideText=null)=>{
+      const val=overrideText??short(v,rating);
       if(!val)return;
       const stat=own('div','mf-home-stat'+(nonAnimeMedia?' mf-simkl-media-stat':''));
       stat.setAttribute('title',label);
@@ -223,6 +223,16 @@
       if(count){const b=badge(left,count+' 🎬','mf-home-collection-count');b.setAttribute('aria-label',count+' filmów w kolekcji');}
     }else{
       if(item.type!=='Movie'){
+        // On the *separate anime Season search tile*, show the literal NFO
+        // season ordinal as a RED paw above the BLUE episode-count paw.
+        // Never use the GOLD 'number of seasons' paw for a Season.
+        if(item.anime&&item.type==='Season'){
+          const number=Number(item.seasonNumber);
+          if(Number.isSafeInteger(number)&&number>0){
+            const label=`Season ${String(number).padStart(2,'0')}`;
+            addStat(number,label,'#ff606b',false,String(number).padStart(2,'0'));
+          }
+        }
         addStat(item.seasons,'Sezony','#f7b449');
         addStat(item.episodes,'Odcinki','#6bd1f6');
       }
@@ -652,6 +662,7 @@
       genres:Array.isArray(item.genres)?item.genres:[],
       hasPrimary:Boolean(item.hasPrimary??item.has_image),
       seasons:item.seasons??item.season_count??null,
+      seasonNumber:item.seasonNumber??item.season_number??null,
       episodes:item.episodes??item.episode_count??null,
       userRating:item.userRating??item.rating??null,
       watchStatus:item.watchStatus||item.watch_status||'unwatched',
@@ -905,6 +916,10 @@
         if(tile.episodes!=null && Number(tile.episodes)>0)counts.push(`${short(tile.episodes)} odcinków`);
       }
       if(item.type==='Season'){
+        // Order is from the individual season.nfo, including OVA/ONA/Specials.
+        const number=Number(item.season_number??item.seasonNumber);
+        if(Number.isSafeInteger(number)&&number>0)
+          counts.push(`Season ${String(number).padStart(2,'0')}`);
         counts.push(animeSeasonFormat(item));
         // The episode count is scoped to this Jellyfin Season, never the parent.
         if(tile.episodes!=null){
