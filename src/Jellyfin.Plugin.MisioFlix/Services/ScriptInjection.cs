@@ -126,6 +126,8 @@ public sealed class MisioFlixServiceRegistrator : IPluginServiceRegistrator
         services.AddHostedService<MisioFlixMalArchiveHostedService>();
         services.AddSingleton<MisioFlixSimklLocalStore>();
         services.AddHostedService<MisioFlixSimklPlaybackHostedService>();
+        services.AddSingleton<MisioFlixNfoCollectionsService>();
+        services.AddHostedService<MisioFlixNfoCollectionsService>(sp => sp.GetRequiredService<MisioFlixNfoCollectionsService>());
         services.AddSingleton<MisioFlixNextEpisodeWatchService>();
         services.AddHostedService<MisioFlixNextEpisodeWatchService>(sp => sp.GetRequiredService<MisioFlixNextEpisodeWatchService>());
         // Device-PIN sessions and read snapshots MUST survive separate HTTP requests.

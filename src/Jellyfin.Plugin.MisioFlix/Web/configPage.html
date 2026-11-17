@@ -36,6 +36,20 @@
    <p id="mf-simkl-config-status" aria-live="polite"></p>
   </form>
   <hr style="margin:26px 0;border-color:#77526c" />
+  <section id="mf-nfo-collections-panel" aria-labelledby="mf-nfo-collections-heading" style="padding:12px 0 20px">
+   <h2 id="mf-nfo-collections-heading">Kolekcje Jellyfina z plików NFO</h2>
+   <p>MisioFlix odczytuje powtarzające się tagi <code>&lt;set&gt;</code> z <code>movie.nfo</code> i <code>tvshow.nfo</code>.
+      Tworzy rzeczywiste kolekcje Jellyfina i dodaje do istniejących tylko brakujące filmy i seriale.
+      Synchronizacja jest <strong>dodająca</strong> — niczego nie usuwa, nie zmienia plików NFO ani nie zmienia istniejącej kolejności sortowania.</p>
+   <label class="inputContainer" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+    <input type="checkbox" id="mf-nfo-collections-auto" checked />
+    <span>Automatyczna synchronizacja po uruchomieniu Jellyfina i co 30 minut</span>
+   </label>
+   <button type="button" class="raised emby-button" id="mf-nfo-collections-sync">Synchronizuj kolekcje z NFO teraz</button>
+   <p id="mf-nfo-collections-status" role="status" aria-live="polite">Stan synchronizacji jest odczytywany z serwera.</p>
+   <small>Jeden plik NFO może mieć wiele tagów &lt;set&gt;. Sorttitle jest globalną właściwością produkcji w Jellyfinie — nie osobną kolejnością dla każdej kolekcji.</small>
+  </section>
+  <hr style="margin:26px 0;border-color:#77526c" />
   <section id="mf-updates-panel" aria-labelledby="mf-updates-heading" style="padding:12px 0 22px">
    <h2 id="mf-updates-heading">Aktualizacje MisioFlix</h2>
    <p>Porównanie GitHub Release, manifestu i katalogu Jellyfina. Wymuszenie zapisuje w Jellyfinie adres zweryfikowanego manifestu konkretnej rewizji GitHuba; nie instaluje pakietów ani nie zastępuje DLL.</p>
@@ -88,7 +102,7 @@
    const auth=()=>{
      const t=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
      if(!t)throw Error('Brak aktywnego tokenu Jellyfin.');
-     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.94", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
+     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.95", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
    };
    async function query(path,method='GET',payload=null){
     const h=auth();
@@ -284,8 +298,65 @@
    return {activate};
   })();
 
+  // Admin-only native NFO -> BoxSet reconciliation, independent of MAL/Simkl.
+  const nfoCollections=(()=>{
+   const panel=view.querySelector('#mf-nfo-collections-panel');
+   if(!panel || typeof panel.querySelector!=='function')return {activate(){}};
+   const auto=panel.querySelector('#mf-nfo-collections-auto');
+   const sync=panel.querySelector('#mf-nfo-collections-sync');
+   const message=panel.querySelector('#mf-nfo-collections-status');
+   const auth=()=>{
+    const t=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
+    if(!t)throw Error('Brak aktywnego tokenu Jellyfin.');
+    return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-nfo-collections", Version="0.4.95", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
+   };
+   async function request(method,path){
+    const url=typeof ApiClient?.getUrl==='function'?ApiClient.getUrl(path):'/'+path;
+    const r=await fetch(url,{method,headers:auth(),cache:'no-store'});
+    if(!r.ok)throw Error('HTTP '+r.status);
+    return await r.json();
+   }
+   function show(result){
+    if(!result)return;
+    const pick=(a,b)=>result[a]??result[b];
+    const last=pick('lastRunUtc','LastRunUtc');
+    message.textContent=(pick('running','Running')?'Trwa synchronizacja. ':'')+
+      (last?'Ostatnie wykonanie: '+new Date(last).toLocaleString('pl-PL')+'. ':'')+
+      'Przeskanowano: '+(pick('scannedMedia','ScannedMedia')??0)+
+      ', znaleziono NFO: '+(pick('foundNfo','FoundNfo')??0)+
+      ', kolekcje NFO: '+(pick('referencedCollections','ReferencedCollections')??0)+
+      ', nowe kolekcje: '+(pick('createdCollections','CreatedCollections')??0)+
+      ', dodane pozycje: '+(pick('addedMemberships','AddedMemberships')??0)+
+      (pick('error','Error')?' — '+pick('error','Error'):'');
+   }
+   async function activate(){
+    try{
+     const config=await ApiClient.getPluginConfiguration(pluginId);
+     auto.checked=config.AutoSyncNfoCollections!==false;
+     show(await request('GET','MisioFlix/api/nfo-collections/status'));
+    }catch(error){message.textContent='Nie udało się odczytać stanu synchronizacji: '+error.message;}
+   }
+   auto.addEventListener('change',async()=>{
+    const selected=auto.checked;
+    try{
+     const config=await ApiClient.getPluginConfiguration(pluginId);
+     config.AutoSyncNfoCollections=selected;
+     await ApiClient.updatePluginConfiguration(pluginId,config);
+     message.textContent=selected?'Włączono synchronizację automatyczną.':'Wyłączono automatyczną synchronizację; ręczna nadal jest dostępna.';
+    }catch(error){auto.checked=!selected;message.textContent='Błąd zapisu ustawienia: '+error.message;}
+   });
+   sync.addEventListener('click',async()=>{
+    sync.disabled=true;message.textContent='Synchronizuję kolekcje na serwerze Jellyfin…';
+    try{show(await request('POST','MisioFlix/api/nfo-collections/sync'));}
+    catch(error){message.textContent='Nie udało się przeprowadzić synchronizacji: '+error.message;}
+    finally{sync.disabled=false;}
+   });
+   return {activate};
+  })();
+
   view.addEventListener('pageshow',async()=>{
    updates.activate();
+   void nfoCollections.activate();
    try{const config=await ApiClient.getPluginConfiguration(pluginId);
     view.querySelector('#mf-mal-client').value=config.MalClientId||'';
     view.querySelector('#mf-mal-secret').value=config.MalClientSecret||'';

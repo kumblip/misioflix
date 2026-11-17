@@ -1,0 +1,14 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const path=require('node:path');
+const root=path.resolve(__dirname,'../..');
+const page=fs.readFileSync(path.join(root,'src/Jellyfin.Plugin.MisioFlix/Web/configPage.html'),'utf8');
+const match=page.match(/<script>([\s\S]*?)<\/script>/);
+assert(match, 'admin config script must exist');
+new vm.Script(match[1], {filename:'configPage.html.inline.js'});
+assert.match(page,/AutoSyncNfoCollections/);
+assert.match(page,/method,headers:auth\(\),cache:'no-store'/);
+assert.match(page,/request\('POST','MisioFlix\/api\/nfo-collections\/sync'\)/);
+console.log('PASS nfo collections admin script v0.4.95');

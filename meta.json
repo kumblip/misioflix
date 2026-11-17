@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix v0.4.94: kompaktowa ramka licznika kolekcji bez pustej przestrzeni; zachowane lapki i poprawione testy CI",
+  "description": "MisioFlix v0.4.95: automatyczne tworzenie natywnych kolekcji Jellyfina z powtarzających się tagów <set> w movie.nfo/tvshow.nfo",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.94.0",
+  "version": "0.4.95.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,
