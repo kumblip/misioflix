@@ -25,6 +25,14 @@ public sealed class MisioFlixNfoCollectionsController : ControllerBase
         return Ok(_service.Status);
     }
 
+    [HttpGet("report")]
+    public IActionResult Report()
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(_service.Diagnostic);
+    }
+
     [HttpPost("sync")]
     public async Task<IActionResult> Sync(CancellationToken cancellationToken)
     {

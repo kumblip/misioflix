@@ -11,7 +11,7 @@ class NfoCollections096(unittest.TestCase):
         version=json.loads((ROOT/'meta.json').read_text())['version']
         proj=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text()
         self.assertIn('<AssemblyVersion>'+version+'</AssemblyVersion>',proj)
-        self.assertEqual(version,'0.4.96.0')
+        self.assertRegex(version, r'^0\.4\.\d+\.0$')
     def test_delete_removed_tag_but_only_prior_managed_membership(self):
         self.assertIn('ledger.ManagedMembers.ToArray()',SERVICE)
         self.assertIn('!current.Contains(id)',SERVICE)
@@ -26,12 +26,14 @@ class NfoCollections096(unittest.TestCase):
         self.assertIn('ledger.CreatedBoxSetIds.Remove',SERVICE)
         self.assertNotIn('Directory.Delete(',SERVICE)
     def test_never_prune_when_scan_is_unsafe(self):
-        self.assertIn('if (items.Count >= MaxMediaItems)',SERVICE)
+        self.assertIn('items.Length >= MaxMediaItems',SERVICE)
+        self.assertIn('movies.Count > MaxMediaItems',SERVICE)
+        self.assertIn('series.Count > MaxMediaItems',SERVICE)
         self.assertIn('canRemove = false;',SERVICE)
         self.assertIn('if (canRemove)',SERVICE)
         self.assertIn('!existingBox.LinkedChildrenLoaded',SERVICE)
         self.assertIn('if (!box.LinkedChildrenLoaded) continue;', SERVICE)
-        self.assertIn('File.Exists(preferred)',SERVICE)
+        self.assertIn('FindNfoIgnoringCase(directory, series ?',SERVICE)
         self.assertIn('DtdProcessing = DtdProcessing.Prohibit',SERVICE)
         self.assertIn('throw new InvalidDataException("Too many <set> tags")',SERVICE)
     def test_persistent_cached_state_and_atomic_file(self):

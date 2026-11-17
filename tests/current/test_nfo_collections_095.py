@@ -23,14 +23,15 @@ class NfoCollections095(unittest.TestCase):
         self.assertIn('box.ContainsLinkedChildByItemId(id)', SERVICE)
         self.assertIn('GroupBy(box =>', SERVICE)
         self.assertIn('StringComparer.OrdinalIgnoreCase', SERVICE)
-        self.assertIn('BaseItemKind.Movie, BaseItemKind.Series', SERVICE)
+        self.assertIn('IncludeItemTypes = new[] { BaseItemKind.Movie }', SERVICE)
+        self.assertIn('IncludeItemTypes = new[] { BaseItemKind.Series }', SERVICE)
         self.assertIn('BaseItemKind.BoxSet', SERVICE)
 
     def test_multiple_set_tags_and_no_guessed_string_collections(self):
         self.assertIn('root.Elements()', SERVICE)
         self.assertIn('e.Name.LocalName.Equals("set"', SERVICE)
         self.assertIn('Distinct(StringComparer.OrdinalIgnoreCase)', SERVICE)
-        self.assertIn('Path.Combine(directory, series ? "tvshow.nfo" : "movie.nfo")', SERVICE)
+        self.assertIn('FindNfoIgnoringCase(directory, series ? "tvshow.nfo" : "movie.nfo")', SERVICE)
         self.assertIn('Path.GetFileNameWithoutExtension(mediaPath) + ".nfo"', SERVICE)
         self.assertNotIn('GetProperty("Tag")', SERVICE)
 

@@ -47,7 +47,9 @@
     <span>Automatyczna synchronizacja po uruchomieniu Jellyfina i co 30 minut</span>
    </label>
    <button type="button" class="raised emby-button" id="mf-nfo-collections-sync">Synchronizuj kolekcje z NFO teraz</button>
+   <button type="button" class="raised emby-button" id="mf-nfo-collections-report">Pokaż raport filmów i seriali</button>
    <p id="mf-nfo-collections-status" role="status" aria-live="polite">Stan synchronizacji jest odczytywany z serwera.</p>
+   <pre id="mf-nfo-collections-report-text" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:440px;overflow-y:auto;background:rgba(0,0,0,.25);padding:12px;border-radius:8px" hidden></pre>
    <small>Jeśli liczba tagów &lt;set&gt; i &lt;sorttitle&gt; jest taka sama, odpowiadają sobie kolejnością wpisów. MisioFlix ustawia kolejność pozycji we własnych BoxSetach, bez nadpisywania globalnego SortName. Przy niepełnym mapowaniu nie zmienia kolejności.</small>
   </section>
   <hr style="margin:26px 0;border-color:#77526c" />
@@ -103,7 +105,7 @@
    const auth=()=>{
      const t=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
      if(!t)throw Error('Brak aktywnego tokenu Jellyfin.');
-     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.96", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
+     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.97", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
    };
    async function query(path,method='GET',payload=null){
     const h=auth();
@@ -305,11 +307,13 @@
    if(!panel || typeof panel.querySelector!=='function')return {activate(){}};
    const auto=panel.querySelector('#mf-nfo-collections-auto');
    const sync=panel.querySelector('#mf-nfo-collections-sync');
+   const report=panel.querySelector('#mf-nfo-collections-report');
+   const reportText=panel.querySelector('#mf-nfo-collections-report-text');
    const message=panel.querySelector('#mf-nfo-collections-status');
    const auth=()=>{
     const t=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
     if(!t)throw Error('Brak aktywnego tokenu Jellyfin.');
-    return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-nfo-collections", Version="0.4.96", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
+    return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-nfo-collections", Version="0.4.97", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
    };
    async function request(method,path){
     const url=typeof ApiClient?.getUrl==='function'?ApiClient.getUrl(path):'/'+path;
@@ -333,6 +337,44 @@
       ', ustawiona kolejność: '+(pick('reorderedCollections','ReorderedCollections')??0)+
       (pick('error','Error')?' — '+pick('error','Error'):'');
    }
+   async function showReport(){
+    report.disabled=true;
+    try{
+     const info=await request('GET','MisioFlix/api/nfo-collections/report');
+     reportText.hidden=false;
+     if(!info){reportText.textContent='Brak zakończonej synchronizacji. Najpierw użyj przycisku synchronizacji.';return;}
+     const field=(o,lower,upper)=>o?.[lower]??o?.[upper]??0;
+     const groups=field(info,'collections','Collections');
+     const lines=[
+      'Odczytano filmów: '+field(info,'moviesScanned','MoviesScanned')+', seriali: '+field(info,'seriesScanned','SeriesScanned'),
+      'Filmy z NFO: '+field(info,'moviesWithNfo','MoviesWithNfo')+
+      ', filmy z <set>: '+field(info,'moviesWithSet','MoviesWithSet')+
+      ', seriale z <set>: '+field(info,'seriesWithSet','SeriesWithSet'),
+      '', 'Kolekcje z brakującymi powiązaniami:'
+     ];
+     const missing=(Array.isArray(groups)?groups:[]).filter(c=>field(c,'missingMovieCount','MissingMovieCount')+field(c,'missingSeriesCount','MissingSeriesCount')>0);
+     if(!missing.length)lines.push('Brak brakujących powiązań wśród NFO rozpoznanych przez skaner.');
+     for(const c of missing.slice(0,60)){
+      lines.push(String(field(c,'name','Name'))+': oczekiwane filmy/seriale '+
+       field(c,'expectedMovies','ExpectedMovies')+'/'+field(c,'expectedSeries','ExpectedSeries')+
+       ', w Jellyfinie '+field(c,'actualMovies','ActualMovies')+'/'+field(c,'actualSeries','ActualSeries')+
+       ', brak filmów '+field(c,'missingMovieCount','MissingMovieCount'));
+      const names=field(c,'missingMovieNames','MissingMovieNames');
+      if(Array.isArray(names)&&names.length)lines.push('  Brakujące: '+names.join(', '));
+     }
+     for(const [label,lower,upper] of [
+      ['Filmy bez odnalezionego NFO','moviesWithoutNfoExamples','MoviesWithoutNfoExamples'],
+      ['Filmy z NFO bez <set>','moviesWithoutSetExamples','MoviesWithoutSetExamples'],
+      ['Filmy z uszkodzonym NFO','invalidMovieNfoExamples','InvalidMovieNfoExamples']
+     ]){
+      const rows=field(info,lower,upper);
+      lines.push('',label+': '+(Array.isArray(rows)&&rows.length?rows.join(', '):'brak w próbie'));
+     }
+     reportText.textContent=lines.join('\n');
+    }catch(error){reportText.hidden=false;reportText.textContent='Błąd raportu: '+error.message;}
+    finally{report.disabled=false;}
+   }
+   report.addEventListener('click',()=>{void showReport();});
    async function activate(){
     try{
      const config=await ApiClient.getPluginConfiguration(pluginId);
@@ -351,7 +393,7 @@
    });
    sync.addEventListener('click',async()=>{
     sync.disabled=true;message.textContent='Synchronizuję kolekcje na serwerze Jellyfin…';
-    try{show(await request('POST','MisioFlix/api/nfo-collections/sync'));}
+    try{show(await request('POST','MisioFlix/api/nfo-collections/sync'));await showReport();}
     catch(error){message.textContent='Nie udało się przeprowadzić synchronizacji: '+error.message;}
     finally{sync.disabled=false;}
    });

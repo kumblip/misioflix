@@ -36,6 +36,7 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
     private readonly SemaphoreSlim _runGate = new(1, 1);
     private readonly object _statusLock = new();
     private NfoCollectionSyncStatus _last = new(false, null, 0, 0, 0, 0, 0, null);
+    private NfoCollectionSyncDiagnostic? _lastDiagnostic;
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
 
     // Persisted after every successful mutating batch, not just at the end of a scan.
@@ -71,6 +72,13 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
     public NfoCollectionSyncStatus Status
     {
         get { lock (_statusLock) return _last; }
+    }
+
+    // Read-only, administrator-only diagnostic snapshot from the LAST sync.
+    // No file paths, credentials or NFO contents are exposed by the endpoint.
+    public NfoCollectionSyncDiagnostic? Diagnostic
+    {
+        get { lock (_statusLock) return _lastDiagnostic; }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -116,17 +124,38 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
             var desired = new Dictionary<string, HashSet<Guid>>(StringComparer.OrdinalIgnoreCase);
             var sortTitles = new Dictionary<string, Dictionary<Guid, string>>(StringComparer.OrdinalIgnoreCase);
             var scannedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var movieIds = new HashSet<Guid>();
+            var namesById = new Dictionary<Guid, string>();
+            var movieWithNfo = 0;
+            var movieWithSets = 0;
+            var seriesWithSets = 0;
+            var movieWithoutNfo = new List<string>();
+            var movieWithoutSets = new List<string>();
+            var invalidMovieNfo = new List<string>();
+            var managedItemIds = ledger.ManagedMembers.Values.SelectMany(ids => ids)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var items = _library.GetItemList(new InternalItemsQuery
+            // Query BOTH types independently. If a backend incorrectly handles
+            // combined item-type filters, neither movies nor series may disappear
+            // silently from the sync. The individual counts are in diagnostics.
+            var movies = _library.GetItemList(new InternalItemsQuery
             {
-                IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series },
-                Recursive = true,
-                Limit = MaxMediaItems + 1,
-                EnableTotalRecordCount = false
+                IncludeItemTypes = new[] { BaseItemKind.Movie },
+                Recursive = true, Limit = MaxMediaItems + 1, EnableTotalRecordCount = false
             });
+            var series = _library.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Series },
+                Recursive = true, Limit = MaxMediaItems + 1, EnableTotalRecordCount = false
+            });
+            var items = movies.Concat(series).DistinctBy(item => item.Id).ToArray();
             // NEVER infer deleted memberships from a truncated library query.
-            if (items.Count >= MaxMediaItems)
+            if (movies.Count > MaxMediaItems || series.Count > MaxMediaItems || items.Length >= MaxMediaItems)
                 throw new InvalidOperationException("Za duża lub niepełna biblioteka; przerwano bez usuwania kolekcji.");
+            // An unexpectedly empty film query must not empty existing film
+            // memberships. Could mean a library has not finished mounting.
+            if (movies.Count == 0 && managedItemIds.Count > 0)
+                canRemove = false;
 
             foreach (var item in items)
             {
@@ -134,17 +163,24 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
                 scanned++;
                 var id = item.Id.ToString("N");
                 scannedIds.Add(id);
-                var nfo = NfoPath(item.Path, item.GetBaseItemKind() == BaseItemKind.Series);
+                var isMovie = item.GetBaseItemKind() == BaseItemKind.Movie;
+                if (isMovie) movieIds.Add(item.Id);
+                namesById[item.Id] = item.Name ?? id;
+                var nfo = NfoPath(item.Path, !isMovie);
                 if (nfo is null)
                 {
-                    // A permanently missing NFO is equivalent to no <set>, but a
-                    // temporarily missing volume is NOT evidence that a tag vanished.
+                    // Never interpret a missing/unresolved NFO as evidence
+                    // that a previously registered <set> has been deleted.
+                    // A modified, valid NFO with no <set> IS evidence instead.
                     var mediaFolder = MediaDirectory(item.Path);
-                    if (mediaFolder is null || !Directory.Exists(mediaFolder)) canRemove = false;
-                    ledger.NfoCache.Remove(id);
+                    if (mediaFolder is null || !Directory.Exists(mediaFolder) ||
+                        ledger.NfoCache.ContainsKey(id) || managedItemIds.Contains(id)) canRemove = false;
+                    if (isMovie && movieWithoutNfo.Count < 20)
+                        movieWithoutNfo.Add(item.Name ?? id);
                     continue;
                 }
                 nfoFound++;
+                if (isMovie) movieWithNfo++;
                 NfoSnapshot info;
                 try
                 {
@@ -169,8 +205,16 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
                     canRemove = false;
                     _logger.LogWarning("MisioFlix skipped invalid/unavailable NFO for {ItemId}: {ErrorType}",
                         item.Id, ex.GetType().Name);
+                    if (isMovie && invalidMovieNfo.Count < 20)
+                        invalidMovieNfo.Add(item.Name ?? id);
                     continue;
                 }
+                if (isMovie)
+                {
+                    if (info.Sets.Count > 0) movieWithSets++;
+                    else if (movieWithoutSets.Count < 20) movieWithoutSets.Add(item.Name ?? id);
+                }
+                else if (info.Sets.Count > 0) seriesWithSets++;
                 foreach (var name in info.Sets)
                 {
                     if (!desired.TryGetValue(name, out var ids)) desired[name] = ids = new HashSet<Guid>();
@@ -242,6 +286,21 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
                         invalidNfo++;
                         _logger.LogWarning(ex, "MisioFlix failed to update BoxSet {Name}", entry.Key);
                     }
+                }
+            }
+
+            // Never run pruning if Jellyfin did not confirm all desired links.
+            // AddToCollectionAsync returning successfully is not proof that a
+            // collection's items are visible to its API/UI after the write.
+            foreach (var entry in desired)
+            {
+                if (!existing.TryGetValue(entry.Key, out var box)) continue;
+                var actualBox = _library.GetItemById(box.Id) as BoxSet ?? box;
+                if (!actualBox.LinkedChildrenLoaded ||
+                    entry.Value.Any(id => !actualBox.ContainsLinkedChildByItemId(id)))
+                {
+                    canRemove = false;
+                    _logger.LogWarning("MisioFlix: collection {Name} has NFO members missing from native BoxSet; skipping deletions", entry.Key);
                 }
             }
 
@@ -370,6 +429,45 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
                 }
             }
 
+            // Read back ACTUAL resolved Jellyfin BoxSet children. Counting NFO
+            // matches alone is insufficient: the native BoxSet page may still
+            // have no movie links, even when source tags were read successfully.
+            var groups = new List<NfoCollectionGroupDiagnostic>();
+            foreach (var entry in desired.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!existing.TryGetValue(entry.Key, out var box)) continue;
+                var expectedMovies = entry.Value.Count(movieIds.Contains);
+                var expectedSeries = entry.Value.Count - expectedMovies;
+                try
+                {
+                    var currentBox = _library.GetItemById(box.Id) as BoxSet ?? box;
+                    var resolved = currentBox.GetLinkedChildren();
+                    var resolvedIds = resolved.Select(item => item.Id).ToHashSet();
+                    var linkedMovies = resolved.Count(item => item.GetBaseItemKind() == BaseItemKind.Movie);
+                    var linkedSeries = resolved.Count(item => item.GetBaseItemKind() == BaseItemKind.Series);
+                    var missing = entry.Value.Where(id => !resolvedIds.Contains(id)).ToArray();
+                    var missingMovies = missing.Where(movieIds.Contains)
+                        .Select(id => namesById.TryGetValue(id, out var name) ? name : id.ToString("N"))
+                        .Take(16).ToArray();
+                    var missingSeries = missing.Count(id => !movieIds.Contains(id));
+                    groups.Add(new NfoCollectionGroupDiagnostic(entry.Key, expectedMovies, expectedSeries,
+                        linkedMovies, linkedSeries, missing.Count(movieIds.Contains), missingSeries, missingMovies));
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    canRemove = false;
+                    _logger.LogWarning(ex, "MisioFlix could not inspect native BoxSet {Id} for diagnostics", box.Id);
+                    groups.Add(new NfoCollectionGroupDiagnostic(entry.Key, expectedMovies, expectedSeries,
+                        0, 0, expectedMovies, expectedSeries, entry.Value.Where(movieIds.Contains)
+                            .Select(id => namesById.TryGetValue(id, out var name) ? name : id.ToString("N"))
+                            .Take(16).ToArray()));
+                }
+            }
+            var diagnostic = new NfoCollectionSyncDiagnostic(DateTimeOffset.UtcNow, movies.Count, series.Count,
+                movieWithNfo, movieWithSets, seriesWithSets, movieWithoutNfo.ToArray(),
+                movieWithoutSets.ToArray(), invalidMovieNfo.ToArray(), groups);
+            lock (_statusLock) _lastDiagnostic = diagnostic;
+
             foreach (var id in ledger.NfoCache.Keys.Where(id => !scannedIds.Contains(id)).ToArray())
                 ledger.NfoCache.Remove(id);
             if (fullParse && canRemove) ledger.LastFullParseUtc = DateTimeOffset.UtcNow;
@@ -466,13 +564,27 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
         if (string.IsNullOrWhiteSpace(directory)) return null;
         try
         {
-            var preferred = Path.Combine(directory, series ? "tvshow.nfo" : "movie.nfo");
-            if (File.Exists(preferred)) return preferred;
+            // Linux NAS uses case-sensitive filenames, while movie NFOs may
+            // have been generated on Windows (MOVIE.NFO, TvShow.nfo, etc.).
+            var preferred = FindNfoIgnoringCase(directory, series ? "tvshow.nfo" : "movie.nfo");
+            if (preferred is not null) return preferred;
             if (series) return null;
-            var filename = Path.Combine(directory, Path.GetFileNameWithoutExtension(mediaPath) + ".nfo");
-            return File.Exists(filename) ? filename : null;
+            return FindNfoIgnoringCase(directory, Path.GetFileNameWithoutExtension(mediaPath) + ".nfo");
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    private static string? FindNfoIgnoringCase(string directory, string filename)
+    {
+        var exact = Path.Combine(directory, filename);
+        if (File.Exists(exact)) return exact;
+        if (!Directory.Exists(directory)) return null;
+        // A single exact-name case-insensitive match is safe; never select an
+        // arbitrary unrelated NFO in a folder containing several movies.
+        var matches = Directory.EnumerateFiles(directory, "*", SearchOption.TopDirectoryOnly)
+            .Where(path => string.Equals(Path.GetFileName(path), filename, StringComparison.OrdinalIgnoreCase))
+            .Take(2).ToArray();
+        return matches.Length == 1 ? matches[0] : null;
     }
 
     internal static IReadOnlyList<string> ReadSetTags(string path) => ReadNfoSnapshot(path).Sets;
@@ -525,3 +637,17 @@ public sealed record NfoCollectionSyncStatus(
     int FoundNfo, int ReferencedCollections, int CreatedCollections,
     int AddedMemberships, string? Error,
     int RemovedMemberships = 0, int DeletedCollections = 0, int ReorderedCollections = 0);
+
+/// <summary>Admin-only, read-only summary of what the LAST scan found and what Jellyfin has linked.</summary>
+public sealed record NfoCollectionSyncDiagnostic(
+    DateTimeOffset LastScanUtc, int MoviesScanned, int SeriesScanned,
+    int MoviesWithNfo, int MoviesWithSet, int SeriesWithSet,
+    IReadOnlyList<string> MoviesWithoutNfoExamples,
+    IReadOnlyList<string> MoviesWithoutSetExamples,
+    IReadOnlyList<string> InvalidMovieNfoExamples,
+    IReadOnlyList<NfoCollectionGroupDiagnostic> Collections);
+
+public sealed record NfoCollectionGroupDiagnostic(
+    string Name, int ExpectedMovies, int ExpectedSeries,
+    int ActualMovies, int ActualSeries, int MissingMovieCount,
+    int MissingSeriesCount, IReadOnlyList<string> MissingMovieNames);
