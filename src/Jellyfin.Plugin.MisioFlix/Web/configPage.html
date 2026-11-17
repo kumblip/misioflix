@@ -53,6 +53,14 @@
    <small>Jeśli liczba tagów &lt;set&gt; i &lt;sorttitle&gt; jest taka sama, odpowiadają sobie kolejnością wpisów. MisioFlix ustawia kolejność pozycji we własnych BoxSetach, bez nadpisywania globalnego SortName. Przy niepełnym mapowaniu nie zmienia kolejności.</small>
   </section>
   <hr style="margin:26px 0;border-color:#77526c" />
+  <section id="mf-native-cover-panel" aria-labelledby="mf-native-cover-heading" style="padding:12px 0 22px">
+   <h2 id="mf-native-cover-heading">Stałe okładki kolekcji Jellyfina</h2>
+   <p>Jeżeli BoxSet nie ma własnej okładki Primary, MisioFlix może połączyć 1–4 plakaty jego filmów i seriali w <strong>jeden obraz JPEG</strong> i zapisać go w Jellyfinie jako natywną okładkę kolekcji. Dzięki temu plakat pozostaje widoczny po przejściu między bibliotekami i w zwykłym Jellyfinie. <strong>Istniejące okładki nigdy nie są nadpisywane</strong>; wtyczka nie zmienia NFO ani plików wideo.</p>
+   <p>To osobne działanie administratora, nie automatyczna synchronizacja. Po późniejszym dodaniu filmów gotowa okładka pozostaje bez zmian; można ją ręcznie zmienić lub usunąć w edytorze obrazów Jellyfina.</p>
+   <button type="button" class="raised emby-button" id="mf-native-cover-generate">Wygeneruj i zapisz brakujące okładki kolekcji</button>
+   <p id="mf-native-cover-status" role="status" aria-live="polite">Nie uruchomiono generowania okładek.</p>
+  </section>
+  <hr style="margin:26px 0;border-color:#77526c" />
   <section id="mf-updates-panel" aria-labelledby="mf-updates-heading" style="padding:12px 0 22px">
    <h2 id="mf-updates-heading">Aktualizacje MisioFlix</h2>
    <p>Porównanie GitHub Release, manifestu i katalogu Jellyfina. Wymuszenie zapisuje w Jellyfinie adres zweryfikowanego manifestu konkretnej rewizji GitHuba; nie instaluje pakietów ani nie zastępuje DLL.</p>
@@ -105,7 +113,7 @@
    const auth=()=>{
      const t=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
      if(!t)throw Error('Brak aktywnego tokenu Jellyfin.');
-     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.98", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
+     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.99", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
    };
    async function query(path,method='GET',payload=null){
     const h=auth();
@@ -313,7 +321,7 @@
    const auth=()=>{
     const t=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
     if(!t)throw Error('Brak aktywnego tokenu Jellyfin.');
-    return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-nfo-collections", Version="0.4.98", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
+    return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-nfo-collections", Version="0.4.99", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
    };
    async function request(method,path){
     const url=typeof ApiClient?.getUrl==='function'?ApiClient.getUrl(path):'/'+path;
@@ -398,6 +406,166 @@
     finally{sync.disabled=false;}
    });
    return {activate};
+  })();
+
+  // v0.4.99: Explicit admin-only generation of real native BoxSet Primary posters.
+  // Separate from NFO reconciliation. Uses Jellyfin's own protected Image API;
+  // never touches media files, NFO, or an already existing collection poster.
+  const permanentCollectionPosters=(()=>{
+   const panel=view.querySelector('#mf-native-cover-panel');
+   if(!panel || typeof panel.querySelector!=='function')return {activate(){}};
+   const button=panel.querySelector('#mf-native-cover-generate');
+   const status=panel.querySelector('#mf-native-cover-status');
+   if(!button||!status)return {activate(){}};
+   let active=false;
+   const guid=value=>{
+    const id=String(value||'').replace(/-/g,'').toLowerCase();
+    return /^[0-9a-f]{32}$/.test(id)?id:'';
+   };
+   const url=path=>typeof ApiClient?.getUrl==='function'?ApiClient.getUrl(path):'/'+path;
+   function auth(){
+    const token=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
+    if(typeof token!=='string'||!token)throw Error('Zaloguj się jako administrator Jellyfina.');
+    return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-primary-posters", Version="0.4.99", Token="'+token.replace(/["\r\n]/g,'')+'"'};
+   }
+   async function request(path,options={}){
+    const response=await fetch(url(path),{cache:'no-store',headers:auth(),...options});
+    if(!response.ok)throw Error('HTTP '+response.status+' przy '+String(path).split('?')[0]);
+    return response;
+   }
+   async function json(path){return await (await request(path)).json();}
+   async function currentUser(){
+    let uid=guid(typeof ApiClient?.getCurrentUserId==='function'?ApiClient.getCurrentUserId():'');
+    if(!uid && typeof ApiClient?.getCurrentUser==='function')uid=guid((await ApiClient.getCurrentUser())?.Id);
+    if(!uid)throw Error('Nie można ustalić zalogowanego użytkownika Jellyfina.');
+    return uid;
+   }
+   async function listCollections(uid){
+    const seen=new Map(),limit=80;
+    for(let start=0;start<4000;start+=limit){
+     const query=new URLSearchParams({IncludeItemTypes:'BoxSet',Recursive:'true',
+      CollapseBoxSetItems:'false',EnableImages:'true',StartIndex:String(start),Limit:String(limit)});
+     const result=await json('Users/'+uid+'/Items?'+query);
+     const list=Array.isArray(result?.Items)?result.Items:[];
+     for(const item of list){
+      const id=guid(item?.Id);
+      if(id && String(item?.Type)==='BoxSet')seen.set(id,item);
+     }
+     const total=Number(result?.TotalRecordCount);
+     if(list.length<limit || (Number.isFinite(total)&&start+list.length>=total))return [...seen.values()];
+    }
+    throw Error('Zbyt wiele kolekcji. Przerwano, aby nie przetworzyć niepełnej listy.');
+   }
+   async function hasNativePoster(id){
+    // Authoritative check: ImageTags from collection lists can be stale.
+    const infos=await json('Items/'+id+'/Images');
+    if(!Array.isArray(infos))throw Error('Niekompletne informacje o grafikach kolekcji.');
+    return infos.some(image=>String(image?.ImageType||image?.Type||'').toLowerCase()==='primary');
+   }
+   async function listPosters(uid,id){
+    const query=new URLSearchParams({ParentId:id,Recursive:'false',StartIndex:'0',Limit:'60',
+     EnableImages:'true',ImageTypeLimit:'1',EnableUserData:'false'});
+    const result=await json('Users/'+uid+'/Items?'+query);
+    if(!Array.isArray(result?.Items))throw Error('Niekompletna lista członków kolekcji.');
+    return result.Items.filter(x=>['Movie','Series'].includes(String(x?.Type)) && guid(x?.Id) && x?.ImageTags?.Primary)
+     .slice(0,4).map(x=>guid(x.Id));
+   }
+   async function posterBitmap(id){
+    const response=await request('Items/'+id+'/Images/Primary?maxHeight=750&quality=88');
+    const blob=await response.blob();
+    if(!blob.type.startsWith('image/'))throw Error('Nieobsługiwany format obrazu.');
+    if(typeof createImageBitmap==='function')return await createImageBitmap(blob);
+    // Older WebKit: decode a same-origin Blob before drawing, avoiding CORS-taint.
+    return await new Promise((resolve,reject)=>{
+     const objectUrl=URL.createObjectURL(blob);
+     const image=new Image();
+     image.onload=()=>{URL.revokeObjectURL(objectUrl);resolve(image);};
+     image.onerror=()=>{URL.revokeObjectURL(objectUrl);reject(Error('Nie można wczytać plakatu.'));};
+     image.src=objectUrl;
+    });
+   }
+   function drawCover(context,image,x,y,w,h){
+    const iw=Number(image.naturalWidth||image.width),ih=Number(image.naturalHeight||image.height);
+    if(!iw||!ih)throw Error('Plakat nie ma poprawnych wymiarów.');
+    const scale=Math.max(w/iw,h/ih),dw=iw*scale,dh=ih*scale;
+    context.drawImage(image,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+   }
+   function renderCollage(images){
+    const canvas=document.createElement('canvas');
+    canvas.width=840;canvas.height=1260;
+    const ctx=canvas.getContext('2d',{alpha:false});
+    if(!ctx)throw Error('Przeglądarka nie udostępnia tworzenia obrazów Canvas.');
+    ctx.fillStyle='#241728';ctx.fillRect(0,0,840,1260);
+    const g=5,W=840,H=1260,m=Math.floor((W-g)/2),n=Math.floor((H-g)/2);
+    const cells=images.length===1?[[0,0,W,H]]:
+     images.length===2?[[0,0,m,H],[m+g,0,W-m-g,H]]:
+     images.length===3?[[0,0,m,H],[m+g,0,W-m-g,n],[m+g,n+g,W-m-g,H-n-g]]:
+     [[0,0,m,n],[m+g,0,W-m-g,n],[0,n+g,m,H-n-g],[m+g,n+g,W-m-g,H-n-g]];
+    for(let i=0;i<images.length;i++)drawCover(ctx,images[i],...cells[i]);
+    return canvas.toDataURL('image/jpeg',0.89).split(',')[1];
+   }
+   async function buildPoster(ids){
+    const bitmaps=[];
+    try{
+     for(const id of ids){
+      try{bitmaps.push(await posterBitmap(id));}catch(_){/* Other posters can still make a full collage. */}
+     }
+     if(!bitmaps.length)return '';
+     return renderCollage(bitmaps);
+    }finally{
+     for(const bitmap of bitmaps){if(typeof bitmap.close==='function')bitmap.close();}
+    }
+   }
+   async function run(){
+    if(active)return;
+    active=true;button.disabled=true;
+    let created=0,already=0,empty=0,errors=[];
+    try{
+     const uid=await currentUser();
+     status.textContent='Sprawdzam kolekcje i obecność okładek w Jellyfinie…';
+     const items=await listCollections(uid);
+     if(!items.length){status.textContent='Nie znaleziono dostępnych kolekcji Jellyfina.';return;}
+     const missing=[];
+     for(const item of items){
+      const id=guid(item.Id);
+      try{if(await hasNativePoster(id))already++;else missing.push(item);}catch(e){errors.push(String(item.Name||id)+': '+e.message);}
+     }
+     if(!missing.length){status.textContent='Każda sprawdzona kolekcja ma już okładkę.'+(errors.length?' Błędy odczytu: '+errors.length+'.':'');return;}
+     if(!window.confirm('MisioFlix znalazł '+missing.length+' kolekcji bez okładki Primary.\n\n'+
+       'Wygenerować dla nich po jednym stałym plakacie i zapisać w Jellyfinie?\n'+
+       'Plakaty istniejących kolekcji pozostaną bez zmian.')){
+      status.textContent='Anulowano. Nie przesłano żadnych grafik.';return;
+     }
+     for(let i=0;i<missing.length;i++){
+      const item=missing[i],id=guid(item.Id),name=String(item.Name||id);
+      status.textContent='Tworzę okładki: '+(i+1)+'/'+missing.length+' — '+name+
+       '. Zapisane: '+created+', pominięte: '+(already+empty)+', błędy: '+errors.length+'.';
+      try{
+       // A freshly added manual poster takes precedence, even mid-operation.
+       if(await hasNativePoster(id)){already++;continue;}
+       const actual=await json('Users/'+uid+'/Items/'+id);
+       if(actual?.Type!=='BoxSet')throw Error('Pozycja nie jest kolekcją BoxSet.');
+       const ids=await listPosters(uid,id);
+       if(!ids.length){empty++;continue;}
+       const data=await buildPoster(ids);
+       if(!data){empty++;continue;}
+       if(await hasNativePoster(id)){already++;continue;}
+       // Jellyfin 12.4 expects a base64 BODY, *not* binary or multipart.
+       await request('Items/'+id+'/Images/Primary',{method:'POST',
+        headers:{...auth(),'Content-Type':'image/jpeg'},body:data});
+       if(!await hasNativePoster(id))throw Error('Jellyfin nie potwierdził zapisu grafiki Primary.');
+       created++;
+      }catch(e){errors.push(name+': '+e.message);}
+     }
+     status.textContent='Zakończono. Zapisane nowe okładki: '+created+
+      '; istniejące pozostawione: '+already+'; bez dostępnych plakatów: '+empty+
+      '; błędy: '+errors.length+(errors.length?' (przykłady: '+errors.slice(0,3).join(' | ')+')':'')+
+      '. Odśwież stronę główną, aby zobaczyć nowe natywne obrazy.';
+    }catch(e){status.textContent='Generowanie przerwane: '+e.message;}
+    finally{active=false;button.disabled=false;}
+   }
+   button.addEventListener('click',()=>{void run();});
+   return {activate(){/* No automatic write or background operation. */}};
   })();
 
   view.addEventListener('pageshow',async()=>{
