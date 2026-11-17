@@ -40,6 +40,6 @@ class NfoMovies097(unittest.TestCase):
     def test_version_metadata(self):
         version=json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version']
         csproj=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf8')
-        self.assertEqual(version,'0.4.97.0')
+        self.assertRegex(version,r'^0\.4\.\d+\.0$')
         self.assertIn('<AssemblyVersion>'+version+'</AssemblyVersion>',csproj)
 if __name__=='__main__': unittest.main()

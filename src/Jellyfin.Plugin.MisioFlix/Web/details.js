@@ -356,6 +356,52 @@
     const response = await fetch(url, {headers:headers(),cache:'no-store'});
     return response.ok ? response.json() : null;
   }
+  // v0.4.98: BoxSet poster preview is display-only. It does not upload an
+  // image, modify a BoxSet or move any Jellyfin-owned DOM node.
+  async function showCollectionDetailPreview(page,item,id,serial){
+    if(String(item?.Type)!=='BoxSet' || item?.ImageTags?.Primary || item?.PrimaryImageTag)return;
+    const uid=userId(),activeToken=token();
+    if(!valid(uid)||!activeToken || !valid(id))return;
+    const container=page.querySelector('.detailPagePrimaryContainer > .detailImageContainer');
+    const host=container?.querySelector('.cardImageContainer')||container;
+    if(!host || host.querySelector(':scope > .mf-detail-collection-preview'))return;
+    const query=new URLSearchParams({ParentId:id,Recursive:'false',StartIndex:'0',Limit:'32',
+      EnableImages:'true',ImageTypeLimit:'1',EnableUserData:'false'});
+    const api=client();
+    const relative='Users/'+compact(uid)+'/Items?'+query;
+    const url=typeof api?.getUrl==='function'?api.getUrl(relative):'/'+relative;
+    const controller=new AbortController();
+    const timeout=window.setTimeout(()=>controller.abort(),15000);
+    try{
+      const response=await fetch(url,{headers:headers(),signal:controller.signal});
+      if(!response.ok)return;
+      const data=await response.json();
+      if(serial!==generation || itemRoute()!==id || !page.isConnected || token()!==activeToken)return;
+      const ids=(Array.isArray(data.Items)?data.Items:[])
+        .filter(row=>valid(row?.Id)&&row?.ImageTags?.Primary)
+        .slice(0,4).map(row=>compact(row.Id));
+      if(!ids.length)return;
+      const poster=create('div','mf-detail-collection-preview');
+      poster.setAttribute('aria-hidden','true');
+      ids.forEach(childId=>{
+        const img=create('img');
+        img.loading='lazy';img.decoding='async';img.alt='';
+        img.src='/Items/'+encodeURIComponent(childId)+'/Images/Primary?maxHeight=480&quality=82';
+        img.addEventListener('error',()=>{
+          img.remove();
+          if(!poster.childElementCount){
+            poster.remove();host.classList.remove('mf-detail-collection-preview-host');
+          }else poster.dataset.count=String(poster.childElementCount);
+        },{once:true});
+        poster.append(img);
+      });
+      poster.dataset.count=String(poster.childElementCount);
+      host.classList.add('mf-detail-collection-preview-host');
+      host.append(poster);
+    }catch{
+      // Native placeholder remains on network or authorization failures.
+    }finally{window.clearTimeout(timeout);}
+  }
   async function firstEpisode(seriesId, seasonId = '') {
     const uid = userId();
     if (!valid(uid) || !valid(seriesId) || !token()) return null;
@@ -427,8 +473,12 @@
     void syncAnimeDetailsControls(page,item,itemId,serial);
     if (type && !['Movie','Episode','Series','Season'].includes(type)) {
       restoreLayout(page);
-      // A collection is otherwise untouched; change ONLY its title font size.
-      if (type==='BoxSet') page.classList.add('mf-detail-collection-title-small');
+      // A collection is otherwise untouched except for its title and a
+      // read-only visual preview if Jellyfin has no native Primary image.
+      if (type==='BoxSet'){
+        page.classList.add('mf-detail-collection-title-small');
+        void showCollectionDetailPreview(page,item,itemId,serial);
+      }
       return;
     }
     if (type==='Movie' || type==='Episode') {
@@ -542,6 +592,10 @@
     page.querySelector('.mf-detail-poster-rail')?.remove();
     page.querySelector('.mf-detail-cast-button')?.remove();
     page.querySelector('.mf-detail-cast-panel')?.remove();
+    for(const collage of page.querySelectorAll('.mf-detail-collection-preview')){
+      collage.parentElement?.classList.remove('mf-detail-collection-preview-host');
+      collage.remove();
+    }
     clearAnimeSeasonControls(page);
     const wrapper=page.querySelector('.detailPageWrapperContainer');
     wrapper?.classList.remove('mf-detail-grid');

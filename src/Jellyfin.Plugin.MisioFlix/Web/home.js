@@ -22,6 +22,12 @@
   let processedGenreLink = '';
   const catalogCache = new Map();
   const rows = new Map();
+  // User-isolated preview data, scoped to this browser session. No Jellyfin writes.
+  const homeCollectionPreviewCache = new Map();
+  const homeCollectionPreviewLoading = new Set();
+  const homeCollectionPreviewQueue = [];
+  let homeCollectionPreviewActive = 0;
+  let homeCollectionPreviewObserver = null;
   const own = (t, cls, value) => {
     const e = document.createElement(t);
     if (cls) e.className = cls;
@@ -36,6 +42,11 @@
     const api = window.ApiClient || window.ConnectionManager?.getApiClient?.();
     const token = api ? (typeof api.accessToken === 'function' ? api.accessToken() : api.accessToken) : '';
     return typeof token === 'string' ? token : '';
+  };
+  const currentUserId = () => {
+    const api = window.ApiClient || window.ConnectionManager?.getApiClient?.();
+    const id = api && typeof api.getCurrentUserId === 'function' ? api.getCurrentUserId() : '';
+    return validId(id) ? compactId(id) : '';
   };
   // The actual Jellyfin 12.4 Favorites header is href="#/home?tab=1".
   // Only tab=0 (or the default home route) may receive our custom shelves.
@@ -184,6 +195,113 @@
       ? `/Items/${compactId(item.id)}/Images/Primary?maxHeight=480&quality=84`
       : '';
   }
+  function ensureHomeCollectionPreviewObserver(){
+    if(homeCollectionPreviewObserver || typeof IntersectionObserver!=='function')return;
+    homeCollectionPreviewObserver=new IntersectionObserver(entries=>{
+      for(const entry of entries){
+        if(!entry.isIntersecting)continue;
+        homeCollectionPreviewObserver.unobserve(entry.target);
+        const link=entry.target;
+        const id=link?.dataset?.mfCollectionPreviewId||'';
+        if(validId(id))enqueueHomeCollectionPreview(link,id);
+      }
+    },{rootMargin:'180px 0px',threshold:0.01});
+  }
+  function collectionPreviewKey(id){
+    const uid=currentUserId();
+    return validId(uid) && validId(id) ? uid+':'+compactId(id) : '';
+  }
+  function queueHomeCollectionPreview(link,id){
+    if(!link || !validId(id))return;
+    link.dataset.mfCollectionPreviewId=compactId(id);
+    const cached=homeCollectionPreviewCache.get(collectionPreviewKey(id));
+    if(cached && Array.isArray(cached.ids) && cached.expires>Date.now()){
+      paintHomeCollectionPreview(link,cached.ids);return;
+    }
+    if(cached && cached.ids===null && cached.expires>Date.now())return;
+    ensureHomeCollectionPreviewObserver();
+    if(homeCollectionPreviewObserver)homeCollectionPreviewObserver.observe(link);
+    else window.setTimeout(()=>enqueueHomeCollectionPreview(link,id),0);
+  }
+  function enqueueHomeCollectionPreview(link,id){
+    const key=collectionPreviewKey(id);
+    if(!key || homeCollectionPreviewLoading.has(key))return;
+    homeCollectionPreviewLoading.add(key);
+    homeCollectionPreviewQueue.push({link,id:compactId(id),key});
+    drainHomeCollectionPreviewQueue();
+  }
+  function drainHomeCollectionPreviewQueue(){
+    // Avoid a burst of requests when many BoxSets enter view together.
+    while(homeCollectionPreviewActive<3 && homeCollectionPreviewQueue.length){
+      const task=homeCollectionPreviewQueue.shift();
+      homeCollectionPreviewActive++;
+      void loadHomeCollectionPreview(task).finally(()=>{
+        homeCollectionPreviewActive--;
+        homeCollectionPreviewLoading.delete(task.key);
+        drainHomeCollectionPreviewQueue();
+      });
+    }
+  }
+  async function loadHomeCollectionPreview({link,id,key}){
+    const uid=currentUserId();
+    const activeToken=currentToken();
+    if(!validId(uid)||!activeToken||!link?.isConnected||
+       link.dataset.mfCollectionPreviewId!==id||key!==uid+':'+id)return;
+    const cached=homeCollectionPreviewCache.get(key);
+    if(cached && cached.expires>Date.now()){
+      if(Array.isArray(cached.ids))paintHomeCollectionPreview(link,cached.ids);
+      return;
+    }
+    const api=window.ApiClient||window.ConnectionManager?.getApiClient?.();
+    const query=new URLSearchParams({ParentId:id,Recursive:'false',StartIndex:'0',Limit:'32',
+      EnableImages:'true',ImageTypeLimit:'1',EnableUserData:'false'});
+    const relative='Users/'+encodeURIComponent(uid)+'/Items?'+query;
+    const url=typeof api?.getUrl==='function'?api.getUrl(relative):'/'+relative;
+    const controller=new AbortController();
+    const timeout=window.setTimeout(()=>controller.abort(),15000);
+    try{
+      const response=await fetch(url,{signal:controller.signal,
+        headers:{Authorization:`MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home-collections", Version="0.4.98", Token="${activeToken.replace(/["\r\n]/g,'')}"`}});
+      if(!response.ok)return;
+      const data=await response.json();
+      const ids=(Array.isArray(data.Items)?data.Items:[])
+        .filter(item=>validId(item?.Id)&&item?.ImageTags?.Primary)
+        .slice(0,4).map(item=>compactId(item.Id));
+      // Short TTL: a newly added child/poster should eventually be picked up.
+      homeCollectionPreviewCache.set(key,{ids:ids.length?ids:null,expires:Date.now()+(ids.length?300000:60000)});
+      if(ids.length && currentUserId()===uid && currentToken()===activeToken){
+        // A collection can appear in both the shelf and the directory. Update
+        // all mounted instances, not only the card that initiated the request.
+        for(const node of homeRoot?.querySelectorAll('[data-mf-collection-preview-id="'+id+'"]')||[])
+          paintHomeCollectionPreview(node,ids);
+      }
+    }catch{
+      // Read-only decoration: keep the existing placeholder on any API failure.
+    }finally{window.clearTimeout(timeout);}
+  }
+  function paintHomeCollectionPreview(link,ids){
+    if(!Array.isArray(ids)||!ids.length||!link?.isConnected)return;
+    if(link.querySelector(':scope > .mf-home-cover')||link.querySelector(':scope > .mf-home-collection-preview'))return;
+    const grid=own('div','mf-home-collection-preview');
+    grid.setAttribute('aria-hidden','true');
+    for(const id of ids){
+      const img=own('img','');
+      img.loading='lazy';img.decoding='async';img.alt='';
+      img.src='/Items/'+encodeURIComponent(id)+'/Images/Primary?maxHeight=480&quality=82';
+      img.addEventListener('error',()=>{
+        img.remove();
+        if(!grid.childElementCount){
+          grid.remove();link.classList.remove('mf-home-has-preview');
+          link.classList.add('mf-home-no-cover');
+        }else grid.dataset.count=String(grid.childElementCount);
+      },{once:true});
+      grid.appendChild(img);
+    }
+    grid.dataset.count=String(grid.childElementCount);
+    link.insertBefore(grid,link.firstChild);
+    link.classList.add('mf-home-has-preview');
+    link.classList.remove('mf-home-no-cover');
+  }
   function badge(parent, content, cls){
     const b=own('span',cls,content);
     parent.appendChild(b);
@@ -202,9 +320,16 @@
       img.setAttribute('loading','lazy');
       img.setAttribute('decoding','async');
       img.src=imgUrl;
-      img.addEventListener('error',()=>{img.remove(); link.classList.add('mf-home-no-cover');},{once:true});
+      img.addEventListener('error',()=>{
+        img.remove();
+        link.classList.add('mf-home-no-cover');
+        if(item.type==='BoxSet' && validId(item.id))queueHomeCollectionPreview(link,item.id);
+      },{once:true});
       link.appendChild(img);
-    }else link.classList.add('mf-home-no-cover');
+    }else{
+      link.classList.add('mf-home-no-cover');
+      if(item.type==='BoxSet' && validId(item.id))queueHomeCollectionPreview(link,item.id);
+    }
     const left=own('div','mf-home-top-left');
     badge(left,item.type==='BoxSet'?'KOLEKCJA':item.anime?'ANIME':item.type==='Movie'?'FILM':'SERIAL','mf-home-kind');
     if(item.year)badge(left,String(item.year).slice(0,14),'mf-home-year'+(nonAnimeMedia?' mf-simkl-media-year':''));
