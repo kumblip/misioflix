@@ -28,17 +28,18 @@ class NfoCollections095(unittest.TestCase):
 
     def test_multiple_set_tags_and_no_guessed_string_collections(self):
         self.assertIn('root.Elements()', SERVICE)
-        self.assertIn('element.Name.LocalName.Equals("set"', SERVICE)
+        self.assertIn('e.Name.LocalName.Equals("set"', SERVICE)
         self.assertIn('Distinct(StringComparer.OrdinalIgnoreCase)', SERVICE)
         self.assertIn('Path.Combine(directory, series ? "tvshow.nfo" : "movie.nfo")', SERVICE)
         self.assertIn('Path.GetFileNameWithoutExtension(mediaPath) + ".nfo"', SERVICE)
         self.assertNotIn('GetProperty("Tag")', SERVICE)
 
-    def test_readonly_nfo_and_no_deleting_existing_collection_links(self):
-        for prohibited in ('File.WriteAllText(', 'File.Delete(', 'Directory.Delete(',
-                           '_collections.RemoveFromCollectionAsync(', 'DeleteCollectionAsync(',
+    def test_readonly_nfo_and_guarded_deletions(self):
+        for prohibited in ('File.WriteAllText(', 'Directory.Delete(', 'DeleteCollectionAsync(',
                            'SortName =', 'SetSortName('):
             self.assertNotIn(prohibited, SERVICE)
+        self.assertIn('RemoveFromCollectionAsync(boxId, actual)', SERVICE)
+        self.assertIn('ledger.CreatedBoxSetIds.Contains(box.Id.ToString("N"))', SERVICE)
         self.assertIn('XmlResolver = null', SERVICE)
         self.assertIn('DtdProcessing = DtdProcessing.Prohibit', SERVICE)
         self.assertIn('MaxCharactersInDocument = 2_000_000', SERVICE)

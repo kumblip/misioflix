@@ -39,15 +39,16 @@
   <section id="mf-nfo-collections-panel" aria-labelledby="mf-nfo-collections-heading" style="padding:12px 0 20px">
    <h2 id="mf-nfo-collections-heading">Kolekcje Jellyfina z plików NFO</h2>
    <p>MisioFlix odczytuje powtarzające się tagi <code>&lt;set&gt;</code> z <code>movie.nfo</code> i <code>tvshow.nfo</code>.
-      Tworzy rzeczywiste kolekcje Jellyfina i dodaje do istniejących tylko brakujące filmy i seriale.
-      Synchronizacja jest <strong>dodająca</strong> — niczego nie usuwa, nie zmienia plików NFO ani nie zmienia istniejącej kolejności sortowania.</p>
+      Tworzy rzeczywiste kolekcje Jellyfina, dodaje brakujące filmy i seriale oraz usuwa nieaktualne powiązania po usunięciu tagu.
+      Puste kolekcje utworzone przez MisioFlix są usuwane. Ręcznie utworzone kolekcje i powiązania spoza NFO pozostają nienaruszone.
+      Przy uszkodzonym NFO lub niedostępnym dysku usuwanie jest blokowane. MisioFlix nie zmienia NFO ani filmów.</p>
    <label class="inputContainer" style="display:flex;align-items:center;gap:10px;cursor:pointer">
     <input type="checkbox" id="mf-nfo-collections-auto" checked />
     <span>Automatyczna synchronizacja po uruchomieniu Jellyfina i co 30 minut</span>
    </label>
    <button type="button" class="raised emby-button" id="mf-nfo-collections-sync">Synchronizuj kolekcje z NFO teraz</button>
    <p id="mf-nfo-collections-status" role="status" aria-live="polite">Stan synchronizacji jest odczytywany z serwera.</p>
-   <small>Jeden plik NFO może mieć wiele tagów &lt;set&gt;. Sorttitle jest globalną właściwością produkcji w Jellyfinie — nie osobną kolejnością dla każdej kolekcji.</small>
+   <small>Jeśli liczba tagów &lt;set&gt; i &lt;sorttitle&gt; jest taka sama, odpowiadają sobie kolejnością wpisów. MisioFlix ustawia kolejność pozycji we własnych BoxSetach, bez nadpisywania globalnego SortName. Przy niepełnym mapowaniu nie zmienia kolejności.</small>
   </section>
   <hr style="margin:26px 0;border-color:#77526c" />
   <section id="mf-updates-panel" aria-labelledby="mf-updates-heading" style="padding:12px 0 22px">
@@ -102,7 +103,7 @@
    const auth=()=>{
      const t=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
      if(!t)throw Error('Brak aktywnego tokenu Jellyfin.');
-     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.95", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
+     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-updates", Version="0.4.96", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
    };
    async function query(path,method='GET',payload=null){
     const h=auth();
@@ -308,7 +309,7 @@
    const auth=()=>{
     const t=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
     if(!t)throw Error('Brak aktywnego tokenu Jellyfin.');
-    return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-nfo-collections", Version="0.4.95", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
+    return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-nfo-collections", Version="0.4.96", Token="'+String(t).replace(/["\r\n]/g,'')+'"'};
    };
    async function request(method,path){
     const url=typeof ApiClient?.getUrl==='function'?ApiClient.getUrl(path):'/'+path;
@@ -327,6 +328,9 @@
       ', kolekcje NFO: '+(pick('referencedCollections','ReferencedCollections')??0)+
       ', nowe kolekcje: '+(pick('createdCollections','CreatedCollections')??0)+
       ', dodane pozycje: '+(pick('addedMemberships','AddedMemberships')??0)+
+      ', usunięte powiązania: '+(pick('removedMemberships','RemovedMemberships')??0)+
+      ', usunięte puste kolekcje: '+(pick('deletedCollections','DeletedCollections')??0)+
+      ', ustawiona kolejność: '+(pick('reorderedCollections','ReorderedCollections')??0)+
       (pick('error','Error')?' — '+pick('error','Error'):'');
    }
    async function activate(){

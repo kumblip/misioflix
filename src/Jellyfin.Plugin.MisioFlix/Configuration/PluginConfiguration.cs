@@ -8,7 +8,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public bool Enabled { get; set; } = true;
     // Only CHECK for updates every 15 minutes. Installation always requires admin action.
     public bool AutoCheckUpdates { get; set; } = true;
-    // Add missing native Jellyfin BoxSet memberships based on <set> in movie/tvshow NFO.
+    // Synchronize native Jellyfin BoxSets bidirectionally from <set> tags; prune only tracked links.
     public bool AutoSyncNfoCollections { get; set; } = true;
     // Register this callback URL in the MAL API application. Never commit credentials.
     public string MalClientId { get; set; } = string.Empty;
