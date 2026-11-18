@@ -21,6 +21,84 @@
   let discoveryRefs = null;
   let processedGenreLink = '';
   const catalogCache = new Map();
+  // v0.4.100: search-only snapshots; never persist authorization tokens.
+  // Database keys include Jellyfin server, authenticated user and catalog schema.
+  const catalogFetchedAt = new Map();
+  const catalogRequests = new Map();
+  const SEARCH_CATALOG_FRESH_MS = 90000;
+  const SEARCH_CATALOG_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+  const SEARCH_CATALOG_DB = 'misioflix-search-catalog-v1';
+  let catalogDatabasePromise = null;
+  const catalogSchemaVersion = 'v1'; // Increment only when catalogue DTO semantics change.
+  function catalogScope(){
+    const client = window.ApiClient || window.ConnectionManager?.getApiClient?.();
+    const userId = client?.getCurrentUserId?.();
+    const serverId = typeof client?.serverId === 'function' ? client.serverId() : client?.serverId;
+    return currentToken() && validId(userId) && validId(serverId)
+      ? compactId(serverId) + ':' + compactId(userId) + ':' + catalogSchemaVersion : '';
+  }
+  function catalogFullKey(libraryId){
+    const scope = catalogScope();
+    const lib = validId(libraryId) ? compactId(libraryId) : 'all';
+    return scope ? scope + ':' + lib : '';
+  }
+  function openCatalogDatabase(){
+    if(!('indexedDB' in window))return Promise.resolve(null);
+    if(catalogDatabasePromise)return catalogDatabasePromise;
+    catalogDatabasePromise = new Promise(resolve => {
+      try{
+        const attempt = window.indexedDB.open(SEARCH_CATALOG_DB, 1);
+        attempt.onupgradeneeded = () => {
+          if(!attempt.result.objectStoreNames.contains('catalogs'))
+            attempt.result.createObjectStore('catalogs', {keyPath:'key'});
+        };
+        attempt.onsuccess = () => resolve(attempt.result);
+        attempt.onerror = () => resolve(null);
+        attempt.onblocked = () => resolve(null);
+      }catch{resolve(null);}
+    });
+    return catalogDatabasePromise;
+  }
+  async function readCatalogSnapshot(fullKey){
+    if(!fullKey)return null;
+    // IndexedDB may be disabled or blocked. Never hold up search indefinitely.
+    const database = await Promise.race([
+      openCatalogDatabase(),
+      new Promise(resolve => window.setTimeout(() => resolve(null), 900))
+    ]);
+    if(!database)return null;
+    return new Promise(resolve => {
+      try{
+        const transaction = database.transaction('catalogs','readonly');
+        const op = transaction.objectStore('catalogs').get(fullKey);
+        op.onsuccess = () => {
+          const row = op.result;
+          const valid = row && row.key===fullKey &&
+            Number.isFinite(row.savedAt) && row.savedAt <= Date.now() &&
+            Date.now() - row.savedAt < SEARCH_CATALOG_MAX_AGE_MS &&
+            Array.isArray(row.data?.items) && row.data?.genres;
+          resolve(valid ? row : null);
+        };
+        op.onerror = () => resolve(null);
+        transaction.onabort = () => resolve(null);
+      }catch{resolve(null);}
+    });
+  }
+  async function writeCatalogSnapshot(fullKey, data, savedAt){
+    if(!fullKey || catalogFullKey(fullKey.split(':').pop()) !== fullKey)return;
+    const db = await openCatalogDatabase();
+    if(!db || catalogFullKey(fullKey.split(':').pop()) !== fullKey)return;
+    try{
+      const tx = db.transaction('catalogs','readwrite');
+      tx.objectStore('catalogs').put({key:fullKey, savedAt, data});
+    }catch{/* Full storage or private mode: memory cache still works. */}
+  }
+  async function clearCatalogSnapshots(){
+    const db=await openCatalogDatabase();
+    if(!db)return;
+    try{db.transaction('catalogs','readwrite').objectStore('catalogs').clear();}
+    catch{/* Best effort only. */}
+  }
   const rows = new Map();
   // User-isolated preview data, scoped to this browser session. No Jellyfin writes.
   const homeCollectionPreviewCache = new Map();
@@ -811,18 +889,63 @@
     };
   }
   // CATALOG LOADS ONLY AFTER THE USER OPENS SEARCH. Never on initial Home.
-  async function getCatalogForSearch(libraryId=''){
+  // The search catalogue is fetched on demand, not during Home mounting.
+  // Cached entries are immediately available after revisiting Home, and persist
+  // across normal browser reloads when IndexedDB is available. A fresh network
+  // request remains the source of truth and never receives a cached HTTP response.
+  function normalizeCatalogResponse(data){
+    return {
+      items:Array.isArray(data?.items)?data.items:[],
+      genres:{anime:Array.isArray(data?.genres?.anime)?data.genres.anime:[],
+              media:Array.isArray(data?.genres?.media)?data.genres.media:[]}
+    };
+  }
+  async function fetchCurrentCatalog(libraryId=''){
+    const fullKey=catalogFullKey(libraryId);
     const key=validId(libraryId)?compactId(libraryId):'all';
-    if(!catalogCache.has(key)){
-      const path='/catalog'+(key==='all'?'':'?libraryId='+encodeURIComponent(key));
-      const promise=request(path,'GET',undefined,90000).then(data=>({
-        items:Array.isArray(data?.items)?data.items:[],
-        genres:{anime:Array.isArray(data?.genres?.anime)?data.genres.anime:[],
-                media:Array.isArray(data?.genres?.media)?data.genres.media:[]}
-      })).catch(error=>{catalogCache.delete(key);throw error;});
-      catalogCache.set(key,promise);
+    const path='/catalog'+(key==='all'?'':'?libraryId='+encodeURIComponent(key));
+    // Without an identity, do not coalesce requests across token changes.
+    if(!fullKey)return normalizeCatalogResponse(await request(path,'GET',undefined,90000));
+    const capturedToken=currentToken();
+    const networkKey=fullKey;
+    if(catalogRequests.has(networkKey))return catalogRequests.get(networkKey);
+    const pending=request(path,'GET',undefined,90000).then(raw=>{
+      const normalized=normalizeCatalogResponse(raw);
+      // A logout, server switch or Jellyfin user switch must never save or
+      // publish a previous user's catalogue as the current user's data.
+      if(capturedToken===currentToken() && fullKey===catalogFullKey(libraryId)){
+        const at=Date.now();
+        catalogFetchedAt.set(fullKey,at);
+        catalogCache.set(fullKey,Promise.resolve(normalized));
+        void writeCatalogSnapshot(fullKey,normalized,at);
+      }
+      return normalized;
+    }).finally(()=>{if(catalogRequests.get(networkKey)===pending)catalogRequests.delete(networkKey);});
+    catalogRequests.set(networkKey,pending);
+    return pending;
+  }
+  async function getCatalogForSearch(libraryId='',force=false){
+    const fullKey=catalogFullKey(libraryId);
+    // Without verified Jellyfin identity, always fetch through authenticated API.
+    if(!fullKey)return fetchCurrentCatalog(libraryId);
+    if(force)return fetchCurrentCatalog(libraryId);
+    if(!catalogCache.has(fullKey)){
+      const pending=(async()=>{
+        const stored=await readCatalogSnapshot(fullKey);
+        if(fullKey!==catalogFullKey(libraryId))throw Error('Zmieniono użytkownika Jellyfin');
+        if(stored){
+          catalogFetchedAt.set(fullKey,stored.savedAt);
+          return stored.data;
+        }
+        return await fetchCurrentCatalog(libraryId);
+      })();
+      const guarded=pending.catch(error=>{
+        if(catalogCache.get(fullKey)===guarded)catalogCache.delete(fullKey);
+        throw error;
+      });
+      catalogCache.set(fullKey,guarded);
     }
-    return await catalogCache.get(key);
+    return catalogCache.get(fullKey);
   }
   // Library/type choices are mutually exclusive per title. Multiple green
   // choices are therefore OR within the group; red choices exclude. Genre
@@ -870,13 +993,23 @@
   // Scope catalogs by the authenticated user's REAL available Jellyfin views.
   // This also supplies a trustworthy library GUID to each search result.
   async function loadScopedCatalog(state){
+    return loadScopedCatalogForMode(state,false);
+  }
+  async function refreshScopedCatalog(state){
+    return loadScopedCatalogForMode(state,true);
+  }
+  async function loadScopedCatalogForMode(state,force){
     const libraries=state.scopedLibraries;
-    if(!libraries.length)return {items:[]};
+    if(!libraries.length)return {items:[],needsRefresh:false};
     const all=await Promise.all(libraries.map(async lib=>{
-      const data=await getCatalogForSearch(lib.id);
+      const data=await getCatalogForSearch(lib.id,force);
       return data.items.map(item=>({...item,library_id:compactId(lib.id),library_name:lib.name}));
     }));
-    return {items:all.flat()};
+    const needsRefresh=!force && libraries.some(lib=>{
+      const stamp=catalogFetchedAt.get(catalogFullKey(lib.id));
+      return stamp && Date.now()-stamp>SEARCH_CATALOG_FRESH_MS;
+    });
+    return {items:all.flat(),needsRefresh};
   }
   function closeSearch(){
     if(!searchModal)return;
@@ -1367,10 +1500,10 @@
     // The modal main element is the scroll owner, not window or the underlying Jellyfin page.
     main.addEventListener('scroll',()=>queueSearchAutoLoad(state),{passive:true});
     refresh.addEventListener('click',()=>{
-      for(const lib of state.scopedLibraries)catalogCache.delete(compactId(lib.id));
+      // Explicit refresh bypasses all snapshots, including IndexedDB.
       state.watchSnapshot=null;state.watchFallback=false;
       ++state.watchRequestId;state.watchLoading=false;
-      loadSearch(state);
+      loadSearch(state,true);
       if(state.watchMode)void loadWatchStatusSnapshot(state);
     });
     state.watchCacheHandler=()=>{
@@ -1383,26 +1516,54 @@
     closeWhenNavigate(state);
     return state;
   }
-  async function loadSearch(state){
+  function displaySearchCatalog(state,data,preserveFilters=false){
+    const previous=preserveFilters?new Map(state.genreStates):null;
+    const previousCount=preserveFilters?state.shown:0;
+    const previousScroll=preserveFilters?state.scroller.scrollTop:0;
+    state.pool=sortCatalog(data.items.filter(x=>state.kind==='anime'
+      ? x.anime && ['Series','Movie','Season'].includes(x.type)
+      : !x.anime && ['Series','Movie'].includes(x.type)));
+    indexAnimeSeasons(state);
+    state.unmatchedGenre='';
+    initializeGenres(state,data);
+    if(previous){
+      for(const [genre,mode] of previous){
+        if(state.genreNames.has(genre) && mode)state.genreStates.set(genre,mode);
+      }
+      drawGenreButtons(state);
+    }
+    paintSearchResults(state);
+    if(preserveFilters){
+      while(state.shown<previousCount && state.shown<state.matches.length)appendMoreResults(state);
+      state.scroller.scrollTop=previousScroll;
+    }
+    if(state.unmatchedGenre)state.status.textContent='Nie znaleziono gatunku „'+state.unmatchedGenre+'” w tej wyszukiwarce.';
+  }
+  async function loadSearch(state,force=false){
     const job=++state.requestId;
-    state.status.textContent='Odczytywanie katalogu — bez przeładowania strony Jellyfin…';
+    state.status.textContent=force?'Odświeżanie katalogu z Jellyfina…':'Odczytywanie katalogu — bez przeładowania strony Jellyfin…';
     state.refresh.disabled=true;
     try{
-      const data=await loadScopedCatalog(state);
+      const data=await (force?refreshScopedCatalog(state):loadScopedCatalog(state));
       if(state!==activeSearch || !state.overlay.isConnected || job!==state.requestId)return;
-      state.pool=sortCatalog(data.items.filter(x=>state.kind==='anime'
-        ? x.anime && ['Series','Movie','Season'].includes(x.type)
-        : !x.anime && ['Series','Movie'].includes(x.type)));
-      indexAnimeSeasons(state);
-      initializeGenres(state,data);
-      paintSearchResults(state);
-      if(state.unmatchedGenre)state.status.textContent='Nie znaleziono gatunku „'+state.unmatchedGenre+'” w tej wyszukiwarce.';
-    }catch(error){
-      if(state===activeSearch && state.overlay.isConnected){
-        state.status.textContent='Nie udało się odczytać katalogu. Użyj „Odśwież dane”.';
-        state.grid.replaceChildren();
+      displaySearchCatalog(state,data,false);
+      if(data.needsRefresh){
+        // Display cached results first, then silently replace with current data.
+        // Do not reset any user's typed query, type, library or genre filters.
+        void refreshScopedCatalog(state).then(updated=>{
+          if(state!==activeSearch || !state.overlay.isConnected || job!==state.requestId)return;
+          displaySearchCatalog(state,updated,true);
+        }).catch(()=>{
+          if(state===activeSearch && state.overlay.isConnected && job===state.requestId)
+            state.status.textContent='Katalog z pamięci. Odświeżanie nie powiodło się; użyj „Odśwież dane”.';
+        });
       }
-    }finally{state.refresh.disabled=false;}
+    }catch(error){
+      if(state===activeSearch && state.overlay.isConnected && job===state.requestId){
+        state.status.textContent='Nie udało się odczytać katalogu. Użyj „Odśwież dane”.';
+        if(!state.pool.length)state.grid.replaceChildren();
+      }
+    }finally{if(job===state.requestId)state.refresh.disabled=false;}
   }
   function openSearch(kind,initialGenre=''){
     if(!homeRoot?.isConnected)return;
@@ -1678,13 +1839,17 @@
     if(!visible||!host){
       processedGenreLink='';
       unmountHome();
-      librariesCache=[];catalogCache.clear();
+      librariesCache=[];
+      if(!token || token!==owner){
+        catalogCache.clear();catalogFetchedAt.clear();
+        if(!token && owner)void clearCatalogSnapshots();
+      }
       owner=token;
       return;
     }
     if(owner!==token){
       owner=token;epoch++;
-      closeSearch();homeRoot?.remove();homeRoot=null;homeHost=null;discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;rows.clear();resumeData={items:[],hidden:[]};librariesCache=[];catalogCache.clear();
+      closeSearch();homeRoot?.remove();homeRoot=null;homeHost=null;discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;rows.clear();resumeData={items:[],hidden:[]};librariesCache=[];catalogCache.clear();catalogFetchedAt.clear();
     }
     if(homeRoot && homeRoot.isConnected && homeHost===host){syncCollectionsPage();maybeOpenLinkedGenre();return;}
     homeRoot?.remove();mount(host);

@@ -13,7 +13,9 @@ class MemberCollection090(unittest.TestCase):
   self.assertIn('_users.GetUserById(userGuid)',S)
   self.assertIn('ParentId={collectionId:N}',S)
   self.assertIn('TotalRecordCount',S)
-  self.assertIn('userGuid.ToString("N") + ":" + collectionId.ToString("N")',S)
+  self.assertIn('Uri.EscapeDataString(userId)',S)
+  self.assertIn('new SemaphoreSlim(3, 3)',S)
+  self.assertNotIn('_collectionCountCache',S)
  def test_both_home_and_native_overlay_enriched(self):
   self.assertGreaterEqual(S.count('ReadCollectionMembershipAsync('),3)
   self.assertIn('tile.memberCollectionCount = details.Count',S)

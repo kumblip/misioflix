@@ -30,7 +30,10 @@ public sealed class MisioFlixCatalogService
     private readonly ILibraryManager _library;
     private readonly ICollectionManager _collections;
     private readonly IUserManager _users;
-    private readonly ConcurrentDictionary<string, (int Count, DateTimeOffset Until)> _collectionCountCache = new();
+    // Only successfully parsed NFO is cached, and only while file metadata is unchanged.
+    // No user state, access tokens, watched statuses or collection memberships live here.
+    private static readonly ConcurrentDictionary<string, NfoCacheEntry> ParsedNfoCache = new(
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private readonly string _hiddenResumePath;
     private readonly string _removedResumePath;
     private static readonly SemaphoreSlim HiddenGate = new(1, 1);
@@ -268,33 +271,33 @@ public sealed class MisioFlixCatalogService
         // A bounded number of requests; cache counts per user because one BoxSet
         // commonly appears across many home and native library cards.
         var unique = chosen.Values.Select(x => x.CollectionId).Distinct().ToArray();
-        var counts = new Dictionary<Guid, int>();
-        foreach (var collectionId in unique)
+        // Three concurrent Jellyfin requests MAX, instead of N serial round trips.
+        // Counts are fetched afresh every time: no stale collection size or
+        // cross-user leakage after editing BoxSets in the native Jellyfin UI.
+        using var limiter = new SemaphoreSlim(3, 3);
+        var countJobs = unique.Select(async collectionId =>
         {
-            cancel.ThrowIfCancellationRequested();
-            var key = userGuid.ToString("N") + ":" + collectionId.ToString("N");
-            if (_collectionCountCache.TryGetValue(key, out var cached) && cached.Until > DateTimeOffset.UtcNow)
-            {
-                counts[collectionId] = cached.Count;
-                continue;
-            }
+            await limiter.WaitAsync(cancel).ConfigureAwait(false);
             try
             {
-                // TotalRecordCount describes the actual visible children, not
-                // the unplayed count from Jellyfin's pink poster indicator.
                 var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
                     $"&ParentId={collectionId:N}&Recursive=false&CollapseBoxSetItems=false" +
                     "&EnableTotalRecordCount=true&Limit=1";
                 using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
                 var total = Get(doc.RootElement, "TotalRecordCount");
-                if (total.ValueKind == JsonValueKind.Number && total.TryGetInt32(out var size) && size > 0)
-                {
-                    counts[collectionId] = size;
-                    _collectionCountCache[key] = (size, DateTimeOffset.UtcNow.AddMinutes(3));
-                }
+                return total.ValueKind == JsonValueKind.Number && total.TryGetInt32(out var size) && size > 0
+                    ? (CollectionId: collectionId, Count: size) : (CollectionId: collectionId, Count: 0);
             }
-            catch (HttpRequestException) { /* Decoration is optional; no impact on the native library. */ }
-        }
+            catch (HttpRequestException)
+            {
+                // Decorative collection badge must not interrupt home or overlays.
+                return (CollectionId: collectionId, Count: 0);
+            }
+            finally { limiter.Release(); }
+        }).ToArray();
+        var completed = await Task.WhenAll(countJobs).ConfigureAwait(false);
+        var counts = completed.Where(x => x.Count > 0)
+            .ToDictionary(x => x.CollectionId, x => x.Count);
         foreach (var (itemId, entry) in chosen)
             if (counts.TryGetValue(entry.CollectionId, out var count) && count > 0)
                 result[itemId] = (count, entry.Name);
@@ -1396,6 +1399,17 @@ public sealed class MisioFlixCatalogService
             {
                 var info = new FileInfo(file);
                 if (info.Length > 3_000_000) continue;
+                // File.Exists + FileInfo check stay in place on EVERY read.
+                // An edited NFO invalidates the parsed value by length/time.
+                // Failures are NEVER cached; a temporarily locked NFO is retried.
+                var stamp = info.LastWriteTimeUtc;
+                var length = info.Length;
+                if (ParsedNfoCache.TryGetValue(file, out var cached) &&
+                    cached.Length == length && cached.ModifiedUtc == stamp)
+                {
+                    if (requireMalId && !cached.Parsed.MalId.HasValue) continue;
+                    return cached.Parsed with { Genres = new List<string>(cached.Parsed.Genres) };
+                }
                 var xmlSettings = new XmlReaderSettings
                 {
                     DtdProcessing = DtdProcessing.Prohibit,
@@ -1425,6 +1439,18 @@ public sealed class MisioFlixCatalogService
                         NumberStyles.None, CultureInfo.InvariantCulture, out var malId) && malId > 0 ? malId : null,
                     int.TryParse(V("seasonnumber"), NumberStyles.None, CultureInfo.InvariantCulture, out var seasonOrdinal)
                         && seasonOrdinal > 0 ? seasonOrdinal : null);
+                // Do not cache data if the file was rewritten while parsing.
+                try
+                {
+                    var after = new FileInfo(file);
+                    if (after.Length == length && after.LastWriteTimeUtc == stamp)
+                    {
+                        if (ParsedNfoCache.Count > 8192) ParsedNfoCache.Clear();
+                        ParsedNfoCache[file] = new NfoCacheEntry(stamp, length,
+                            parsed with { Genres = new List<string>(parsed.Genres) });
+                    }
+                }
+                catch (IOException) { /* File changed/deleted after a valid read: still return parsed data. */ }
                 if (requireMalId && !parsed.MalId.HasValue) continue;
                 return parsed;
             }
@@ -1532,6 +1558,7 @@ public sealed class MisioFlixCatalogService
             .Select(x => x.GetString() ?? string.Empty).Where(x => x.Length > 0).ToList();
     }
 
+    private sealed record NfoCacheEntry(DateTime ModifiedUtc, long Length, LocalNfo Parsed);
     private sealed record LocalNfo(string OriginalTitle, string DisplayTitle, string Year, string Plot, string Kind, List<string> Genres, double? Rating, int? MalId, int? SeasonNumber);
 }
 

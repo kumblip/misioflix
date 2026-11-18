@@ -2,14 +2,15 @@ import json
 import re
 import unittest
 from pathlib import Path
+from version_contract import CURRENT_RELEASE
 ROOT=Path(__file__).resolve().parents[2]
 PAGE=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/configPage.html').read_text(encoding='utf-8')
 
 class CollectionPrimaryPoster099(unittest.TestCase):
     def test_version_uses_active_metadata(self):
         meta=json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))
-        self.assertEqual(meta['version'],'0.4.99.0')
-        self.assertIn('<Version>0.4.99</Version>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf-8'))
+        self.assertEqual(meta['version'], CURRENT_RELEASE)
+        self.assertIn('<Version>'+CURRENT_RELEASE.removesuffix('.0')+'</Version>',(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf-8'))
     def test_no_automatic_upload_and_user_confirmation(self):
         self.assertIn('button.addEventListener(\'click\',()=>{void run();});',PAGE)
         self.assertIn('window.confirm(',PAGE)

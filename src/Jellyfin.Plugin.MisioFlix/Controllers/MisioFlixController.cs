@@ -60,7 +60,16 @@ public sealed class MisioFlixController : ControllerBase
         if (stream is null) return NotFound();
         using var memory = new MemoryStream();
         stream.CopyTo(memory);
-        Response.Headers.CacheControl = "public, max-age=3600";
+        // Embedded JS/CSS/images contain no private user information. Their
+        // injected URLs include the immutable DLL assembly version; only those
+        // exact-version requests may use a longer cache. Versionless/foreign
+        // URLs preserve the previous 1-hour policy, avoiding stale upgrades.
+        var requestedVersion = Request.Query["v"].ToString();
+        var actualVersion = assembly.GetName().Version?.ToString() ?? string.Empty;
+        Response.Headers.CacheControl = !string.IsNullOrEmpty(actualVersion) &&
+            requestedVersion == actualVersion
+            ? "public, max-age=604800, immutable"
+            : "public, max-age=3600";
         return File(memory.ToArray(), contentType);
     }
 
