@@ -1,84 +1,53 @@
-# MisioFlix 0.4.100 — szybka wyszukiwarka (patch na źródła v0.4.99)
+# Naprawa publikacji MisioFlix v0.4.100.0 (Search Cache)
 
-**To jest paczka aktualizacji źródeł, nie gotowy plik DLL ani instalacyjny ZIP Jellyfin.**
-W dniu przygotowania aktualna zawartość `main` w repozytorium
-`https://github.com/kumblip/misioflix` zgłaszała w `meta.json` wersję `0.4.99.0`.
-Załączony przez użytkownika komplet v0.4.94 jest starszy, dlatego **nie wolno**
-publikować go jako v0.4.100 ani nadpisywać nim nowszych funkcji 0.4.95–0.4.99.
+## Dlaczego GitHub Actions zwraca `Wydanie v0.4.99.0 już istnieje`
 
-## Jak przygotować pełną v0.4.100 na Windows
+To nie jest błąd kompilacji kodu. `.github/workflows/release.yml` czyta wersję z `meta.json`, kompiluje i pakuje DLL, a dopiero później sprawdza tag GitHub Release. Jeśli na gałęzi `main` nadal jest `0.4.99.0`, zawsze otrzyma tag `v0.4.99.0` i odmówi nadpisania istniejącego wydania. Przesłanie samego ZIP-a z poprawką v100 do repozytorium **nie aplikuje kodu** ani nie zmienia `meta.json`.
 
-W katalogu rozpakowanej paczki uruchom PowerShell:
+Ta paczka naprawia proces **przygotowania i wgrania źródeł v0.4.100.0**. Nie zmienia workflow publikacji `release.yml`, aktualnego wydania v0.4.99.0 ani zainstalowanej wtyczki.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\PRZYGOTUJ_V100.ps1
-```
+## Zalecana metoda na Windows
 
-Skrypt sklonuje repozytorium do **nowego folderu** i przerwie działanie, jeśli
-pobrane źródła nie są dokładnie `0.4.99.0` albo różnią się krytyczne fragmenty.
-Nie modyfikuje istniejącej instalacji ani oryginalnego repozytorium.
-Potrzebne: Git, Python 3, Node.js, npm. Do lokalnej kompilacji DLL również .NET 10 SDK:
+Wypakuj cały ZIP do osobnego katalogu. W PowerShell uruchom:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\PRZYGOTUJ_V100.ps1 -Kompiluj
+powershell -ExecutionPolicy Bypass -File .\NAPRAW_V100_WINDOWS.ps1 -WyslijNaGitHub
 ```
 
-Aby użyć posiadanych źródeł v0.4.99 bez klonowania:
+Do testu **bez wysyłania** czegokolwiek na GitHub:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\PRZYGOTUJ_V100.ps1 -Zrodla 'C:\sciezka\misioflix' -Kompiluj
+powershell -ExecutionPolicy Bypass -File .\NAPRAW_V100_WINDOWS.ps1
 ```
 
-**Uwaga:** uruchomienie po raz drugi w tym samym katalogu jest blokowane,
-aby niczego nie nadpisywać. Przenieś poprzedni folder wynikowy, jeśli chcesz
-wygenerować wydanie od nowa.
+Możesz dodać `-Kompiluj`, jeśli masz .NET 10 SDK. Do zwykłej procedury wymagane są Git for Windows z uwierzytelnieniem do `kumblip/misioflix`, Python 3, Node.js i npm. Skrypt sam przygotowuje nowy katalog `MISIOFLIX_V100_POPRAWIONE_ZRODLA`, więc ponowne uruchomienie w tym samym folderze jest blokowane (zabezpieczenie przed nadpisaniem).
 
-Jeśli testy się nie powiodą, nie publikuj ZIP ani DLL. Jeśli testy przejdą,
-wyjściowy folder `MisioFlix_v0.4.100_ZRODLA` można przesłać do GitHub w zwykłym
-workflow `build.yml` i opcjonalnie `release.yml` po zatwierdzeniu.
+Skrypt:
+1. Pobiera **świeżą gałąź main** do osobnego katalogu, nie miesza z wcześniejszymi źródłami ani z plikami użytkownika.
+2. Przerywa, jeżeli tag `v0.4.100.0` już istnieje albo baza nie jest `0.4.99.0` / częściowo przygotowaną `0.4.100.0`.
+3. Gdy Search Cache nie ma w `home.js`, nakłada oryginalną poprawkę. Gdy poprawka jest już w całości, tylko naprawia metadane wersji i uzupełnia pliki testów.
+4. Ustawia `meta.json = 0.4.100.0` i synchronizuje `csproj` przez oryginalny `tools/sync_version.py`.
+5. Uruchamia kontrolę składni JS, wszystkie aktywne testy projektu i opcjonalnie lokalną kompilację .NET 10.
+6. Koryguje tylko wybór testów w `.github/workflows/build.yml`, jeżeli workflow nadal uruchamia historyczne testy z katalogu `tests/`. Używa tego samego `tools/run_tests.py`, co workflow wydania, bez usuwania testów z repozytorium.
+7. Przy `-WyslijNaGitHub` zatwierdza **tylko** konkretne pliki poprawki i robi zwykły `git push origin HEAD:main` (bez force-push). Jeśli GitHub zmienił się od klonowania, push zostanie odrzucony bez nadpisywania.
 
-## Co dokładnie zmienia v0.4.100
+## Po wysłaniu
 
-- Wyszukiwarka anime i wyszukiwarka filmów/seriali korzystają z tego samego
-  dotychczasowego API `/MisioFlix/api/catalog`, z tym samym zakresem bibliotek.
-- Katalog pobrany raz nie znika z pamięci podczas zwykłego przejścia do innej
-  podstrony Jellyfina i powrotu.
-- Gdy przeglądarka udostępnia IndexedDB, zapis pełnego katalogu na tym urządzeniu
-  pozwala wyświetlić wyniki również po odświeżeniu karty i ponownym otwarciu.
-- Każdy zapis jest przypisany do `serverId` i `userId` Jellyfina; token NIE jest
-  zapisywany w IndexedDB. Wylogowanie czyści lokalne snapshoty.
-- Po 90 s od ostatniego udanego pobrania otwarcie wyszukiwarki pokazuje katalog
-  z pamięci natychmiast i pobiera aktualną zawartość w tle. Po pobraniu nowej
-  zawartości wyniki są aktualizowane, a wpisana fraza, filtry i pozycja przewijania
-  są zachowane. W razie błędu zostaje poprzedni katalog z komunikatem.
-- Przycisk „Odśwież dane” zawsze wymusza odczyt sieciowy.
-- Jeśli IndexedDB jest niedostępny, pozostaje cache w RAM; przy błędach sieci
-  zachowana jest dotychczasowa obsługa wyjątków.
+1. Otwórz `https://github.com/kumblip/misioflix/blob/main/meta.json` i sprawdź `"version": "0.4.100.0"`.
+2. Otwórz GitHub **Actions**, poczekaj na zielony workflow `build` (testy i kompilacja).
+3. Dopiero potem uruchom ręczny workflow `MisioFlix - opublikuj wydanie dla Jellyfin` z polem `PUBLIKUJ`.
+4. Wydanie powinno mieć tag **`v0.4.100.0`**, nie `v0.4.99.0`.
 
-## Czego nie zmienia
+**Nie usuwaj i nie nadpisuj v0.4.99.0. Nie zmieniaj tylko nazwy paczki ZIP.** Zmienia się numer w metadanych i kompilowanej DLL, a Search Cache musi realnie znajdować się w `home.js`.
 
-NFO, plików i folderów na NAS, API Jellyfina, rozdzielania anime/filmów/seriali,
-sezonów, filtrów, kart, UI, MAL, Simkl, odtwarzania, historii, plakatów,
-kolekcji, konfiguracji i manifestu repozytorium.
+## Wariant ręczny, jeżeli źródła Search Cache są już na GitHub
 
-## Jakość i ograniczenia
+W repozytorium na `main` upewnij się, że `home.js` zawiera komplet `SEARCH_CATALOG_DB`, `catalogScope()`, `readCatalogSnapshot()`, `getCatalogForSearch()` i `refreshScopedCatalog()`. **Jeśli kodu nie ma, sama zmiana numeru jest błędem i nie dostarcza żadnego przyspieszenia.** Skrypt robi to sprawdzenie automatycznie.
 
-Na lokalnej źródłowej bazie v0.4.94 poprawka przeszła **425 Python + 42 Node.js**;
-jest nowy test pamięci, izolacji użytkowników i obejścia cache. Kod najnowszej
-v0.4.99 sprawdzono pod kątem wszystkich kotwic do zastosowania poprawki, ale
-**nie udało się skompilować DLL w środowisku przygotowania** (brak SDK dotnet)
-ani sprawdzić wynikowego v0.4.100 na działającym NAS. Testy wykonywane przez
-`PRZYGOTUJ_V100.ps1` na oryginalnej bazie 0.4.99 są obowiązkowe.
+## Zakres i bezpieczeństwo
 
-Jeśli nie możesz zgodzić się na chwilowe (do 90 sekund) wyświetlanie stanu z
-pamięci, ustaw `SEARCH_CATALOG_FRESH_MS=0` w `home.js` po zastosowaniu patcha,
-co wymusi weryfikację sieciową w tle przy każdym otwarciu z cache. Użytkownik
-może też zawsze nacisnąć „Odśwież dane”. Nie da się zagwarantować całkowitej
-świeżości danych bez żądania do serwera.
+Naprawa modyfikuje wyłącznie `Web/home.js`, `meta.json`, synchronizowaną wersję w `.csproj`, changelog i testy Search Cache oraz wybór aktualnych testów w `build.yml`. Nie edytuje MAL, Simkl, kolekcji, interfejsu, odtwarzacza, Resume, NFO, katalogów NAS, ani `manifest.json`. Nie wyłącza blokady istniejących wydań w workflow; prawidłowo pozostaje ona aktywna.
 
-## Cofnięcie
+**Ograniczenia kontroli**: poprawność procesu i skryptów sprawdzono lokalnie na odtworzonym wariancie źródeł v0.4.94 używanym do testów. Nie wykonano kompilacji .NET ani testów na rzeczywistym NAS; ostateczne testy na aktualnym `main` wykonują się dopiero na komputerze użytkownika / w GitHub Actions.
 
-Nowy folder źródeł można bezpiecznie usunąć. Nie modyfikuje instalacji.
-Po zainstalowaniu wersji na NAS przywróć poprzednią DLL standardową metodą
-Jellyfina i wykonaj restart Jellyfina. Cache lokalny jest pomocniczy i nie
-zmienia żadnych danych serwera.
+Nie przechodzi to automatycznie do v0.4.101.0 (szersza optymalizacja) — ta ma osobną paczkę. Tu naprawiany jest **wyłącznie błąd publikacji v0.4.100.0**.
