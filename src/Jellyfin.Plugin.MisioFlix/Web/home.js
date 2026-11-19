@@ -386,10 +386,10 @@
     return b;
   }
   function makePoster(item){
-    const nonAnimeMedia=!item.anime&&['Movie','Series','Season'].includes(item.type);
+    const nonAnimeMedia=!item.anime&&!item.simklExcluded&&['Movie','Series','Season'].includes(item.type);
     const link=set(own('a','mf-home-poster'+(nonAnimeMedia?' mf-simkl-media-poster':'')), 'href', nativeDetails(item.id,item.serverId));
     if(item.anime){link.dataset.mfItemId=compactId(item.id);if(Number(item.malId)>0)link.dataset.mfMalId=String(item.malId);}
-    else if((item.type==='Movie'||item.type==='Series')&&validId(item.id))link.dataset.mfSimklId=compactId(item.id);
+    else if(!item.simklExcluded&&(item.type==='Movie'||item.type==='Series')&&validId(item.id))link.dataset.mfSimklId=compactId(item.id);
     link.setAttribute('aria-label',`Szczegóły: ${item.title || 'Pozycja'}`);
     const imgUrl=imageFor(item);
     if(imgUrl){
@@ -468,7 +468,7 @@
     return link;
   }
   function makeCard(item){
-    const nonAnimeMedia=!item.anime&&['Movie','Series','Season'].includes(item.type);
+    const nonAnimeMedia=!item.anime&&!item.simklExcluded&&['Movie','Series','Season'].includes(item.type);
     const card=own('article','mf-home-card'+(item.type==='BoxSet'?' mf-home-collection-card':'')+(nonAnimeMedia?' mf-simkl-media-card':''));
     append(card,makePoster(item));
     const content=own('div','mf-home-card-body');

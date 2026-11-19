@@ -123,16 +123,13 @@ public sealed class MisioFlixSimklPlaybackHostedService : IHostedService
 
     private bool IsAnime(BaseItem item,BaseItem mediaRoot)
     {
-        var animeRoot=Plugin.Instance?.Configuration.AnimeRoot;
-        if(string.IsNullOrWhiteSpace(animeRoot))return false;
-        try
-        {
-            var root=Path.GetFullPath(animeRoot).TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
-            return new[]{item.Path,mediaRoot.Path}.Any(path=>!string.IsNullOrWhiteSpace(path)&&
-                Path.GetFullPath(path).StartsWith(root,StringComparison.OrdinalIgnoreCase));
-        }
-        catch(Exception ex) when(ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {return true;} // fail closed: never upload an unverified anime-library item
+        // No Simkl playback / watched-toggle writes for NFO-tagged anime,
+        // including anime outside AnimeRoot. The series-level tag applies to
+        // every episode; movies use their own movie.nfo/Jellyfin tags.
+        return MisioFlixCatalogService.IsSimklAnime(mediaRoot,
+                   mediaRoot is Movie ? "Movie" : "Series") ||
+               MisioFlixCatalogService.IsSimklAnime(item,
+                   item is Movie ? "Movie" : "Season");
     }
     private Playing? Prepare(BaseItem item,bool requireRuntime=true)
     {

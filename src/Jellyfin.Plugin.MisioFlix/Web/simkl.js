@@ -117,7 +117,7 @@
   function decorateSeasonFrames(){
     if(!valid(currentUser))return;
     for(const card of document.querySelectorAll('.card[data-mf-card="1"][data-mf-simkl-series][data-mf-simkl-season]')){
-      if(card.dataset.mfAnime==='1')continue;
+      if(card.dataset.mfAnime==='1'||card.dataset.mfSimklExcluded==='1')continue;
       if(!nearby(card))continue;
       const parent=compact(card.dataset.mfSimklSeries);
       const raw=card.dataset.mfSimklSeason;
@@ -331,7 +331,7 @@
   function resetUser(){
     const id=user();if(id===currentUser)return;
     currentUser=id;connection=null;connectionPromise=null;connectionRetryAt=0;button=null;sessions.clear();generation++;
-    cardScores.clear();cardStates.clear();pendingScoreIds.clear();scoreRetryAfter=0;
+    cardScores.clear();cardStates.clear();simklEligibleCards.clear();pendingScoreIds.clear();scoreRetryAfter=0;
     resumeForUser=new Set();resumeSeasons=new Map();resumeEpisodes=new Set();resumeReadAt=0;resumeReadPromise=null;
     episodeIndex.clear();invalidateSeasonProgress();clearEpisodeFrames();clearDetailFrames();
     document.querySelectorAll('[data-mf-simkl-watch]').forEach(node=>node.removeAttribute('data-mf-simkl-watch'));
@@ -746,10 +746,11 @@
   // Scores come only from the per-user NAS archive. The server authorizes every
   // Jellyfin ID and never accepts client-supplied TMDB/IMDb identifiers.
   const cardScores=new Map();
+  const simklEligibleCards=new Set();
   const pendingScoreIds=new Set();
   let scoreFetchBusy=false,scoreRetryAfter=0;
   function resetCardScores(){
-    cardScores.clear();cardStates.clear();pendingScoreIds.clear();scoreRetryAfter=0;
+    cardScores.clear();cardStates.clear();simklEligibleCards.clear();pendingScoreIds.clear();scoreRetryAfter=0;
     invalidateSeasonProgress();
     document.querySelectorAll('.mf-simkl-home-score,.mf-simkl-native-score').forEach(node=>node.remove());
     document.querySelectorAll('[data-mf-simkl-score]').forEach(node=>node.removeAttribute('data-mf-simkl-score'));
@@ -809,13 +810,35 @@
         // NEVER be requested for the season GUID or printed on its poster.
         const mediaType=String(card.getAttribute('data-type')||card.getAttribute('data-itemtype')||'').toLowerCase();
         if(mediaType==='season')continue;
-        if(card.dataset.mfAnime==='1'||!['film','serial'].includes(card.dataset.mfKind))continue;
-        card.classList.add('mf-simkl-native-media');
+        if(card.dataset.mfAnime==='1'||card.dataset.mfSimklExcluded==='1'){
+          // Anime may have been decorated as a generic Series before the
+          // asynchronous MAL/NFO classification arrived. Never retain a
+          // Simkl border or score on an anime card.
+          card.classList.remove('mf-simkl-native-media','mf-simkl-season-media');
+          card.removeAttribute('data-mf-simkl-watch');
+          card.removeAttribute('data-mf-simkl-score');
+          card.querySelector('.mf-simkl-native-score')?.remove();
+          continue;
+        }
+        if(!['film','serial'].includes(card.dataset.mfKind))continue;
       }
       if(!nearby(card))continue;
       const id=compact(native?card.getAttribute('data-id'):card.dataset.mfSimklId);
       if(!valid(id))continue;
       if(!cardScores.has(id)){pendingScoreIds.add(id);continue;}
+      // Server authorization + NFO/Jellyfin Anime tag validation MUST finish
+      // before applying any visual Simkl class, even to Jellyfin's generic
+      // Series card. This avoids a transient pink Simkl border on anime.
+      if(!simklEligibleCards.has(id)){
+        if(native){
+          card.classList.remove('mf-simkl-native-media','mf-simkl-season-media');
+          card.removeAttribute('data-mf-simkl-watch');
+          card.removeAttribute('data-mf-simkl-score');
+          card.querySelector('.mf-simkl-native-score')?.remove();
+        }
+        continue;
+      }
+      if(native)card.classList.add('mf-simkl-native-media');
       updateFrameOnCard(card,cardStates.get(id),native,id);
       renderCardScore(card,cardScores.get(id),native);
     }
@@ -832,7 +855,10 @@
       if(currentUser!==selectedUser)return;
       const ratings=data?.scores&&typeof data.scores==='object'?data.scores:{};
       const states=data?.states&&typeof data.states==='object'?data.states:{};
+      const eligible=new Set(Array.isArray(data?.eligibleIds)?data.eligibleIds.map(compact):[]);
       for(const id of batch){
+        if(eligible.has(id))simklEligibleCards.add(id);
+        else simklEligibleCards.delete(id);
         const value=Number(ratings[id]??ratings[id.toUpperCase()]??0);
         cardScores.set(id,Number.isInteger(value)&&value>=1&&value<=10?value:0);
         cardStates.set(id,states[id]??states[id.toUpperCase()]??null);

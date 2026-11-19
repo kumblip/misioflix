@@ -418,8 +418,25 @@
       if(v===undefined||v===null||v==='')card.removeAttribute(name);
       else card.setAttribute(name,String(v));
     };
-    if(data.anime)card.setAttribute('data-mf-anime','1');
-    else card.removeAttribute('data-mf-anime');
+    if(data.simklExcluded)card.setAttribute('data-mf-simkl-excluded','1');
+    else card.removeAttribute('data-mf-simkl-excluded');
+    if(data.anime){
+      card.setAttribute('data-mf-anime','1');
+      // Jellyfin initially renders anime Series as generic TV cards. Before
+      // the NFO/MAL overlay resolves, Simkl can temporarily decorate them.
+      // Once verified as anime, remove ONLY that mistaken Simkl decoration;
+      // MAL status, Jellyfin state, playback and original card stay intact.
+      card.classList.remove('mf-simkl-native-media','mf-simkl-season-media');
+      card.removeAttribute('data-mf-simkl-watch');
+      card.removeAttribute('data-mf-simkl-score');
+      card.querySelector('.mf-simkl-native-score')?.remove();
+    }else card.removeAttribute('data-mf-anime');
+    if(data.simklExcluded){
+      card.classList.remove('mf-simkl-native-media','mf-simkl-season-media');
+      card.removeAttribute('data-mf-simkl-watch');
+      card.removeAttribute('data-mf-simkl-score');
+      card.querySelector('.mf-simkl-native-score')?.remove();
+    }
     card.setAttribute('data-mf-overlay-ready','1');
     set('data-mf-year',data.year);
     set('data-mf-format',data.format);
@@ -455,7 +472,7 @@
     attachOverlay(card);
     if(data.anime && before!==String(data.malId||''))
       window.dispatchEvent(new Event('misioflix-mal-binding-ready'));
-    if(!data.anime && data.simklSeriesId && data.simklSeasonNumber!==null && data.simklSeasonNumber!==undefined)
+    if(!data.simklExcluded && !data.anime && data.simklSeriesId && data.simklSeasonNumber!==null && data.simklSeasonNumber!==undefined)
       window.dispatchEvent(new Event('misioflix-simkl-season-ready'));
   }
 
@@ -554,7 +571,7 @@
         'data-mf-seasons','data-mf-episodes','data-mf-user-rating',
         'data-mf-anime','data-mf-overlay-ready','data-mf-watch',
         'data-mf-simkl-series','data-mf-simkl-season','data-mf-simkl-watch',
-        'data-mf-mal-series','data-mf-mal-season','data-mf-mal-frame'])card.removeAttribute(key);
+        'data-mf-mal-series','data-mf-mal-season','data-mf-mal-frame','data-mf-simkl-excluded'])card.removeAttribute(key);
       clearMixedCard(card);
       card.removeAttribute('data-mf-description');
       card.querySelector('.mf-native-overlay')?.remove();

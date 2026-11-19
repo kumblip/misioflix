@@ -43,9 +43,10 @@ class MalEpisodeFrames062(unittest.TestCase):
         self.assertIn('clearMalEpisodeFrames();\n    if(detailPanel?.isConnected)',MAL)
         self.assertIn('decorateMalEpisodeFrames();\n    void refreshMalResume()',MAL)
         self.assertIn('row.setAttribute(\'data-mf-mal-episode-watch\',state);',MAL)
-    def test_simkl_remains_isolated_under_064_layout(self):
-        import hashlib
-        self.assertEqual(hashlib.sha256(SIMKL.encode()).hexdigest(),
-            '54820d94422fd5f7abbf1336199cfc7499b8a0d9051b175abd0a1e28a87f43d8')
+    def test_simkl_remains_isolated_from_mal_frames(self):
+        # Source was deliberately updated to block NFO-tagged anime from Simkl.
+        self.assertIn("card.dataset.mfAnime==='1'", SIMKL)
+        self.assertIn("card.dataset.mfSimklExcluded==='1'", SIMKL)
+        self.assertNotIn("misioflix-simkl", MAL)
 
 if __name__=='__main__':unittest.main()

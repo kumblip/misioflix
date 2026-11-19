@@ -1008,7 +1008,7 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact #similarCollapsible .simil
 html.misioflix-skin #itemDetailPage.mf-detail-compact #similarCollapsible .similarContent > .mf-detail-similar-extra {
   display:none!important;
 }
-/* v0.4.103: similar cards show the personal watch state ON THE POSTER.
+/* v0.4.104: similar cards show the personal watch state ON THE POSTER.
    v0.4.101/102 changed cardBox (which encloses the description), not the
    visible poster border. Render ONE frame on cardScalable in Similar only,
    never re-parent Jellyfin DOM or overwrite MAL/Simkl/user state. */
@@ -1023,23 +1023,25 @@ html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
   .card[data-mf-watch="watched"][data-mf-mal-frame="mixed"] {
   --mf-similar-frame:linear-gradient(90deg,#e6a23c 0 50%,#45b879 50% 100%);
 }
-/* Movies/TV: authoritative Simkl state takes precedence over Jellyfin. */
+/* Movies/TV only: Simkl must NEVER override a MAL-verified anime. Jellyfin
+   initially labels some anime cards as Series before asynchronous NFO metadata
+   arrives; stale Simkl attributes are also removed in client.js and simkl.js. */
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-native-media[data-mf-simkl-watch="unwatched"],
+  .card.mf-simkl-native-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="unwatched"],
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-season-media[data-mf-simkl-watch="unwatched"] {--mf-similar-frame:#f4a5ce}
+  .card.mf-simkl-season-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="unwatched"] {--mf-similar-frame:#f4a5ce}
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-native-media[data-mf-simkl-watch="started"],
+  .card.mf-simkl-native-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="started"],
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-season-media[data-mf-simkl-watch="started"] {--mf-similar-frame:#e6a23c}
+  .card.mf-simkl-season-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="started"] {--mf-similar-frame:#e6a23c}
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-native-media[data-mf-simkl-watch="watched"],
+  .card.mf-simkl-native-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="watched"],
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-season-media[data-mf-simkl-watch="watched"] {--mf-similar-frame:#45b879}
+  .card.mf-simkl-season-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="watched"] {--mf-similar-frame:#45b879}
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-native-media[data-mf-simkl-watch="mixed"],
+  .card.mf-simkl-native-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="mixed"],
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-season-media[data-mf-simkl-watch="mixed"] {
+  .card.mf-simkl-season-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="mixed"] {
   --mf-similar-frame:linear-gradient(90deg,#e6a23c 0 50%,#45b879 50% 100%);
 }
 /* Restrict the compositor to cards with a resolved personal status. The native

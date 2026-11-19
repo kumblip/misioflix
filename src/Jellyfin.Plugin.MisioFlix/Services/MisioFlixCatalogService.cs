@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using MediaBrowser.Controller.Collections;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Common.Configuration;
 using System.Globalization;
 using System.IO;
@@ -436,6 +437,8 @@ public sealed class MisioFlixCatalogService
             collectionCount = collection ? PositiveInt(Get(item, "ChildCount")) : null,
             userRating = PersonalRating(item),
             watchStatus = WatchStatus(item),
+            simklExcluded = isAnime || ((type == "Movie" || type == "Series") &&
+                _library.GetItemById(guid) is { } localSimkl && IsSimklAnime(localSimkl,type,item)),
             malId = isAnime ? nfo?.MalId ?? FirstSeasonMalId(_library.GetItemById(guid)?.Path) : null
         };
     }
@@ -496,7 +499,7 @@ public sealed class MisioFlixCatalogService
         var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
         var query = $"Items?UserId={Uri.EscapeDataString(userId)}" +
             $"&Ids={Uri.EscapeDataString(string.Join(",", requested.Select(g => g.ToString("N"))))}" +
-            "&Fields=Genres,Overview,ChildCount,RecursiveItemCount" +
+            "&Fields=Genres,Overview,Tags,ChildCount,RecursiveItemCount" +
             "&EnableUserData=true&Limit=18";
         using var doc = await GetJsonAsync(origin, query, auth, cancel).ConfigureAwait(false);
         var items = Get(doc.RootElement, "Items");
@@ -514,6 +517,9 @@ public sealed class MisioFlixCatalogService
             var type = Text(Get(item,"Type"));
             if (type is "Movie" or "Series") mediaIds.Add(id);
             var anime = IsBelowRoot(libItem.Path, root);
+            // NFO <tag>Anime</tag> is also a hard exclusion from Simkl,
+            // even when an item lives outside the configured AnimeRoot.
+            var simklExcluded = IsSimklAnime(libItem, type, item);
             var nfo = anime ? ReadNfo(libItem.Path, type) : null;
             // A few Jellyfin 12 item DTOs omit SeriesId/IndexNumber for Season.
             // Use the matching authorized local item, never a guessed title.
@@ -540,6 +546,7 @@ public sealed class MisioFlixCatalogService
             {
                 id = id.ToString("N"),
                 anime = anime,
+                simklExcluded = simklExcluded,
                 year = anime ? (nfo?.Year ?? string.Empty) : Text(Get(item,"ProductionYear")),
                 format = anime ? (nfo?.Kind ?? string.Empty) : string.Empty,
                 genres = genres.Take(3).ToList(),
@@ -556,8 +563,8 @@ public sealed class MisioFlixCatalogService
                 // Only non-anime seasons: expose Jellyfin's exact parent ID and
                 // season index for the independently-styled Simkl resume border.
                 // Never infer a season number from a translated/display title.
-                simklSeriesId = !anime && seasonParentId != Guid.Empty ? seasonParentId.ToString("N") : null,
-                simklSeasonNumber = !anime ? simklIndex : null,
+                simklSeriesId = !simklExcluded && seasonParentId != Guid.Empty ? seasonParentId.ToString("N") : null,
+                simklSeasonNumber = !simklExcluded ? simklIndex : null,
                 malSeriesId = anime && seasonParentId != Guid.Empty ? seasonParentId.ToString("N") : null,
                 malSeasonNumber = anime ? simklIndex : null,
                 userRating = PersonalRating(item),
@@ -972,7 +979,7 @@ public sealed class MisioFlixCatalogService
         var (origin,auth,userId)=await AuthenticatedUserAsync(caller,cancel).ConfigureAwait(false);
         using var response=await GetJsonAsync(origin,
             $"Items?UserId={Uri.EscapeDataString(userId)}&Ids={Uri.EscapeDataString(string.Join(',',requested.Select(g=>g.ToString("N"))))}"+
-            $"&Fields=ProviderIds&IncludeItemTypes=Movie,Series&Limit={requested.Length}",auth,cancel).ConfigureAwait(false);
+            $"&Fields=ProviderIds,Tags&IncludeItemTypes=Movie,Series&Limit={requested.Length}",auth,cancel).ConfigureAwait(false);
         var items=Get(response.RootElement,"Items");
         if(items.ValueKind!=JsonValueKind.Array)return targets;
         var allowed=requested.ToHashSet();
@@ -984,7 +991,7 @@ public sealed class MisioFlixCatalogService
             try
             {
                 var target=MakeSimklTarget(id,item,type=="Movie"?"movies":"shows",null);
-                if(target.Relevant&&target.Ids.Count>0)targets[id.ToString("N")]=target;
+                if(target.Relevant)targets[id.ToString("N")]=target;
             }
             catch(UnauthorizedAccessException) { /* Missing/non-visible local item: no rating. */ }
         }
@@ -1003,7 +1010,7 @@ public sealed class MisioFlixCatalogService
         var id = seasonId ?? catalogId;
         using var allowed = await GetJsonAsync(origin,
             $"Items?UserId={Uri.EscapeDataString(userId)}&Ids={id:N}&Recursive=true&Limit=2" +
-            "&IncludeItemTypes=Series,Season,Movie&Fields=ProviderIds", auth, cancel).ConfigureAwait(false);
+            "&IncludeItemTypes=Series,Season,Movie&Fields=ProviderIds,Tags", auth, cancel).ConfigureAwait(false);
         var list = Get(allowed.RootElement, "Items");
         if (list.ValueKind != JsonValueKind.Array ||
             !list.EnumerateArray().Any(x => SameGuid(Text(Get(x,"Id")), id)))
@@ -1098,13 +1105,35 @@ public sealed class MisioFlixCatalogService
             .Distinct().OrderBy(n=>n).ToList();
     }
 
+    // Unified, read-only Simkl exclusion. A <tag>Anime</tag> NFO tag (or
+    // Jellyfin's imported Anime tag) is decisive, irrespective of library type.
+    // The existing AnimeRoot exclusion remains as an additional safeguard.
+    internal static bool IsSimklAnime(BaseItem local, string type, JsonElement item = default)
+    {
+        var animeRoot = Plugin.Instance?.Configuration.AnimeRoot;
+        if (!string.IsNullOrWhiteSpace(animeRoot) &&
+            IsBelowRoot(local.Path, Path.GetFullPath(animeRoot))) return true;
+        static bool AnimeTag(string? value) => string.Equals(value?.Trim(),"Anime",StringComparison.OrdinalIgnoreCase);
+        var fromApi = Get(item,"Tags");
+        if (fromApi.ValueKind == JsonValueKind.Array &&
+            fromApi.EnumerateArray().Any(tag=>tag.ValueKind==JsonValueKind.String && AnimeTag(tag.GetString()))) return true;
+        // Jellyfin may expose tags through BaseItem even if the selected API
+        // response omitted Fields=Tags. Reflection avoids depending on a
+        // specific Jellyfin 12 BaseItem.Tags property signature.
+        try
+        {
+            if (local.GetType().GetProperty("Tags")?.GetValue(local) is IEnumerable<string> tags &&
+                tags.Any(AnimeTag)) return true;
+        }
+        catch (System.Reflection.TargetInvocationException) { /* NFO fallback below. */ }
+        return ReadNfo(local.Path,type)?.AnimeTag == true;
+    }
+
     private SimklMediaTarget MakeSimklTarget(Guid id, JsonElement data, string kind, int? seasonNumber)
     {
         var local = _library.GetItemById(id);
         if (local is null) throw new UnauthorizedAccessException("Pozycja nie istnieje w bibliotece");
-        var animeRoot = Plugin.Instance?.Configuration.AnimeRoot;
-        if (!string.IsNullOrWhiteSpace(animeRoot) &&
-            IsBelowRoot(local.Path, Path.GetFullPath(animeRoot)))
+        if (IsSimklAnime(local, kind=="movies"?"Movie":"Series", data))
             return new SimklMediaTarget(false, kind, seasonNumber, new Dictionary<string,string>(), "");
         var source = Get(data, "ProviderIds");
         var ids = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
@@ -1438,7 +1467,10 @@ public sealed class MisioFlixCatalogService
                         string.Equals((string?)e.Attribute("type"), "mal", StringComparison.OrdinalIgnoreCase))?.Value,
                         NumberStyles.None, CultureInfo.InvariantCulture, out var malId) && malId > 0 ? malId : null,
                     int.TryParse(V("seasonnumber"), NumberStyles.None, CultureInfo.InvariantCulture, out var seasonOrdinal)
-                        && seasonOrdinal > 0 ? seasonOrdinal : null);
+                        && seasonOrdinal > 0 ? seasonOrdinal : null,
+                    tags.Any(t=>string.Equals(t,"Anime",StringComparison.OrdinalIgnoreCase)) ||
+                    (nfo.Element("anime") is { } animeFlag &&
+                        !new[]{"false","0","no","nie"}.Contains(animeFlag.Value.Trim(),StringComparer.OrdinalIgnoreCase)));
                 // Do not cache data if the file was rewritten while parsing.
                 try
                 {
@@ -1559,7 +1591,7 @@ public sealed class MisioFlixCatalogService
     }
 
     private sealed record NfoCacheEntry(DateTime ModifiedUtc, long Length, LocalNfo Parsed);
-    private sealed record LocalNfo(string OriginalTitle, string DisplayTitle, string Year, string Plot, string Kind, List<string> Genres, double? Rating, int? MalId, int? SeasonNumber);
+    private sealed record LocalNfo(string OriginalTitle, string DisplayTitle, string Year, string Plot, string Kind, List<string> Genres, double? Rating, int? MalId, int? SeasonNumber, bool AnimeTag);
 }
 
 public sealed record GenreSets(string[] anime, string[] media);
@@ -1614,6 +1646,7 @@ public sealed class OverlayInfo
 {
     public string id { get; set; } = string.Empty;
     public bool anime { get; set; }
+    public bool simklExcluded { get; set; }
     public string year { get; set; } = string.Empty;
     public string format { get; set; } = string.Empty;
     public List<string> genres { get; set; } = new();
@@ -1644,6 +1677,7 @@ public sealed class HomeTile
     public string serverId { get; set; } = string.Empty;
     public string type { get; set; } = string.Empty;
     public bool anime { get; set; }
+    public bool simklExcluded { get; set; }
     public string title { get; set; } = string.Empty;
     public string year { get; set; } = string.Empty;
     public string format { get; set; } = string.Empty;

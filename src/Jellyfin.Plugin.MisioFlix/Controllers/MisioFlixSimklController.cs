@@ -62,7 +62,9 @@ public sealed class MisioFlixSimklController : ControllerBase
                     states[target.Key]=new {status=found.Status,
                         watchedEpisodes=found.WatchedEpisodes,totalEpisodes=found.TotalEpisodes};
                 }
-            return Ok(new {scores,states});
+            // Explicit per-user, server-verified eligibility. The browser must
+            // not paint Simkl frames before the server rules out anime tags.
+            return Ok(new {scores,states,eligibleIds=targets.Keys.ToArray()});
         }
         catch(Exception ex){return Failure(ex);}
     }

@@ -35,7 +35,7 @@ class SimklPosters051(unittest.TestCase):
         self.assertIn('AuthenticatedUserAsync(caller,cancel)',CAT)
         self.assertIn('IncludeItemTypes=Movie,Series',CAT)
         self.assertIn('MakeSimklTarget',CAT)
-        self.assertIn('if(target.Relevant&&target.Ids.Count>0)',CAT)
+        self.assertIn('if(target.Relevant)targets[id.ToString("N")]=target;',CAT)
         self.assertIn('return new SimklMediaTarget(false',CAT)
         self.assertIn("card.dataset.mfAnime==='1'",SIMKL)
         self.assertNotIn('mf-simkl-native-score',MAL)
@@ -43,7 +43,7 @@ class SimklPosters051(unittest.TestCase):
     def test_per_user_cache_and_no_external_card_queries(self):
         self.assertIn('const selectedUser=currentUser;',SIMKL)
         self.assertIn('if(currentUser!==selectedUser)return;',SIMKL)
-        self.assertIn('cardScores.clear();cardStates.clear();pendingScoreIds.clear()',SIMKL)
+        self.assertIn('cardScores.clear();cardStates.clear();simklEligibleCards.clear();pendingScoreIds.clear()',SIMKL)
         self.assertIn('slice(0,36)',SIMKL)
         self.assertNotIn('await _simkl.ReadItemAsync',CONTROLLER.split('CardScores(',1)[1].split('[HttpGet("connection")]',1)[0])
 

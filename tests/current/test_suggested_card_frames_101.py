@@ -12,7 +12,7 @@ class SuggestedCardFrameV103(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.theme = (WEB / 'theme.css').read_text(encoding='utf-8')
-        marker = '/* v0.4.103: similar cards show the personal watch state ON THE POSTER.'
+        marker = '/* v0.4.104: similar cards show the personal watch state ON THE POSTER.'
         cls.block = cls.theme.split(marker, 1)[1].split('/* Mobile and narrow browser windows retain all native controls', 1)[0]
 
     def test_real_poster_not_outer_card_box_gets_one_frame(self):
@@ -51,9 +51,9 @@ class SuggestedCardFrameV103(unittest.TestCase):
 
     def test_version_and_existing_release_workflows(self):
         meta = json.loads((ROOT / 'meta.json').read_text(encoding='utf-8'))
-        self.assertEqual(meta['version'], '0.4.103.0')
+        self.assertEqual(meta['version'], '0.4.104.0')
         csproj = (ROOT / 'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf-8')
-        for name, version in [('Version','0.4.103'),('AssemblyVersion','0.4.103.0'),('FileVersion','0.4.103.0')]:
+        for name, version in [('Version','0.4.104'),('AssemblyVersion','0.4.104.0'),('FileVersion','0.4.104.0')]:
             self.assertIn(f'<{name}>{version}</{name}>', csproj)
         for f in ['tools/sync_version.py','tools/package.py','.github/workflows/release.yml','.github/workflows/build.yml']:
             self.assertTrue((ROOT / f).is_file())

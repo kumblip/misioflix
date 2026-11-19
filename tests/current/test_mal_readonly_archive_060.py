@@ -63,10 +63,14 @@ class ReadOnlyArchive060(unittest.TestCase):
         # synchronization and database modules, with no external ZIP needed.
         import hashlib
         expected_sha256 = {
-            'src/Jellyfin.Plugin.MisioFlix/Web/simkl.js': '54820d94422fd5f7abbf1336199cfc7499b8a0d9051b175abd0a1e28a87f43d8',
             'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixSimklService.cs': 'ab31152c93a6ca697c96ac229fca913136011a2805bf6b42beaed56343442d75',
             'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixSimklLocalStore.cs': 'af0ff76d3f2a8e07849df22db37ef6b83f7750b9d2b4bc1fbbb148777daaa117',
         }
+        # Simkl UI is intentionally modified for anime-tag isolation, while
+        # MAL archive, Simkl synchronization and local database are untouched.
+        simkl_ui=(SRC/'Web'/'simkl.js').read_text('utf8')
+        self.assertIn('simklEligibleCards',simkl_ui)
+        self.assertIn("card.dataset.mfSimklExcluded==='1'",simkl_ui)
         for name, expected in expected_sha256.items():
             with self.subTest(file=name):
                 actual = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()

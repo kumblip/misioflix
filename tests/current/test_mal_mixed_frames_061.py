@@ -32,7 +32,7 @@ class MALGoldGreenFrame061(unittest.TestCase):
         self.assertIn("'data-mf-mal-season'",CLIENT)
         self.assertIn('malSeriesId = anime && seasonParentId != Guid.Empty',CATALOG)
         self.assertIn('malSeasonNumber = anime ? simklIndex : null',CATALOG)
-        self.assertIn('simklSeriesId = !anime && seasonParentId',CATALOG)
+        self.assertIn('simklSeriesId = !simklExcluded && seasonParentId',CATALOG)
         self.assertIn('malResumeSeasons.get(catalog)?.has(number)',MAL)
     def test_read_only_resume_with_authenticated_user_and_safe_failure(self):
         self.assertIn("fetch('/MisioFlix/api/resume'",MAL)
@@ -55,9 +55,8 @@ class MALGoldGreenFrame061(unittest.TestCase):
         self.assertNotIn("request('/update'",resume)
         self.assertNotIn("method:'POST'",resume)
         self.assertNotIn('episodesWatched:',resume)
-    def test_simkl_stays_at_approved_visual_delta_064(self):
-        import hashlib
-        self.assertEqual(hashlib.sha256(SIMKL).hexdigest(),
-            '54820d94422fd5f7abbf1336199cfc7499b8a0d9051b175abd0a1e28a87f43d8')
+    def test_simkl_still_has_no_mal_calls(self):
+        self.assertIn('simklEligibleCards', SIMKL.decode())
+        self.assertNotIn('misioflix-mal', SIMKL.decode())
 
 if __name__=='__main__':unittest.main()

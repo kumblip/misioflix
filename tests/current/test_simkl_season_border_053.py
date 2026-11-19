@@ -28,8 +28,8 @@ class SimklSeasonBorder053(unittest.TestCase):
         self.assertIn("data-mf-simkl-series",CLIENT)
         self.assertIn("data-mf-simkl-season",CLIENT)
     def test_season_identity_from_jellyfin_not_title(self):
-        self.assertIn('simklSeriesId = !anime && seasonParentId',SVC)
-        self.assertIn('simklSeasonNumber = !anime ? simklIndex : null',SVC)
+        self.assertIn('simklSeriesId = !simklExcluded && seasonParentId',SVC)
+        self.assertIn('simklSeasonNumber = !simklExcluded ? simklIndex : null',SVC)
         self.assertIn('if (type == "Season")',SVC)
         self.assertIn('Get(item,"SeriesId")',SVC)
         self.assertIn('Get(item,"IndexNumber")',SVC)

@@ -17,7 +17,7 @@ class SimklFrames052(unittest.TestCase):
         self.assertIn('AuthorizedSimklCardTargetsAsync',CTRL)
         self.assertIn('if(matches.Length!=1)continue',CTRL)
         self.assertIn('states[target.Key]=new {status=found.Status',CTRL)
-        self.assertIn('return Ok(new {scores,states})',CTRL)
+        self.assertIn('return Ok(new {scores,states,eligibleIds=targets.Keys.ToArray()})',CTRL)
         self.assertNotIn('_simkl.ReadItemAsync',CTRL.split('CardScores(',1)[1].split('[HttpGet("connection")]',1)[0])
     def test_separate_mal_styles(self):
         for name in ('mf-simkl-media-poster','mf-simkl-native-media','mf-simkl-detail-ready','mf-simkl-detail-score'):

@@ -172,26 +172,26 @@ html.misioflix-skin .card.mf-simkl-native-media:has(.mf-simkl-native-score) .cou
    Colors match AnimePL visually but never share its watch classes or logic.
    Left half = resumed (gold), right half = completed (green). */
 html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch="unwatched"],
-html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch="unwatched"],
-html.misioflix-skin .card.mf-simkl-season-media[data-mf-simkl-watch="unwatched"],
+html.misioflix-skin .card.mf-simkl-native-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="unwatched"],
+html.misioflix-skin .card.mf-simkl-season-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="unwatched"],
 html.misioflix-skin #itemDetailPage.mf-simkl-detail-ready[data-mf-simkl-watch="unwatched"] {
   --mf-simkl-frame:#f4a5ce;
 }
 html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch="started"],
-html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch="started"],
-html.misioflix-skin .card.mf-simkl-season-media[data-mf-simkl-watch="started"],
+html.misioflix-skin .card.mf-simkl-native-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="started"],
+html.misioflix-skin .card.mf-simkl-season-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="started"],
 html.misioflix-skin #itemDetailPage.mf-simkl-detail-ready[data-mf-simkl-watch="started"] {
   --mf-simkl-frame:#e6a23c;
 }
 html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch="watched"],
-html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch="watched"],
-html.misioflix-skin .card.mf-simkl-season-media[data-mf-simkl-watch="watched"],
+html.misioflix-skin .card.mf-simkl-native-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="watched"],
+html.misioflix-skin .card.mf-simkl-season-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="watched"],
 html.misioflix-skin #itemDetailPage.mf-simkl-detail-ready[data-mf-simkl-watch="watched"] {
   --mf-simkl-frame:#45b879;
 }
 html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch="mixed"],
-html.misioflix-skin .card.mf-simkl-native-media[data-mf-simkl-watch="mixed"],
-html.misioflix-skin .card.mf-simkl-season-media[data-mf-simkl-watch="mixed"],
+html.misioflix-skin .card.mf-simkl-native-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="mixed"],
+html.misioflix-skin .card.mf-simkl-season-media:not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch="mixed"],
 html.misioflix-skin #itemDetailPage.mf-simkl-detail-ready[data-mf-simkl-watch="mixed"] {
   --mf-simkl-frame:linear-gradient(90deg,#e6a23c 0 50%,#45b879 50% 100%);
 }
@@ -208,13 +208,13 @@ html.misioflix-skin .mf-simkl-media-poster[data-mf-simkl-watch]::before {
   -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
   -webkit-mask-composite:xor;mask-composite:exclude;
 }
-html.misioflix-skin .card:is(.mf-simkl-native-media,.mf-simkl-season-media)[data-mf-simkl-watch] .cardImageContainer {
+html.misioflix-skin .card:is(.mf-simkl-native-media,.mf-simkl-season-media):not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch] .cardImageContainer {
   outline:0!important;box-shadow:none!important;
 }
-html.misioflix-skin .card:is(.mf-simkl-native-media,.mf-simkl-season-media)[data-mf-simkl-watch] .cardScalable {
+html.misioflix-skin .card:is(.mf-simkl-native-media,.mf-simkl-season-media):not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch] .cardScalable {
   position:relative;outline:0!important;box-shadow:none!important;
 }
-html.misioflix-skin .card:is(.mf-simkl-native-media,.mf-simkl-season-media)[data-mf-simkl-watch] .cardScalable::after {
+html.misioflix-skin .card:is(.mf-simkl-native-media,.mf-simkl-season-media):not([data-mf-anime="1"]):not([data-mf-simkl-excluded="1"])[data-mf-simkl-watch] .cardScalable::after {
   content:"";position:absolute;inset:0;z-index:8;pointer-events:none;
   box-sizing:border-box;border-radius:12px;padding:2px;
   background:var(--mf-simkl-frame);
