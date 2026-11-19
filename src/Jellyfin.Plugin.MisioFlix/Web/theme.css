@@ -1008,61 +1008,60 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact #similarCollapsible .simil
 html.misioflix-skin #itemDetailPage.mf-detail-compact #similarCollapsible .similarContent > .mf-detail-similar-extra {
   display:none!important;
 }
-/* Sugerowane: the outer card frame in the native Similar section must use
-   the SAME personal state colors as the rest of MisioFlix. Keep the existing
-   poster frames and DOM; only the Similar cardBox border is corrected here.
-   Pink = unwatched, gold = started, green = watched, gold+green = mixed. */
+/* v0.4.103: similar cards show the personal watch state ON THE POSTER.
+   v0.4.101/102 changed cardBox (which encloses the description), not the
+   visible poster border. Render ONE frame on cardScalable in Similar only,
+   never re-parent Jellyfin DOM or overwrite MAL/Simkl/user state. */
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card[data-mf-card="1"] > .cardBox {
-  position:relative;
+  .card[data-mf-watch="unwatched"] {--mf-similar-frame:#f4a5ce}
+html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
+  .card[data-mf-watch="started"] {--mf-similar-frame:#e6a23c}
+html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
+  .card[data-mf-watch="watched"] {--mf-similar-frame:#45b879}
+/* Anime: completed MAL with an actual Jellyfin Resume position. */
+html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
+  .card[data-mf-watch="watched"][data-mf-mal-frame="mixed"] {
+  --mf-similar-frame:linear-gradient(90deg,#e6a23c 0 50%,#45b879 50% 100%);
 }
+/* Movies/TV: authoritative Simkl state takes precedence over Jellyfin. */
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card[data-mf-card="1"][data-mf-watch="unwatched"] > .cardBox {
-  border-color:#f4a5ce!important;
+  .card.mf-simkl-native-media[data-mf-simkl-watch="unwatched"],
+html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
+  .card.mf-simkl-season-media[data-mf-simkl-watch="unwatched"] {--mf-similar-frame:#f4a5ce}
+html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
+  .card.mf-simkl-native-media[data-mf-simkl-watch="started"],
+html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
+  .card.mf-simkl-season-media[data-mf-simkl-watch="started"] {--mf-similar-frame:#e6a23c}
+html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
+  .card.mf-simkl-native-media[data-mf-simkl-watch="watched"],
+html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
+  .card.mf-simkl-season-media[data-mf-simkl-watch="watched"] {--mf-similar-frame:#45b879}
+html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
+  .card.mf-simkl-native-media[data-mf-simkl-watch="mixed"],
+html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
+  .card.mf-simkl-season-media[data-mf-simkl-watch="mixed"] {
+  --mf-similar-frame:linear-gradient(90deg,#e6a23c 0 50%,#45b879 50% 100%);
 }
+/* Restrict the compositor to cards with a resolved personal status. The native
+   generic cardBox, image outline and MAL/Simkl pseudo-element otherwise draw
+   multiple competing pink/green borders around the same poster. */
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card[data-mf-card="1"][data-mf-watch="started"] > .cardBox {
-  border-color:#e6a23c!important;
-}
-html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card[data-mf-card="1"][data-mf-watch="watched"] > .cardBox {
-  border-color:#45b879!important;
-}
-html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-native-media[data-mf-simkl-watch="unwatched"] > .cardBox,
-html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-season-media[data-mf-simkl-watch="unwatched"] > .cardBox {
-  border-color:#f4a5ce!important;
-}
-html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-native-media[data-mf-simkl-watch="started"] > .cardBox,
-html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-season-media[data-mf-simkl-watch="started"] > .cardBox {
-  border-color:#e6a23c!important;
-}
-html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-native-media[data-mf-simkl-watch="watched"] > .cardBox,
-html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-season-media[data-mf-simkl-watch="watched"] > .cardBox {
-  border-color:#45b879!important;
-}
-html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card[data-mf-card="1"][data-mf-watch="watched"][data-mf-mal-frame="mixed"] > .cardBox,
-html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-native-media[data-mf-simkl-watch="mixed"] > .cardBox,
-html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-season-media[data-mf-simkl-watch="mixed"] > .cardBox {
+  .card:is([data-mf-watch="unwatched"],[data-mf-watch="started"],[data-mf-watch="watched"],[data-mf-simkl-watch="unwatched"],[data-mf-simkl-watch="started"],[data-mf-simkl-watch="watched"],[data-mf-simkl-watch="mixed"]) > .cardBox {
   border-color:transparent!important;
 }
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card[data-mf-card="1"][data-mf-watch="watched"][data-mf-mal-frame="mixed"] > .cardBox::before,
+  .card:is([data-mf-watch="unwatched"],[data-mf-watch="started"],[data-mf-watch="watched"],[data-mf-simkl-watch="unwatched"],[data-mf-simkl-watch="started"],[data-mf-simkl-watch="watched"],[data-mf-simkl-watch="mixed"]) .cardScalable {
+  position:relative;outline:0!important;box-shadow:none!important;
+}
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-native-media[data-mf-simkl-watch="mixed"] > .cardBox::before,
+  .card:is([data-mf-watch="unwatched"],[data-mf-watch="started"],[data-mf-watch="watched"],[data-mf-simkl-watch="unwatched"],[data-mf-simkl-watch="started"],[data-mf-simkl-watch="watched"],[data-mf-simkl-watch="mixed"]) .cardImageContainer {
+  outline:0!important;box-shadow:none!important;
+}
 html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
-  .card.mf-simkl-season-media[data-mf-simkl-watch="mixed"] > .cardBox::before {
-  content:"";position:absolute;inset:0;pointer-events:none;
-  box-sizing:border-box;border-radius:inherit;padding:1px;
-  background:linear-gradient(90deg,#e6a23c 0 50%,#45b879 50% 100%);
+  .card:is([data-mf-watch="unwatched"],[data-mf-watch="started"],[data-mf-watch="watched"],[data-mf-simkl-watch="unwatched"],[data-mf-simkl-watch="started"],[data-mf-simkl-watch="watched"],[data-mf-simkl-watch="mixed"]) .cardScalable::after {
+  content:"";position:absolute;inset:0;z-index:9;pointer-events:none;
+  box-sizing:border-box;border:0!important;border-radius:13px 13px 0 0;
+  padding:2px;background:var(--mf-similar-frame)!important;
   -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
   -webkit-mask-composite:xor;mask-composite:exclude;
 }
