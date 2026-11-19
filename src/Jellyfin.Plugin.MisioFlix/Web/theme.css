@@ -1008,6 +1008,14 @@ html.misioflix-skin #itemDetailPage.mf-detail-compact #similarCollapsible .simil
 html.misioflix-skin #itemDetailPage.mf-detail-compact #similarCollapsible .similarContent > .mf-detail-similar-extra {
   display:none!important;
 }
+/* Sugerowane: the generic rose cardBox border must not sit beneath an
+   authoritative completed/mixed watch-state frame. Only the native Jellyfin
+   Similar section is affected; no watch status, MAL, Simkl or DOM is changed. */
+html.misioflix-skin #itemDetailPage #similarCollapsible .similarContent
+  .card[data-mf-card="1"]:is([data-mf-watch="watched"],[data-mf-simkl-watch="watched"],[data-mf-simkl-watch="mixed"]) > .cardBox {
+  border-color:transparent!important;
+}
+
 /* Mobile and narrow browser windows retain all native controls, but stack content. */
 @media (max-width:850px) {
   html.misioflix-skin #itemDetailPage.mf-detail-compact .mf-detail-grid {
