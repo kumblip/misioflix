@@ -20,6 +20,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     // Path seen FROM INSIDE the Jellyfin container, NOT the NAS host path.
     public string AnimeRoot { get; set; } = "/media/raid/animelektor";
+    // Future second anime library: original sound + English subtitles, folder named "anime".
+    // Not an AnimeEN directory; keep AnimeRoot unchanged for all existing installations.
+    public string AnimeOriginalRoot { get; set; } = "/media/raid/anime";
 
     // Only local loopback is allowed by CatalogService. Keep the server port here.
     public string JellyfinLoopbackUrl { get; set; } = "http://127.0.0.1:8096";

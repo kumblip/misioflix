@@ -47,8 +47,10 @@ class SimklIsolated046(unittest.TestCase):
 
     def test_root_anime_excluded_server_side(self):
         self.assertIn('AuthorizedSimklTargetAsync',CATALOG)
-        self.assertIn('Configuration.AnimeRoot',CATALOG)
-        self.assertIn('IsBelowRoot(local.Path',CATALOG)
+        self.assertIn('config.AnimeRoot',CATALOG)
+        self.assertIn('config.AnimeOriginalRoot',CATALOG)
+        self.assertIn('IsBelowRoot(mediaPath',CATALOG)
+        self.assertIn('if (AnimeSource(local.Path).Length != 0) return true;',CATALOG)
         self.assertIn('return new SimklMediaTarget(false',CATALOG)
         self.assertIn('!target.Relevant',SERVICE)
         self.assertIn('if(!target.Relevant)return Ok(new{relevant=false})',ROUTES)

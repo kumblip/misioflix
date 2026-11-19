@@ -601,6 +601,7 @@ html.misioflix-skin .mf-home-search-input{width:100%}
 html.misioflix-skin .mf-home-search-input::placeholder{color:#bd9fb4}
 html.misioflix-skin .mf-home-search-input:focus,html.misioflix-skin .mf-home-search-select:focus{border-color:#efa0c8;box-shadow:0 0 0 2px rgba(244,165,206,.18)}
 html.misioflix-skin .mf-home-search-seasons{display:flex;gap:5px;align-items:center;cursor:pointer;font-size:13px;white-space:nowrap}
+html.misioflix-skin .mf-home-search-lektor{display:flex;gap:5px;align-items:center;cursor:pointer;font-size:13px;white-space:normal}
 html.misioflix-skin .mf-home-suggestions{
   position:absolute;top:100%;left:0;right:0;z-index:20;
   max-height:260px;overflow:auto;border:1px solid #885b7e;

@@ -29,7 +29,7 @@
   const SEARCH_CATALOG_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
   const SEARCH_CATALOG_DB = 'misioflix-search-catalog-v1';
   let catalogDatabasePromise = null;
-  const catalogSchemaVersion = 'v1'; // Increment only when catalogue DTO semantics change.
+  const catalogSchemaVersion = 'v2'; // Catalog now identifies physical anime source; older snapshots cannot supply it.
   function catalogScope(){
     const client = window.ApiClient || window.ConnectionManager?.getApiClient?.();
     const userId = client?.getCurrentUserId?.();
@@ -1191,6 +1191,10 @@
   }
   function fitsSearch(item,state,withText=true){
     if(state.unmatchedGenre)return false;
+    // Filter by the authenticated server's physical anime root, not library
+    // display names or guessed audio tracks. Older cached records are PL-only.
+    if(state.kind==='anime' && (item.anime_source||'lektor') !==
+       (state.lektor?.checked===false?'original':'lektor'))return false;
     if(state.libraryStates && !allowGroup(compactId(item.library_id),state.libraryStates))return false;
     if(!searchByType(item,state))return false;
     if(!watchModeMatches(item,state))return false;
@@ -1432,7 +1436,14 @@
     if(kind!=='anime')seasonLabel.hidden=true;
     const reset=own('button','mf-home-button','Wyczyść filtry');reset.type='button';
     const refresh=own('button','mf-home-button','Odśwież dane');refresh.type='button';
-    tool.append(searchWrap,seasonLabel,reset,refresh);
+    // Existing AnimePL remains the default. Unchecking targets the separate
+    // physical "anime" root (original audio + English subtitles) when available.
+    const lektorLabel=own('label','mf-home-search-lektor');
+    const lektor=own('input','');lektor.type='checkbox';lektor.checked=true;
+    lektorLabel.append(lektor,document.createTextNode(' Lektor (AnimePL)'));
+    lektorLabel.title='Zaznaczony: animelektor (polski lektor) · odznaczony: anime (oryginalny dźwięk, napisy angielskie)';
+    if(kind!=='anime')lektorLabel.hidden=true;
+    tool.append(searchWrap,seasonLabel,lektorLabel,reset,refresh);
     const choicesWrap=own('div','mf-home-choice-groups');
     append(choicesWrap,libraryChoices.wrap,typeChoices.wrap);
     if(watchChoice)choicesWrap.appendChild(watchChoice.wrap);
@@ -1451,7 +1462,7 @@
     feed.hidden=true;feed.setAttribute('role','status');
     main.append(tool,choicesWrap,genresHead,summary,help,genres,status,grid,feed);
     dialog.append(header,main);overlay.appendChild(dialog);
-    const state={kind, overlay, input, suggestions, includeSeasons, reset, refresh,
+    const state={kind, overlay, input, suggestions, includeSeasons, lektor, reset, refresh,
       scopedLibraries, libraryOptions, typeOptions, libraryChoices, typeChoices,
       libraryStates:new Map(), typeStates:new Map(),watchChoices:watchChoice?.choices||null,
       watchMode:0,watchSnapshot:null,watchLoading:false,watchRequestId:0,watchFallback:false,
@@ -1466,6 +1477,7 @@
     });
     overlay.addEventListener('click',e=>{if(e.target===overlay)closeSearch();});
     toggle.addEventListener('click',()=>{state.genresExpanded=!state.genresExpanded;updateGenreSummary(state);});
+    if(kind==='anime')lektor.addEventListener('change',()=>paintSearchResults(state));
     includeSeasons.addEventListener('change',()=>{
       syncSearchPlaceholder();
       // A manually selected seasons-only type is meaningless while unchecked.
@@ -1487,7 +1499,7 @@
     input.addEventListener('keydown',e=>{if(e.key==='Enter')state.suggestions.hidden=true;});
     dialog.addEventListener('click',e=>{if(!searchWrap.contains(e.target))suggestions.hidden=true;});
     reset.addEventListener('click',()=>{
-      input.value='';includeSeasons.checked=false;
+      input.value='';includeSeasons.checked=false;lektor.checked=true;
       syncSearchPlaceholder();
       state.libraryStates.clear();state.typeStates.clear();state.genreStates.clear();
       state.watchMode=0;drawWatchFilter(state);
@@ -1518,6 +1530,7 @@
   }
   function displaySearchCatalog(state,data,preserveFilters=false){
     const previous=preserveFilters?new Map(state.genreStates):null;
+    const previousNames=preserveFilters?new Map(state.genreNames):null;
     const previousCount=preserveFilters?state.shown:0;
     const previousScroll=preserveFilters?state.scroller.scrollTop:0;
     state.pool=sortCatalog(data.items.filter(x=>state.kind==='anime'
@@ -1528,7 +1541,14 @@
     initializeGenres(state,data);
     if(previous){
       for(const [genre,mode] of previous){
-        if(state.genreNames.has(genre) && mode)state.genreStates.set(genre,mode);
+        if(!mode)continue;
+        // A removed/renamed Jellyfin genre remains visibly selected with count
+        // zero after refresh; never silently broaden a user's search.
+        if(!state.genreNames.has(genre)){
+          state.genreNames.set(genre,previousNames.get(genre)||genre);
+          state.genreCounts.set(genre,0);
+        }
+        state.genreStates.set(genre,mode);
       }
       drawGenreButtons(state);
     }
@@ -1546,7 +1566,10 @@
     try{
       const data=await (force?refreshScopedCatalog(state):loadScopedCatalog(state));
       if(state!==activeSearch || !state.overlay.isConnected || job!==state.requestId)return;
-      displaySearchCatalog(state,data,false);
+      // Manual refresh is an update of the same results: keep genre choices,
+      // already shown cards and the modal scroll position, just like the
+      // automatic stale-cache refresh below.
+      displaySearchCatalog(state,data,force && state.pool.length>0);
       if(data.needsRefresh){
         // Display cached results first, then silently replace with current data.
         // Do not reset any user's typed query, type, library or genre filters.

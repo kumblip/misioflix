@@ -98,3 +98,17 @@ status jego wdrożenia nie został potwierdzony.
 Jellyfin_Wlasny_CSS.txt zawiera reguły CSS z pkt. 5 i 6 w postaci gotowej
 do kopiowania. To rekonstrukcja znanych zmian z rozmowy, NIE eksport całego
 indywidualnego CSS ustawionego obecnie przez użytkownika w panelu Jellyfina.
+
+9. PLAN DODANIA DRUGIEGO KATALOGU ANIME — v0.4.105
+--------------------------------------------------
+To instrukcja przyszłej konfiguracji biblioteki Jellyfin na NAS, nie zmiana
+wykonana na Twoich mediach:
+- Pozostawić istniejący katalog `/volume1/media/animelektor` (w kontenerze
+  `/media/raid/animelektor`) jako anime z polskim lektorem.
+- Dodać katalog `/volume1/media/anime` (w kontenerze `/media/raid/anime`),
+  czyli fizyczny folder nazywa się `anime`, NIE `AnimeEN`.
+- W Jellyfinie dodać osobną bibliotekę pod wybraną nazwą zawierającą "anime",
+  np. `AnimeEN`, wskazującą na ten folder; nie usuwać starej biblioteki.
+- W plikach NFO zachować anime, MAL ID i komplet wymaganych metadanych.
+- W nowej wersji wtyczki filtr `Lektor (AnimePL)` jest domyślnie zaznaczony.
+- Nie modyfikowano żadnej ścieżki, NFO ani konfiguracji NAS automatycznie.

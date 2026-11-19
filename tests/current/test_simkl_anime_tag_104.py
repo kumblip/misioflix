@@ -25,7 +25,9 @@ class AnimeTagGuard104(unittest.TestCase):
         self.assertIn('nfo.Element("anime")', CAT)
         self.assertIn('IsSimklAnime(local, kind=="movies"?"Movie":"Series", data)',CAT)
         self.assertIn('return new SimklMediaTarget(false, kind, seasonNumber',CAT)
-        self.assertIn('IsBelowRoot(local.Path, Path.GetFullPath(animeRoot))',CAT)
+        self.assertIn('if (AnimeSource(local.Path).Length != 0) return true;',CAT)
+        self.assertIn('IsBelowRoot(mediaPath, Path.GetFullPath(config.AnimeRoot))',CAT)
+        self.assertIn('IsBelowRoot(mediaPath, Path.GetFullPath(config.AnimeOriginalRoot))',CAT)
     def test_all_simkl_write_paths_are_guarded(self):
         self.assertIn('MisioFlixCatalogService.IsSimklAnime(mediaRoot', PLAY)
         self.assertIn('if(IsAnime(item,root))return null;', PLAY)

@@ -83,7 +83,6 @@ public sealed class MisioFlixCatalogService
             if (!allowed.Any(view => view.id.Equals(libraryId.Value.ToString("N"), StringComparison.OrdinalIgnoreCase)))
                 throw new UnauthorizedAccessException("Requested library is not accessible");
         }
-        var root = Path.GetFullPath(config.AnimeRoot);
         var result = new List<CatalogItem>();
         const int pageSize = 400;
         const int maxItems = 16000; // Defensive bound; not a catalog size claim.
@@ -111,7 +110,8 @@ public sealed class MisioFlixCatalogService
                 var originalItem = _library.GetItemById(guid);
                 if (originalItem is null) continue;
                 var mediaPath = originalItem.Path;
-                var isAnime = IsBelowRoot(mediaPath, root);
+                var animeSource = AnimeSource(mediaPath);
+                var isAnime = animeSource.Length != 0;
                 if (isAnime)
                 {
                     var local = ReadNfo(mediaPath, Text(Get(json, "Type")));
@@ -120,6 +120,7 @@ public sealed class MisioFlixCatalogService
                     {
                         id = itemId,
                         anime = true,
+                        anime_source = animeSource,
                         type = Text(Get(json, "Type")),
                         // Season -> its Jellyfin Series GUID, never a title-based guess.
                         // The parent still must be present in the user's authorised catalog
@@ -412,9 +413,7 @@ public sealed class MisioFlixCatalogService
         if (isAnime)
         {
             var local = _library.GetItemById(guid);
-            var root = Path.GetFullPath(Plugin.Instance?.Configuration.AnimeRoot
-                ?? throw new InvalidOperationException("Anime NFO root is not configured"));
-            if (local is null || !IsBelowRoot(local.Path, root)) return null;
+            if (local is null || AnimeSource(local.Path).Length == 0) return null;
             nfo = ReadNfo(local.Path, type);
         }
         var title = isAnime
@@ -465,9 +464,7 @@ public sealed class MisioFlixCatalogService
                 var id = Text(Get(json, "Id"));
                 if (!Guid.TryParse(id, out var guid)) continue;
                 var local = _library.GetItemById(guid);
-                var root = Path.GetFullPath(Plugin.Instance?.Configuration.AnimeRoot
-                    ?? throw new InvalidOperationException("Anime NFO root is not configured"));
-                var category = local is not null && IsBelowRoot(local.Path, root) ? "anime" : "movies";
+                var category = local is not null && AnimeSource(local.Path).Length > 0 ? "anime" : "movies";
                 var tile = MakeHomeTile(json, category);
                 if (tile is not null) cards[id] = tile;
             }
@@ -507,8 +504,6 @@ public sealed class MisioFlixCatalogService
         var mediaIds = new HashSet<Guid>();
         if (items.ValueKind != JsonValueKind.Array) return output;
         var allowedIds = requested.ToHashSet();
-        var root = Path.GetFullPath(Plugin.Instance?.Configuration.AnimeRoot
-            ?? throw new InvalidOperationException("Missing anime root"));
         foreach (var item in items.EnumerateArray())
         {
             if (!Guid.TryParse(Text(Get(item,"Id")), out var id) || !allowedIds.Contains(id)) continue;
@@ -516,7 +511,7 @@ public sealed class MisioFlixCatalogService
             if (libItem is null) continue;
             var type = Text(Get(item,"Type"));
             if (type is "Movie" or "Series") mediaIds.Add(id);
-            var anime = IsBelowRoot(libItem.Path, root);
+            var anime = AnimeSource(libItem.Path).Length > 0;
             // NFO <tag>Anime</tag> is also a hard exclusion from Simkl,
             // even when an item lives outside the configured AnimeRoot.
             var simklExcluded = IsSimklAnime(libItem, type, item);
@@ -1110,9 +1105,7 @@ public sealed class MisioFlixCatalogService
     // The existing AnimeRoot exclusion remains as an additional safeguard.
     internal static bool IsSimklAnime(BaseItem local, string type, JsonElement item = default)
     {
-        var animeRoot = Plugin.Instance?.Configuration.AnimeRoot;
-        if (!string.IsNullOrWhiteSpace(animeRoot) &&
-            IsBelowRoot(local.Path, Path.GetFullPath(animeRoot))) return true;
+        if (AnimeSource(local.Path).Length != 0) return true;
         static bool AnimeTag(string? value) => string.Equals(value?.Trim(),"Anime",StringComparison.OrdinalIgnoreCase);
         var fromApi = Get(item,"Tags");
         if (fromApi.ValueKind == JsonValueKind.Array &&
@@ -1193,11 +1186,8 @@ public sealed class MisioFlixCatalogService
             throw new ArgumentException("Wybrana pozycja nie jest anime");
 
         var local = _library.GetItemById(itemId);
-        var rootPath = Plugin.Instance?.Configuration.AnimeRoot;
-        if (string.IsNullOrWhiteSpace(rootPath))
-            throw new InvalidOperationException("Nie skonfigurowano katalogu anime");
-        var root = Path.GetFullPath(rootPath);
-        if (local is null || !IsBelowRoot(local.Path, root))
+        var animeSource = local is null ? string.Empty : AnimeSource(local.Path);
+        if (animeSource.Length == 0)
             throw new UnauthorizedAccessException("Pozycja jest poza biblioteką anime");
 
         var malId = ReadNfo(local.Path, type, requireMalId: true)?.MalId;
@@ -1219,7 +1209,7 @@ public sealed class MisioFlixCatalogService
                     Guid.TryParse(Text(Get(first, "Id")), out var firstId))
                 {
                     var firstLocal = _library.GetItemById(firstId);
-                    if (firstLocal is not null && IsBelowRoot(firstLocal.Path, root))
+                    if (firstLocal is not null && AnimeSource(firstLocal.Path) == animeSource)
                     {
                         var firstMalId = ReadNfo(firstLocal.Path, "Season", requireMalId: true)?.MalId;
                         if (firstMalId.HasValue && firstMalId.Value > 0) return firstMalId.Value;
@@ -1393,6 +1383,19 @@ public sealed class MisioFlixCatalogService
         response.EnsureSuccessStatusCode();
         await using var body = await response.Content.ReadAsStreamAsync(cancel).ConfigureAwait(false);
         return await JsonDocument.ParseAsync(body, cancellationToken: cancel).ConfigureAwait(false);
+    }
+
+    // Two physical anime roots: existing Polish voice-over and optional original audio
+    // with English subtitles. The NFO and MAL handling is identical in both.
+    // Identify by the complete directory path, never by a similar title or genre.
+    private static string AnimeSource(string? mediaPath)
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (!string.IsNullOrWhiteSpace(config?.AnimeRoot) &&
+            IsBelowRoot(mediaPath, Path.GetFullPath(config.AnimeRoot))) return "lektor";
+        if (!string.IsNullOrWhiteSpace(config?.AnimeOriginalRoot) &&
+            IsBelowRoot(mediaPath, Path.GetFullPath(config.AnimeOriginalRoot))) return "original";
+        return string.Empty;
     }
 
     private static bool IsBelowRoot(string? mediaPath, string root)
@@ -1601,6 +1604,8 @@ public sealed class CatalogItem
 {
     public string id { get; set; } = string.Empty;
     public bool anime { get; set; }
+    // "lektor" = animelektor (PL); "original" = anime (original audio / EN subs).
+    public string anime_source { get; set; } = string.Empty;
     public string type { get; set; } = string.Empty;
     public string title { get; set; } = string.Empty;
     // Parent relationship is an actual Jellyfin SeriesId/ParentId GUID, not a name match.
