@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix v0.4.101: poprawa ramek obejrzanych pozycji w Sugerowanych (na bazie v0.4.100)",
+  "description": "MisioFlix v0.4.102: poprawa ramek stanów w Sugerowanych (na bazie v0.4.101)",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.101.0",
+  "version": "0.4.102.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,
