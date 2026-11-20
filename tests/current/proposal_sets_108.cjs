@@ -46,6 +46,7 @@ assert(a>=0&&b>a);
 vm.runInContext(src.slice(a,b),ctx);
 ctx.paintRecommendationSets();
 assert.equal(ctx.recommendationRows.size,3);
+assert.equal(ctx.recommendationRows.size,3);
 assert.deepEqual(created.slice(-3).map(x=>x.matching.map(y=>y.id)),[[id(1),id(4)],[id(1),id(2),id(4),id(5)],[id(1)]]);
 const t1=src.indexOf('  function recommendationAnimeToggle(){');
 const t2=src.indexOf('  function randomizeRecommendations(',t1);
@@ -54,11 +55,15 @@ const switcher=ctx.recommendationAnimeToggle().children[0];
 assert.equal(switcher.attrs['aria-checked'],'true');
 switcher.listeners.click();
 assert.equal(switcher.attrs['aria-checked'],'false');
-assert.deepEqual(created.slice(-3).map(x=>x.matching.map(y=>y.id)),[[id(4)],[id(2),id(4)],[]]);
+assert.equal(ctx.recommendationRows.size,2);
+assert.deepEqual(created.slice(-2).map(x=>x.matching.map(y=>y.id)),[[id(4)],[id(2),id(4)]]);
 switcher.listeners.click();
 assert.equal(switcher.attrs['aria-checked'],'true');
+assert.equal(ctx.recommendationRows.size,3);
 assert.deepEqual(created.slice(-3).map(x=>x.matching.map(y=>y.id)),[[id(1),id(4)],[id(1),id(2),id(4),id(5)],[id(1)]]);
-assert.equal(hydrated.length,9);
+assert.equal(hydrated.length,8);
+assert.deepEqual(created.slice(0,3).map(x=>x.genre),['Akcja + Komedia','Akcja / Horror','Akcja + Fantasy']);
+assert(!created.some(x=>x.genre.includes('Propozycja')));
 // Actual recommendationShelf begins in shuffled (not latest) mode, with the
 // full untruncated candidate list; latest is optional.
 const s1=src.indexOf('  function randomizeRecommendations(');

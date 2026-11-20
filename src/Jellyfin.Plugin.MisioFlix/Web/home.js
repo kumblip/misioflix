@@ -1903,8 +1903,12 @@
       if(reset)row.scroll.replaceChildren(); // No candidates: remove the loading placeholder.
       // Remove previous retry errors after a successful page, but keep tiles.
       for(const stale of row.scroll.querySelectorAll('.mf-home-empty'))stale.remove();
-      if(!row.scroll.childElementCount)
-        row.scroll.appendChild(own('p','mf-home-empty','Brak dostępnych pozycji dla tego gatunku.'));
+      // No valid/accessible tiles remain after exhausting the candidate pool:
+      // hide the entire genre section, not just an empty rail under its title.
+      // A temporary network failure is handled separately below (retry stays).
+      if(!row.scroll.querySelector('.mf-home-card') && !row.hasMore){
+        row.section.hidden=true;
+      }
       // On very wide screens the first page may not fill the row. Load the
       // next page only on demand via a normal scroll or the right arrow.
     }catch(e){
@@ -1934,17 +1938,17 @@
           ...(item.anime&&item.type==='Series'?(recommendationSeasonGenres.get(compactId(item.id))||[]):[])].map(normalized));
         return preset.matchAll?selected.every(g=>genres.has(g)):selected.some(g=>genres.has(g));
       });
-      const heading='Propozycja '+index+': '+preset.genres.join(preset.matchAll?' + ':' / ');
+      // A configured proposal is not necessarily a visible row. Omit empty
+      // sets entirely, including their heading and vertical spacing.
+      if(!matching.length)continue;
+      const heading=preset.genres.join(preset.matchAll?' + ':' / ');
       const row=recommendationShelf(heading,matching);
       const id='proposal-'+index;
       row.section.dataset.mfGenreKey=id;
       recommendationRows.set(id,row);
       area.appendChild(row.section);
     }
-    if(!recommendationRows.size){
-      area.appendChild(own('p','mf-home-empty','Nie skonfigurowano propozycji. Dodaj zestaw gatunków w ustawieniach MisioFlix.'));
-      return;
-    }
+    if(!recommendationRows.size)return; // No configured set matches this user's catalog.
     // Only hydrate visible rows. Each row has independent 12-item paging,
     // unlimited shuffle and identical existing cards minus descriptions.
     if(typeof IntersectionObserver==='function'){
@@ -1975,7 +1979,7 @@
         matchAll:p?.matchAll===true
       }));
       if(!recommendationPresets.some(p=>p.genres.length)){
-        area.replaceChildren(own('p','mf-home-empty','Nie wybrano gatunków. Administrator może skonfigurować propozycje w ustawieniach MisioFlix.'));
+        area.replaceChildren(); // Empty configuration should not leave an empty Home section.
         return;
       }
       area.replaceChildren(own('p','mf-home-empty','Wczytywanie katalogu propozycji…'));

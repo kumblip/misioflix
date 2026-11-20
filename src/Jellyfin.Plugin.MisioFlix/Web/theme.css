@@ -1849,7 +1849,8 @@ html.misioflix-skin .mf-native-box-icon {
 /* v0.4.107: independent admin-selected genre recommendations. Keep the exact
    original poster, MAL/Simkl frame and paw rules; omit descriptions ONLY here. */
 html.misioflix-skin .mf-home-recommendation-control{margin-top:-16px}
-html.misioflix-skin .mf-home-recommendations[hidden]{display:none!important}
+html.misioflix-skin .mf-home-recommendations[hidden],
+html.misioflix-skin .mf-home-recommendations .mf-home-genre-shelf[hidden]{display:none!important}
 html.misioflix-skin .mf-home-recommendations .mf-home-card-body{
   min-height:0!important;padding:9px 10px 11px;gap:0;
 }

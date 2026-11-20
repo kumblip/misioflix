@@ -8,11 +8,11 @@ const end=source.indexOf('  async function initializeRecommendations(',start);
 assert(start>0&&end>start);
 const func=source.slice(start,end);
 class DummyNode {
-  constructor(cls=''){this.className=cls;this.children=[];this.isConnected=true;this.scrollLeft=123;this.classList={add:()=>{}};this.listeners={};}
+  constructor(cls=''){this.className=cls;this.children=[];this.hidden=false;this.isConnected=true;this.scrollLeft=123;this.classList={add:()=>{}};this.listeners={};}
   replaceChildren(...kids){this.children=[...kids];}
   appendChild(node){this.children.push(node);}
   get childElementCount(){return this.children.length;}
-  querySelector(){return null;}
+  querySelector(selector){return selector==='.mf-home-card'?this.children.find(x=>x.className==='mf-home-card')||null:null;}
   querySelectorAll(cls){return cls==='.mf-home-empty'?this.children.filter(x=>x.className==='mf-home-empty'):[];}
   remove(){this._removed=true;}
   addEventListener(type,fn){this.listeners[type]=fn;}
@@ -47,8 +47,9 @@ function row(data){return {busy:false,hasMore:true,mode:'random',offset:0,ordere
   assert.equal(r.mode,'random'); // random mode can paginate through ALL 37 entries
   const empty=row([]);
   await ctx.loadRecommendationPage(empty,true);
-  assert.equal(empty.scroll.children.length,1);
-  assert.match(empty.scroll.children[0].textContent,/Brak dostępnych/);
+  assert.equal(empty.scroll.children.length,0);
+  assert.equal(empty.section.hidden,true,'empty proposal must not render heading or message');
+  assert.equal(r.section.hidden,false,'populated proposal remains visible');
   const failed=row(items);
   fail=true;await ctx.loadRecommendationPage(failed,true);
   assert.equal(failed.offset,0,'network failure must not skip the failed batch');

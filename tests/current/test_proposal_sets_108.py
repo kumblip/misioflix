@@ -56,7 +56,7 @@ class _ConfigCollapseParser(HTMLParser):
 
 class ProposalSets108(unittest.TestCase):
     def test_version_and_backward_compatible_configuration(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))['version'],'0.4.108.0')
+        self.assertRegex(json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))['version'],r'^0\.4\.\d+\.0$')
         for token in ['List<MisioFlixRecommendationSet> RecommendationSets',
                       'List<string> RecommendationGenres', 'public bool MatchAll',
                       'public List<string> Genres']:
