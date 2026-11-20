@@ -38,11 +38,12 @@ class AdminOverviewMenu110(unittest.TestCase):
     def test_embedded_and_release_contract(self):
         csproj=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf-8')
         meta=json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))
-        self.assertEqual(meta['version'], '0.4.110.0')
+        version = meta['version']
+        self.assertRegex(version, r'^0\.4\.\d+\.0$')
         self.assertIn('<EmbeddedResource Include="Web/**/*" />', csproj)
-        self.assertIn('<AssemblyVersion>0.4.110.0</AssemblyVersion>', csproj)
-        self.assertIn('<FileVersion>0.4.110.0</FileVersion>', csproj)
-        self.assertIn('<Version>0.4.110</Version>', csproj)
+        self.assertIn(f'<AssemblyVersion>{version}</AssemblyVersion>', csproj)
+        self.assertIn(f'<FileVersion>{version}</FileVersion>', csproj)
+        self.assertIn(f'<Version>{version.rsplit(".", 1)[0]}</Version>', csproj)
         for flow in ('build.yml','release.yml'):
             self.assertTrue((ROOT/'.github/workflows'/flow).exists())
 

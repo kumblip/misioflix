@@ -1902,6 +1902,86 @@ html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid 
   min-height:34px;
 }
 
+/* v0.4.111: read-only card information preview for every MisioFlix Home,
+   library, collection, genre and search tile. The existing full-card detail
+   links, poster frames and three short genre chips are unchanged. */
+html.misioflix-skin .mf-home-card-title-row{
+  display:flex;align-items:flex-start;gap:7px;min-width:0;width:100%;
+}
+html.misioflix-skin .mf-home-card-title-row > .mf-home-card-title{
+  flex:1 1 auto;min-width:0;max-width:100%;
+}
+html.misioflix-skin .mf-home-card-info-button{
+  flex:0 0 25px;width:25px;height:25px;min-width:25px;
+  display:flex;align-items:center;justify-content:center;
+  padding:0;margin:0;border:1px solid #f4a5ce;border-radius:50%;
+  background:rgba(57,29,49,.94);color:#ffe8f4;
+  font:italic 700 15px/1 Georgia,serif;cursor:pointer;
+}
+html.misioflix-skin .mf-home-card-info-button:hover{background:#874069;color:#fff}
+html.misioflix-skin .mf-home-card-info-button:focus-visible{
+  outline:2px solid #fff;outline-offset:2px;
+}
+html.misioflix-skin body.mf-home-card-info-active{overflow:hidden!important}
+html.misioflix-skin .mf-home-card-info-overlay{
+  position:fixed;inset:0;z-index:100002;display:flex;align-items:center;
+  justify-content:center;padding:16px;background:rgba(8,5,11,.86);color:#fff0f7;
+  overscroll-behavior:contain;
+}
+html.misioflix-skin .mf-home-card-info-dialog{
+  display:flex;flex-direction:column;width:min(650px,100%);min-width:0;
+  max-height:min(86dvh,900px);border-radius:17px;overflow:hidden;
+  background:linear-gradient(150deg,#28182b,#170d1a);
+  border:1px solid rgba(244,165,206,.5);box-shadow:0 23px 70px #000c;
+}
+html.misioflix-skin .mf-home-card-info-header{
+  padding:17px 22px;background:linear-gradient(110deg,#3b203b,#582840);
+  border-bottom:1px solid rgba(244,165,206,.22);
+}
+html.misioflix-skin .mf-home-card-info-title{
+  margin:0;color:#fff4fa;font-size:20px;line-height:1.45;
+  overflow-wrap:anywhere;white-space:normal;
+}
+html.misioflix-skin .mf-home-card-info-content{
+  padding:18px 22px;overflow-y:auto;min-height:0;flex:1 1 auto;
+}
+html.misioflix-skin .mf-home-card-info-subtitle{
+  font-size:14px;font-weight:700;margin:0 0 10px;color:#ffd4e7;
+}
+html.misioflix-skin .mf-home-card-info-genres{
+  display:flex;flex-wrap:wrap;gap:7px;margin-bottom:18px;
+}
+html.misioflix-skin .mf-home-card-info-genre{
+  font-size:12px;padding:5px 9px;background:#41283e;color:#ffeaf4;
+  border:1px solid rgba(244,165,206,.4);border-radius:15px;
+}
+html.misioflix-skin .mf-home-card-info-muted{color:#c9b8c6;font-size:13px}
+html.misioflix-skin .mf-home-card-info-description{
+  white-space:pre-line;overflow-wrap:anywhere;font-size:14px;line-height:1.7;
+  margin:0;color:#f0dfe9;
+}
+html.misioflix-skin .mf-home-card-info-actions{
+  display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;
+  padding:14px 22px;border-top:1px solid rgba(244,165,206,.24);
+}
+html.misioflix-skin .mf-home-card-info-actions .mf-home-button{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:92px;text-decoration:none!important;
+}
+html.misioflix-skin .mf-home-card-info-open{
+  background:linear-gradient(90deg,#ff9878,#e975b1)!important;
+  border-color:transparent!important;color:#180e18!important;font-weight:700;
+}
+@media(max-width:560px){
+  html.misioflix-skin .mf-home-card-info-overlay{padding:8px}
+  html.misioflix-skin .mf-home-card-info-dialog{max-height:92dvh}
+  html.misioflix-skin .mf-home-card-info-title{font-size:17px}
+  html.misioflix-skin .mf-home-card-info-header,
+  html.misioflix-skin .mf-home-card-info-content{padding:14px}
+  html.misioflix-skin .mf-home-card-info-actions{padding:12px 14px}
+  html.misioflix-skin .mf-home-card-info-button{flex-basis:24px;width:24px;min-width:24px;height:24px}
+}
+
 /* v0.4.94: the box is the ONLY badge on films such as Bad Boys.
  * Do not reserve the two/three-paw frame width in this case: shrink-wrap
  * the single number + box glyph, but retain identical number/icon columns.
@@ -1926,4 +2006,5 @@ html.misioflix-skin .mf-home-stats > .mf-home-member-collection:only-child {
     padding:2px 3px;
   }
 }
+
 

@@ -46,10 +46,10 @@ class GenreRecommendations107(unittest.TestCase):
         mount=HOME.split('  function mount(host){',1)[1].split('  function unmountHome(){',1)[0]
         self.assertLess(mount.index('homeRoot.appendChild(resumeShelf())'),mount.index('recommendationToggle()'))
         self.assertLess(mount.index('libraryShelvesToggle()'),mount.index('recommendationToggle()'))
-        self.assertIn("genreArea.hidden=true",mount)
+        self.assertIn("genreArea.hidden=false",mount)
         self.assertIn("genreArea.id='mf-home-recommendations'",mount)
         self.assertIn('void loadLibraries(serial)',mount)
-        self.assertIn("button.setAttribute('aria-checked','false')",HOME.split('function recommendationToggle(){',1)[1].split('function randomizeRecommendations(',1)[0])
+        self.assertIn("button.setAttribute('aria-checked','true')",HOME.split('function recommendationToggle(){',1)[1].split('function randomizeRecommendations(',1)[0])
         self.assertIn("row.isGenre || row.mode==='latest'",HOME)
         self.assertIn('randomizeRecommendations(row.base)',HOME)
         self.assertIn('SHELF_LIMIT',HOME.split('async function loadRecommendationPage(',1)[1].split('function paintRecommendationSets(',1)[0])

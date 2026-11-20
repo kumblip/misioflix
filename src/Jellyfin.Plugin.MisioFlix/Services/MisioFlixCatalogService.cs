@@ -429,7 +429,9 @@ public sealed class MisioFlixCatalogService
             year = isAnime ? nfo?.Year ?? "" : Text(Get(item, "ProductionYear")),
             format = isAnime ? nfo?.Kind ?? "" : "",
             description = isAnime ? nfo?.Plot ?? "" : Text(Get(item, "Overview")),
-            genres = (isAnime ? nfo?.Genres ?? new List<string>() : Strings(Get(item, "Genres"))).Take(3).ToList(),
+            // Supply the complete authorized genre list for the on-demand info
+            // preview. Poster chips still render only the first three in home.js.
+            genres = (isAnime ? nfo?.Genres ?? new List<string>() : Strings(Get(item, "Genres"))).ToList(),
             hasPrimary = HasPrimaryImage(item),
             seasons = type == "Series" ? PositiveInt(Get(item, "ChildCount")) : null,
             episodes = type == "Series" ? PositiveInt(Get(item, "RecursiveItemCount")) : null,

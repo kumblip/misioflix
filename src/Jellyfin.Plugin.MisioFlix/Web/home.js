@@ -479,10 +479,16 @@
     const card=own('article','mf-home-card'+(item.type==='BoxSet'?' mf-home-collection-card':'')+(nonAnimeMedia?' mf-simkl-media-card':''));
     append(card,makePoster(item));
     const content=own('div','mf-home-card-body');
+    const titleRow=own('div','mf-home-card-title-row');
     const title=set(own('a','mf-home-card-title'+(nonAnimeMedia?' mf-simkl-media-title':''),item.title||'Brak tytułu'), 'href',nativeDetails(item.id,item.serverId));
+    const info=own('button','mf-home-card-info-button','i');
+    info.type='button';info.setAttribute('aria-label','Informacje: '+(item.title||'Brak tytułu'));
+    info.title='Pełna nazwa, opis i gatunki';
+    info.addEventListener('click',()=>openCardInfo(item,info));
+    append(titleRow,title,info);
     if(item.matchedAlias)content.appendChild(own('span','mf-home-card-search-alias',`Dopasowano: ${item.matchedAlias}`));
     const description=own('p','mf-home-card-desc'+(nonAnimeMedia?' mf-simkl-media-desc':''),item.description||'');
-    append(content,title,description);
+    append(content,titleRow,description);
     append(card,content);
     return card;
   }
@@ -871,6 +877,53 @@
   const ANIME_SET = new Set(ANIME_GENRES);
   let searchModal = null;
   let activeSearch = null;
+  let cardInfoModal = null;
+  let cardInfoOpener = null;
+  function closeCardInfo(){
+    if(!cardInfoModal)return;
+    cardInfoModal.remove();cardInfoModal=null;
+    document.body.classList.remove('mf-home-card-info-active');
+    const opener=cardInfoOpener;cardInfoOpener=null;
+    if(opener?.isConnected)opener.focus();
+  }
+  // Read-only preview; same pre-authorized tile data as the shelf/search tile.
+  // No secondary MAL/Simkl call, no extra catalog requests and no new navigation.
+  function openCardInfo(item,opener){
+    if(!item)return;
+    closeCardInfo();
+    cardInfoOpener=opener||document.activeElement;
+    const overlay=own('div','mf-home-card-info-overlay');
+    const dialog=own('section','mf-home-card-info-dialog');
+    overlay.setAttribute('role','presentation');
+    dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');
+    const titleId='mf-home-card-info-title';
+    dialog.setAttribute('aria-labelledby',titleId);
+    const heading=own('h2','mf-home-card-info-title',item.title||'Brak tytułu');
+    heading.id=titleId;
+    const header=own('header','mf-home-card-info-header');header.appendChild(heading);
+    const details=own('div','mf-home-card-info-content');
+    const genres=own('div','mf-home-card-info-genres');
+    const names=[...new Set((Array.isArray(item.genres)?item.genres:[])
+      .filter(v=>typeof v==='string'&&v.trim()).map(v=>v.trim()))];
+    for(const name of names)genres.appendChild(own('span','mf-home-card-info-genre',name));
+    if(!names.length)genres.appendChild(own('span','mf-home-card-info-muted','Brak informacji o gatunkach'));
+    const genreLabel=own('h3','mf-home-card-info-subtitle','Gatunki');
+    const descriptionLabel=own('h3','mf-home-card-info-subtitle','Opis');
+    const description=own('p','mf-home-card-info-description',
+      (typeof item.description==='string'&&item.description.trim())?item.description.trim():'Brak opisu.');
+    append(details,genreLabel,genres,descriptionLabel,description);
+    const actions=own('footer','mf-home-card-info-actions');
+    const close=own('button','mf-home-button mf-home-card-info-close','Zamknij');
+    close.type='button';close.addEventListener('click',closeCardInfo);
+    const open=set(own('a','mf-home-button mf-home-card-info-open','Otwórz'),'href',nativeDetails(item.id,item.serverId));
+    open.addEventListener('click',()=>{closeCardInfo();closeSearch();});
+    append(actions,close,open);append(dialog,header,details,actions);overlay.appendChild(dialog);
+    overlay.addEventListener('click',event=>{if(event.target===overlay)closeCardInfo();});
+    cardInfoModal=overlay;
+    document.body.appendChild(overlay);
+    document.body.classList.add('mf-home-card-info-active');
+    close.focus();
+  }
   function normalized(value){
     return String(value || '').normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pl-PL').trim();
@@ -1020,6 +1073,7 @@
     return {items:all.flat(),needsRefresh};
   }
   function closeSearch(){
+    closeCardInfo();
     if(!searchModal)return;
     const opener=activeSearch?.opener;
     if(activeSearch?.kind==='anime'&&activeSearch.watchCacheHandler)
@@ -1794,10 +1848,10 @@
     const control=own('div','mf-home-libraries-control mf-home-recommendation-control');
     const button=own('button','mf-home-libraries-toggle mf-home-recommendation-toggle');
     button.type='button';button.setAttribute('role','switch');
-    button.setAttribute('aria-checked','false');button.setAttribute('aria-expanded','false');
+    button.setAttribute('aria-checked','true');button.setAttribute('aria-expanded','true');
     button.setAttribute('aria-controls','mf-home-recommendations');
     const track=own('span','mf-home-libraries-track');track.setAttribute('aria-hidden','true');
-    const label=own('span','mf-home-libraries-label','Pokaż propozycje');
+    const label=own('span','mf-home-libraries-label','Ukryj propozycje');
     append(button,track,label);
     button.addEventListener('click',()=>{
       const area=homeRoot?.querySelector('#mf-home-recommendations');
@@ -2194,7 +2248,7 @@
       rowsArea.appendChild(own('p','mf-home-empty','Ładowanie bibliotek…'));
       homeRoot.appendChild(rowsArea);
       const genreArea=own('div','mf-home-rows mf-home-recommendations');
-      genreArea.id='mf-home-recommendations';genreArea.hidden=true;
+      genreArea.id='mf-home-recommendations';genreArea.hidden=false; // Proposals default ON; library shelves stay OFF.
       homeRoot.appendChild(genreArea);
       recommendationInitialized=false;recommendationRows.clear();
       host.prepend(homeRoot);
@@ -2203,9 +2257,11 @@
       syncCollectionsPage();
       void loadLibraries(serial);
       void loadResume(serial);
+      void initializeRecommendations(serial); // Visible on Home from the first mount.
     }finally{mounting=false;}
   }
   function unmountHome(){
+    closeCardInfo();
     if(homeRoot){
       closeSearch();collectionsPage?.observer?.disconnect();
       recommendationObserver?.disconnect();recommendationObserver=null;
@@ -2273,7 +2329,8 @@
   function start(){
     if(!normalizeLibraryRoute())reconcile();
     document.addEventListener('keydown',event=>{
-      if(event.key==='Escape' && searchModal){event.preventDefault();closeSearch();}
+      if(event.key==='Escape' && cardInfoModal){event.preventDefault();closeCardInfo();}
+      else if(event.key==='Escape' && searchModal){event.preventDefault();closeSearch();}
     });
     document.addEventListener('click',interceptLibraryNavigation,true);
     // The native header lives OUTSIDE our injected home. Clear our subtree on

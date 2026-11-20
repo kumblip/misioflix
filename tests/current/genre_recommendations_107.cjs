@@ -16,7 +16,7 @@ class Node{
  addEventListener(k,fn){this.listeners[k]=fn;}
 }
 let initialized=0;
-const area=new Node('div');area.hidden=true;
+const area=new Node('div');area.hidden=false; // v0.4.111: proposals shown by default
 const context={
  own:(tag,cls,val='')=>new Node(tag,cls,val),
  append:(p,...children)=>children.forEach(child=>p.appendChild(child)),
@@ -29,17 +29,18 @@ vm.createContext(context);
 vm.runInContext(src.slice(begin,end),context);
 const button=context.recommendationToggle().children[0];
 assert.equal(button.attrs.role,'switch');
-assert.equal(button.attrs['aria-checked'],'false');
+assert.equal(button.attrs['aria-checked'],'true');
 assert.equal(button.attrs['aria-controls'],'mf-home-recommendations');
-assert.equal(button.children[1].textContent,'Pokaż propozycje');
+assert.equal(button.children[1].textContent,'Ukryj propozycje');
+button.listeners.click();
+assert.equal(area.hidden,true);
+assert.equal(button.attrs['aria-checked'],'false');
+assert.equal(initialized,0);
 button.listeners.click();
 assert.equal(area.hidden,false);
 assert.equal(button.attrs['aria-checked'],'true');
 assert.equal(initialized,1);
-button.listeners.click();
-assert.equal(area.hidden,true);
-assert.equal(button.attrs['aria-checked'],'false');
-assert.equal(button.children[1].textContent,'Pokaż propozycje');
+assert.equal(button.children[1].textContent,'Ukryj propozycje');
 // Random must be a permutation of the entire genre pool, not five samples.
 const input=Array.from({length:91},(_,i)=>i);
 const randomized=context.randomizeRecommendations(input);
@@ -51,4 +52,4 @@ assert(html.includes('Gatunki propozycji'));
 assert(html.includes('Zapisz propozycje'));
 assert(src.includes('getCatalogForSearch()'));
 assert(src.includes("const pageStart=row.offset"));
-console.log('PASS v0.4.107: admin genre config, default-OFF switch, full-pool random, paged cards, no descriptions');
+console.log('PASS v0.4.107: admin genre config, default-ON switch, full-pool random, paged cards, no descriptions');
