@@ -39,9 +39,9 @@ class CompactBannerMobile113(unittest.TestCase):
         self.assertIn('mf-home-search-dialog',CSS)
     def test_versions_and_original_release_jobs(self):
         meta=json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))
-        self.assertEqual(meta['version'],'0.4.113.0')
+        self.assertRegex(meta['version'],r'^0\.4\.\d+\.0$')
         project=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf-8')
-        self.assertIn('<AssemblyVersion>0.4.113.0</AssemblyVersion>',project)
+        self.assertIn(f"<AssemblyVersion>{meta['version']}</AssemblyVersion>",project)
         for workflow in ('build.yml','release.yml'):
             self.assertTrue((ROOT/'.github/workflows'/workflow).is_file())
 

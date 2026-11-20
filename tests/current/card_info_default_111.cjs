@@ -25,6 +25,7 @@ const ctx={
   set:(node,k,v)=>{node.setAttribute(k,v);return node},
   nativeDetails:(id)=>'#/details?id='+id,
   makePoster:()=>new Node('a','mf-home-poster'),
+  imageFor:(item)=>item.hasPrimary?'/Items/'+item.id+'/Images/Primary?maxHeight=480&quality=84':'',
   closeSearch:()=>{},
   document:{body,activeElement:null},
 };
@@ -35,7 +36,7 @@ vm.runInContext(modalSrc,ctx);
 const cardSrc=src.slice(src.indexOf('  function makeCard(item){'),src.indexOf('  function enableShelfDrag('));
 vm.runInContext(cardSrc,ctx);
 const item={id:'a'.repeat(32),title:'Pełny i bardzo długi tytuł',
-  type:'Series',anime:true,description:'Cały opis, bez skracania i pomijania akapitów.',
+  type:'Series',anime:true,hasPrimary:true,description:'Cały opis, bez skracania i pomijania akapitów.',
   genres:['Romans','Komedia','Fantasy','Akcja','Szkoła']};
 const card=ctx.makeCard(item);
 assert.equal(card.tag,'article');
@@ -53,15 +54,22 @@ const dialog=overlay.children[0];
 assert.equal(dialog.attrs['aria-modal'],'true');
 const header=dialog.children[0];
 assert.equal(header.children[0].textContent,item.title);
-const content=dialog.children[1];
+const layout=dialog.children[1];
+assert.equal(layout.className,'mf-home-card-info-layout');
+const posterWrap=layout.children[0];
+assert.equal(posterWrap.className,'mf-home-card-info-poster-wrap');
+assert.equal(posterWrap.children[0].tag,'img');
+assert.match(posterWrap.children[0].src,/Items\/a{32}\/Images\/Primary/);
+assert.equal(posterWrap.children[0].alt,'Plakat: '+item.title);
+const content=layout.children[1];
 assert.equal(content.children[1].children.length,5);
 assert.deepEqual(content.children[1].children.map(x=>x.textContent),item.genres);
 assert.equal(content.children[3].textContent,item.description);
 const actions=dialog.children[2];
-assert.equal(actions.children[0].textContent,'Zamknij');
-assert.equal(actions.children[1].textContent,'Otwórz');
-assert.equal(actions.children[1].attrs.href,'#/details?id='+item.id);
-actions.children[0].listeners.click();
+assert.equal(actions.children[0].textContent,'Otwórz');
+assert.equal(actions.children[1].textContent,'Zamknij');
+assert.equal(actions.children[0].attrs.href,'#/details?id='+item.id);
+actions.children[1].listeners.click();
 assert.equal(overlay.isConnected,false);
 assert.equal(info.focused,true);
 assert(src.includes('genreArea.hidden=false'));

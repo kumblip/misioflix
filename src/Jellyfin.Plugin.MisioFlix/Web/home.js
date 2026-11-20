@@ -912,12 +912,27 @@
     const description=own('p','mf-home-card-info-description',
       (typeof item.description==='string'&&item.description.trim())?item.description.trim():'Brak opisu.');
     append(details,genreLabel,genres,descriptionLabel,description);
+    // Reuse the SAME authenticated Jellyfin primary-poster URL as the tile;
+    // never fetch MAL/Simkl or a second catalogue for the read-only preview.
+    const layout=own('div','mf-home-card-info-layout');
+    const posterWrap=own('div','mf-home-card-info-poster-wrap');
+    const posterUrl=imageFor(item);
+    const posterFallback=own('span','mf-home-card-info-poster-fallback','Brak plakatu');
+    if(posterUrl){
+      const poster=own('img','mf-home-card-info-poster');
+      poster.alt='Plakat: '+(item.title||'Brak tytułu');
+      poster.loading='lazy';poster.decoding='async';poster.src=posterUrl;
+      poster.addEventListener('error',()=>{poster.remove();posterFallback.hidden=false;},{once:true});
+      posterWrap.appendChild(poster);posterFallback.hidden=true;
+    }
+    posterWrap.appendChild(posterFallback);
+    append(layout,posterWrap,details);
     const actions=own('footer','mf-home-card-info-actions');
-    const close=own('button','mf-home-button mf-home-card-info-close','Zamknij');
-    close.type='button';close.addEventListener('click',closeCardInfo);
     const open=set(own('a','mf-home-button mf-home-card-info-open','Otwórz'),'href',nativeDetails(item.id,item.serverId));
     open.addEventListener('click',()=>{closeCardInfo();closeSearch();});
-    append(actions,close,open);append(dialog,header,details,actions);overlay.appendChild(dialog);
+    const close=own('button','mf-home-button mf-home-card-info-close','Zamknij');
+    close.type='button';close.addEventListener('click',closeCardInfo);
+    append(actions,open,close);append(dialog,header,layout,actions);overlay.appendChild(dialog);
     overlay.addEventListener('click',event=>{if(event.target===overlay)closeCardInfo();});
     cardInfoModal=overlay;
     document.body.appendChild(overlay);

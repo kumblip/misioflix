@@ -2070,6 +2070,128 @@ html.misioflix-skin .mf-home-hero .mf-home-simkl-button{order:3}
   }
 }
 
+/* v0.4.114: search grids do not stretch short descriptions to the tallest
+   neighbouring tile. Keep the description itself, the title and info control. */
+@media(min-width:681px){
+  html.misioflix-skin .mf-home-search-grid{
+    align-items:start;
+  }
+  html.misioflix-skin .mf-home-search-grid > .mf-home-card{
+    align-self:start;height:auto;min-height:0;
+  }
+  html.misioflix-skin .mf-home-search-grid > .mf-home-card > .mf-home-card-body{
+    flex:0 0 auto;min-height:0!important;
+  }
+}
+/* The library rail has the same title-row info button as recommendations,
+   but older native/theme rules may collapse it on wider desktop cards. */
+html.misioflix-skin .mf-home-0412 .mf-home-rows:not(.mf-home-recommendations)
+  .mf-home-card .mf-home-card-title-row{
+  display:flex!important;align-items:center;min-width:0;width:100%;
+}
+html.misioflix-skin .mf-home-0412 .mf-home-rows:not(.mf-home-recommendations)
+  .mf-home-card .mf-home-card-info-button{
+  display:inline-flex!important;visibility:visible!important;opacity:1!important;
+  position:relative;z-index:3;flex-shrink:0;
+}
+/* Info preview: portrait beside full title, genres and unsnipped description.
+   Flex children scroll on very long descriptions, with actions always visible. */
+html.misioflix-skin .mf-home-card-info-layout{
+  display:flex;align-items:flex-start;gap:20px;padding:18px 22px;
+  overflow-y:auto;min-height:0;flex:1 1 auto;
+}
+html.misioflix-skin .mf-home-card-info-poster-wrap{
+  display:flex;align-items:center;justify-content:center;
+  flex:0 0 clamp(112px,30%,180px);max-width:180px;min-width:0;
+  aspect-ratio:2/3;overflow:hidden;border-radius:9px;
+  border:1px solid rgba(244,165,206,.35);background:#332436;
+}
+html.misioflix-skin .mf-home-card-info-poster{
+  display:block;width:100%;height:100%;object-fit:cover;
+}
+html.misioflix-skin .mf-home-card-info-poster-fallback{
+  font-size:12px;color:#d2bcc9;text-align:center;padding:8px;
+}
+html.misioflix-skin .mf-home-card-info-layout > .mf-home-card-info-content{
+  flex:1 1 auto;min-width:0;min-height:0;overflow:visible;padding:0;
+}
+@media(max-width:560px){
+  html.misioflix-skin .mf-home-card-info-layout{gap:12px;padding:14px}
+  html.misioflix-skin .mf-home-card-info-poster-wrap{flex-basis:30%;max-width:115px}
+  html.misioflix-skin .mf-home-card-info-layout > .mf-home-card-info-content{padding:0}
+}
+/* Mobile Jellyfin Android/iOS: give the library rail exactly the same
+   content-height treatment as an already-working proposal carousel. Use
+   explicit selectors with !important because Jellyfin may retain older CSS
+   rules for .mf-home-card-body and .mf-home-card-title on first mount. */
+@media(max-width:680px){
+  html.misioflix-skin .mf-home-0412 .mf-home-rows > .mf-home-shelf > .mf-home-shelf-scroll{
+    min-height:0!important;align-items:flex-start!important;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-rows > .mf-home-shelf > .mf-home-shelf-scroll > .mf-home-card{
+    height:auto!important;min-height:0!important;align-self:flex-start!important;
+    flex:0 0 calc((100% - 16px)/3)!important;width:calc((100% - 16px)/3)!important;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-rows > .mf-home-shelf > .mf-home-shelf-scroll > .mf-home-card > .mf-home-card-body{
+    flex:0 0 auto!important;height:auto!important;min-height:0!important;
+    padding:6px 6px 8px!important;gap:3px!important;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-rows > .mf-home-shelf > .mf-home-shelf-scroll > .mf-home-card .mf-home-card-desc{
+    display:none!important;height:0!important;min-height:0!important;margin:0!important;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-rows > .mf-home-shelf > .mf-home-shelf-scroll > .mf-home-card .mf-home-card-title{
+    display:block!important;white-space:nowrap!important;text-overflow:ellipsis!important;
+    -webkit-line-clamp:unset!important;overflow:hidden!important;
+    min-height:0!important;max-height:1.3em!important;line-height:1.3!important;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-rows > .mf-home-shelf > .mf-home-shelf-scroll > .mf-home-card .mf-home-card-info-button{
+    display:inline-flex!important;visibility:visible!important;opacity:1!important;
+  }
+  /* Full genre results opened by the heading: the same compact 3-column
+     poster/title/info tile as the proposal and library carousels. */
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px!important;
+    align-items:start!important;
+  }
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid > .mf-home-card{
+    width:100%!important;height:auto!important;min-height:0!important;align-self:start!important;
+  }
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid > .mf-home-card > .mf-home-card-body{
+    height:auto!important;min-height:0!important;flex:0 0 auto!important;
+    padding:6px 6px 8px!important;gap:3px!important;
+  }
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-card-title{
+    display:block!important;white-space:nowrap!important;overflow:hidden!important;
+    text-overflow:ellipsis!important;-webkit-line-clamp:unset!important;
+    min-height:0!important;max-height:1.3em!important;
+    font-size:10.5px!important;line-height:1.3!important;
+  }
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-card-desc{
+    display:none!important;
+  }
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-card-info-button{
+    display:inline-flex!important;flex:0 0 21px!important;
+    width:21px!important;min-width:21px!important;height:21px!important;
+    font-size:12px!important;
+  }
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-poster[data-mf-item-id] .mf-home-kind{display:none!important}
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-top-left{top:5px;left:5px;gap:2px}
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-year{font-size:10px;padding:2px 4px}
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-stats{
+    top:4px;right:4px;gap:1px;padding:2px 3px;min-width:0;border-radius:7px;
+  }
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-stat,
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-mal-score{
+    padding:0;margin:0;gap:2px;border:0;background:transparent;font-size:10px;line-height:1.03;
+  }
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-paw,
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-mal-rating-paw{
+    width:10px;height:10px;flex:0 0 10px;
+  }
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-genres{left:4px;right:4px;bottom:5px;gap:2px}
+  html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-genre{padding:2px 4px;font-size:9px}
+}
+
 /* v0.4.94: the box is the ONLY badge on films such as Bad Boys.
  * Do not reserve the two/three-paw frame width in this case: shrink-wrap
  * the single number + box glyph, but retain identical number/icon columns.
@@ -2094,5 +2216,7 @@ html.misioflix-skin .mf-home-stats > .mf-home-member-collection:only-child {
     padding:2px 3px;
   }
 }
+
+
 
 
