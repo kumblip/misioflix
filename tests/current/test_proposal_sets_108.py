@@ -2,7 +2,7 @@ import json
 import re
 import unittest
 from pathlib import Path
-from lxml import html
+from html.parser import HTMLParser
 
 ROOT=Path(__file__).resolve().parents[2]
 CODE=ROOT/'src/Jellyfin.Plugin.MisioFlix'
@@ -11,6 +11,48 @@ ADMIN=(CODE/'Web/configPage.html').read_text(encoding='utf-8')
 CSS=(CODE/'Web/theme.css').read_text(encoding='utf-8')
 CONFIG=(CODE/'Configuration/PluginConfiguration.cs').read_text(encoding='utf-8')
 API=(CODE/'Controllers/MisioFlixController.cs').read_text(encoding='utf-8')
+
+class _ConfigCollapseParser(HTMLParser):
+    """Check real nested config sections without optional CI dependencies.
+
+    Track only markup structure relevant to the test (details, summary and ids).
+    The HTML page includes scripts and CSS, so it cannot be parsed as strict XML.
+    """
+    VOID = frozenset({'area', 'base', 'br', 'col', 'embed', 'hr', 'img',
+                      'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'})
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.stack = []
+        self.groups = []
+        self.parent_group_by_id = {}
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        group = None
+        if tag == 'details' and 'mf-config-collapse' in attrs.get('class', '').split():
+            group = len(self.groups)
+            self.groups.append({'direct_summaries': 0, 'open': 'open' in attrs})
+        if tag == 'summary' and self.stack:
+            parent_tag, parent_group = self.stack[-1]
+            if parent_tag == 'details' and parent_group is not None:
+                self.groups[parent_group]['direct_summaries'] += 1
+        if 'id' in attrs:
+            parents = [section for _, section in self.stack if section is not None]
+            self.parent_group_by_id[attrs['id']] = parents[-1] if parents else None
+        if tag not in self.VOID:
+            self.stack.append((tag, group))
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in self.VOID:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag):
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] == tag:
+                del self.stack[index:]
+                break
 
 class ProposalSets108(unittest.TestCase):
     def test_version_and_backward_compatible_configuration(self):
@@ -28,14 +70,16 @@ class ProposalSets108(unittest.TestCase):
         self.assertIn('[Authorize]',API)
 
     def test_all_major_config_groups_are_independently_collapsible(self):
-        document=html.fromstring(ADMIN)
-        groups=document.xpath('//details[contains(concat(" ",normalize-space(@class)," ")," mf-config-collapse ")]')
-        self.assertEqual(len(groups),6)
-        self.assertTrue(all(len(x.xpath('./summary'))==1 for x in groups))
-        self.assertTrue(all(x.get('open') is None for x in groups))
-        for name in ['mf-config-form','mf-simkl-config-form','mf-nfo-collections-panel',
-                     'mf-native-cover-panel','mf-recommendation-config','mf-updates-panel']:
-            self.assertEqual(len(document.xpath(f'//*[@id="{name}"]/ancestor::details[contains(@class,"mf-config-collapse")]')),1,name)
+        document = _ConfigCollapseParser()
+        document.feed(ADMIN)
+        document.close()
+        self.assertEqual(len(document.groups), 6)
+        self.assertTrue(all(group['direct_summaries'] == 1 for group in document.groups))
+        self.assertTrue(all(not group['open'] for group in document.groups))
+        names = ['mf-config-form', 'mf-simkl-config-form', 'mf-nfo-collections-panel',
+                 'mf-native-cover-panel', 'mf-recommendation-config', 'mf-updates-panel']
+        for index, name in enumerate(names):
+            self.assertEqual(document.parent_group_by_id.get(name), index, name)
         self.assertIn('mf-proposal-genre-toggle',ADMIN)
         self.assertIn('mf-proposal',ADMIN)
         self.assertIn('Propozycja ',ADMIN)
