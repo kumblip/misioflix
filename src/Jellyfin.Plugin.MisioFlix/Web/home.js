@@ -21,6 +21,10 @@
   let discoveryRefs = null;
   let recommendationRows = new Map();
   let recommendationInitialized = false;
+  let recommendationIncludeAnime = true;
+  let recommendationPresets = [];
+  let recommendationCandidates = [];
+  let recommendationSeasonGenres = new Map();
   let recommendationObserver = null;
   let processedGenreLink = '';
   const catalogCache = new Map();
@@ -1806,6 +1810,24 @@
     });
     control.appendChild(button);return control;
   }
+  // v0.4.108: this filter is personal and presentation-only, never affects MAL,
+  // Simkl or administrator-defined genre rules. Default ON on each Home mount.
+  function recommendationAnimeToggle(){
+    const control=own('div','mf-home-libraries-control mf-home-anime-control');
+    const button=own('button','mf-home-libraries-toggle mf-home-anime-toggle');
+    button.type='button';button.setAttribute('role','switch');
+    button.setAttribute('aria-checked','true');
+    button.setAttribute('aria-label','Uwzględnij anime w propozycjach');
+    const track=own('span','mf-home-libraries-track');track.setAttribute('aria-hidden','true');
+    const label=own('span','mf-home-libraries-label','Uwzględnij anime');
+    append(button,track,label);
+    button.addEventListener('click',()=>{
+      recommendationIncludeAnime=!recommendationIncludeAnime;
+      button.setAttribute('aria-checked',String(recommendationIncludeAnime));
+      if(recommendationInitialized&&recommendationCandidates.length)paintRecommendationSets();
+    });
+    control.appendChild(button);return control;
+  }
   function randomizeRecommendations(pool){
     // Fisher–Yates over the ENTIRE eligible list: no five-item random limit.
     const result=[...pool];
@@ -1821,8 +1843,8 @@
     const top=own('div','mf-home-shelf-heading');
     const heading=own('h2','',genre);
     const tools=own('div','mf-home-actions');
-    const shuffle=own('button','mf-home-button mf-home-shuffle','Losuj ↻');shuffle.type='button';
-    const reset=own('button','mf-home-button mf-home-latest mf-home-view-active','Ostatnio dodane');reset.type='button';
+    const shuffle=own('button','mf-home-button mf-home-shuffle mf-home-view-active','Losuj ↻');shuffle.type='button';
+    const reset=own('button','mf-home-button mf-home-latest','Ostatnio dodane');reset.type='button';
     const prev=own('button','mf-home-nav','‹');prev.type='button';prev.setAttribute('aria-label','Przewiń '+genre+' w lewo');
     const next=own('button','mf-home-nav','›');next.type='button';next.setAttribute('aria-label','Przewiń '+genre+' w prawo');
     append(tools,shuffle,reset,prev,next);append(top,heading,tools);
@@ -1831,7 +1853,7 @@
     append(section,top,scroll);
     const base=[...items].sort((a,b)=>String(b.date_added||'').localeCompare(String(a.date_added||'')));
     const row={isGenre:true,genre,section,scroll,shuffle,reset,prev,next,
-      base,ordered:base,mode:'latest',offset:0,hasMore:base.length>0,busy:false};
+      base,ordered:randomizeRecommendations(base),mode:'random',offset:0,hasMore:base.length>0,busy:false};
     enableShelfDrag(scroll,row);
     const swap=mode=>{
       if(row.busy)return;
@@ -1894,69 +1916,85 @@
       if(reset)row.scroll.replaceChildren(msg);else row.scroll.appendChild(msg);
     }finally{row.busy=false;row.shuffle.disabled=false;row.reset.disabled=false;}
   }
+  // Filter the existing authorized catalog for each independently configured
+  // AND/OR proposal. No extra calls and no change to library / search cache.
+  function paintRecommendationSets(){
+    const area=homeRoot?.querySelector('#mf-home-recommendations');
+    if(!area||!recommendationInitialized)return;
+    recommendationObserver?.disconnect();recommendationObserver=null;
+    area.replaceChildren();recommendationRows.clear();
+    let index=0;
+    for(const preset of recommendationPresets){
+      index++;
+      const selected=(Array.isArray(preset.genres)?preset.genres:[]).map(normalized).filter(Boolean);
+      if(!selected.length)continue;
+      const matching=recommendationCandidates.filter(item=>{
+        if(!recommendationIncludeAnime&&item.anime)return false;
+        const genres=new Set([...(Array.isArray(item.genres)?item.genres:[]),
+          ...(item.anime&&item.type==='Series'?(recommendationSeasonGenres.get(compactId(item.id))||[]):[])].map(normalized));
+        return preset.matchAll?selected.every(g=>genres.has(g)):selected.some(g=>genres.has(g));
+      });
+      const heading='Propozycja '+index+': '+preset.genres.join(preset.matchAll?' + ':' / ');
+      const row=recommendationShelf(heading,matching);
+      const id='proposal-'+index;
+      row.section.dataset.mfGenreKey=id;
+      recommendationRows.set(id,row);
+      area.appendChild(row.section);
+    }
+    if(!recommendationRows.size){
+      area.appendChild(own('p','mf-home-empty','Nie skonfigurowano propozycji. Dodaj zestaw gatunków w ustawieniach MisioFlix.'));
+      return;
+    }
+    // Only hydrate visible rows. Each row has independent 12-item paging,
+    // unlimited shuffle and identical existing cards minus descriptions.
+    if(typeof IntersectionObserver==='function'){
+      recommendationObserver=new IntersectionObserver(entries=>{
+        for(const entry of entries){
+          if(!entry.isIntersecting)continue;
+          recommendationObserver?.unobserve(entry.target);
+          const row=recommendationRows.get(entry.target.dataset.mfGenreKey);
+          if(row)void loadRecommendationPage(row,true);
+        }
+      },{rootMargin:'400px 0px'});
+      for(const row of recommendationRows.values())recommendationObserver.observe(row.section);
+    }else for(const row of recommendationRows.values())void loadRecommendationPage(row,true);
+  }
   async function initializeRecommendations(serial){
     const area=homeRoot?.querySelector('#mf-home-recommendations');
     if(!area||recommendationInitialized)return;
     recommendationInitialized=true;
-    area.replaceChildren(own('p','mf-home-empty','Odczytywanie wybranych gatunków…'));
+    area.replaceChildren(own('p','mf-home-empty','Wczytywanie propozycji…'));
     try{
       const config=await request('/home/recommendation-genres');
       if(!isCurrent(serial)||!area.isConnected)return;
-      const selected=Array.isArray(config?.genres)?config.genres.slice(0,256).filter(x=>typeof x==='string'&&x.trim()):[];
-      if(!selected.length){
-        area.replaceChildren(own('p','mf-home-empty','Nie wybrano gatunków. Administrator może dodać je w ustawieniach wtyczki MisioFlix.'));
+      // A read-only legacy fallback is retained for 0.4.107 server configs.
+      const proposed=Array.isArray(config?.proposals)?config.proposals:
+        (Array.isArray(config?.genres)?config.genres.map(g=>({genres:[g],matchAll:false})):[]);
+      recommendationPresets=proposed.slice(0,48).map(p=>({
+        genres:(Array.isArray(p?.genres)?p.genres:[]).filter(g=>typeof g==='string'&&g.trim()).slice(0,52),
+        matchAll:p?.matchAll===true
+      }));
+      if(!recommendationPresets.some(p=>p.genres.length)){
+        area.replaceChildren(own('p','mf-home-empty','Nie wybrano gatunków. Administrator może skonfigurować propozycje w ustawieniach MisioFlix.'));
         return;
       }
       area.replaceChildren(own('p','mf-home-empty','Wczytywanie katalogu propozycji…'));
-      // Reuse the existing per-server/per-user IndexedDB catalog snapshot.
-      // It already contains real NFO genres for AnimePL/Anime EN and Jellyfin
-      // genres for ordinary film, TV and animation — nothing to guess.
       const data=await getCatalogForSearch();
       if(!isCurrent(serial)||!area.isConnected)return;
       const all=Array.isArray(data?.items)?data.items:[];
-      const seasons=new Map();
+      recommendationSeasonGenres=new Map();
       for(const item of all){
         if(!item?.anime||item.type!=='Season'||!validId(item.parent_series_id))continue;
         const id=compactId(item.parent_series_id);
-        const values=seasons.get(id)||[];
+        const values=recommendationSeasonGenres.get(id)||[];
         if(Array.isArray(item.genres))values.push(...item.genres);
-        seasons.set(id,values);
+        recommendationSeasonGenres.set(id,values);
       }
-      const candidates=all.filter(x=>validId(x?.id)&&(x.type==='Movie'||x.type==='Series'));
-      const genrePool=new Map();
-      for(const item of candidates){
-        const available=new Set([...(Array.isArray(item.genres)?item.genres:[]),
-          ...(item.anime&&item.type==='Series'?(seasons.get(compactId(item.id))||[]):[])].map(normalized));
-        for(const genre of selected){
-          const key=normalized(genre);
-          if(available.has(key)){
-            if(!genrePool.has(key))genrePool.set(key,[]);
-            genrePool.get(key).push(item);
-          }
-        }
-      }
-      area.replaceChildren();recommendationRows.clear();
-      for(const genre of selected){
-        const matching=genrePool.get(normalized(genre))||[];
-        const row=recommendationShelf(genre,matching);
-        area.appendChild(row.section);recommendationRows.set(normalized(genre),row);
-      }
-      // Only hydrate visible rows, not dozens of full page requests at once.
-      recommendationObserver?.disconnect();recommendationObserver=null;
-      if(typeof IntersectionObserver==='function'){
-        recommendationObserver=new IntersectionObserver(entries=>{
-          for(const entry of entries){
-            if(!entry.isIntersecting)continue;
-            recommendationObserver?.unobserve(entry.target);
-            const row=recommendationRows.get(entry.target.dataset.mfGenreKey);
-            if(row)void loadRecommendationPage(row,true);
-          }
-        },{rootMargin:'400px 0px'});
-        for(const [key,row] of recommendationRows){row.section.dataset.mfGenreKey=key;recommendationObserver.observe(row.section);}
-      }else for(const row of recommendationRows.values())void loadRecommendationPage(row,true);
+      recommendationCandidates=all.filter(x=>validId(x?.id)&&(x.type==='Movie'||x.type==='Series'));
+      paintRecommendationSets();
     }catch(e){
       if(!isCurrent(serial))return;
-      recommendationInitialized=false;
+      recommendationInitialized=false;recommendationCandidates=[];recommendationPresets=[];
       area.replaceChildren(own('p','mf-home-empty','Nie udało się pobrać propozycji. Wyłącz i ponownie włącz sekcję, aby spróbować jeszcze raz.'));
     }
   }
@@ -2045,8 +2083,10 @@
       paintFolderButtons();
       showHiddenResume=false;
       homeRoot.appendChild(resumeShelf());
-      homeRoot.appendChild(libraryShelvesToggle());
-      homeRoot.appendChild(recommendationToggle());
+      recommendationIncludeAnime=true; // ON by default on every Home mount.
+      const switches=own('div','mf-home-switches');
+      append(switches,libraryShelvesToggle(),recommendationToggle(),recommendationAnimeToggle());
+      homeRoot.appendChild(switches);
       collectionsPage=createCollectionsPage();
       collectionsLoad={busy:false,loaded:false,offset:0,hasMore:true,requestId:0};
       homeRoot.appendChild(collectionsPage.section);
@@ -2072,6 +2112,7 @@
       closeSearch();collectionsPage?.observer?.disconnect();
       recommendationObserver?.disconnect();recommendationObserver=null;
       recommendationInitialized=false;recommendationRows.clear();
+      recommendationCandidates=[];recommendationPresets=[];recommendationSeasonGenres.clear();
       homeRoot.remove();homeRoot=null;homeHost=null;
       discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;epoch++;rows.clear();
     }
@@ -2095,6 +2136,7 @@
     if(owner!==token){
       owner=token;epoch++;
       closeSearch();recommendationObserver?.disconnect();recommendationObserver=null;recommendationRows.clear();recommendationInitialized=false;
+      recommendationCandidates=[];recommendationPresets=[];recommendationSeasonGenres.clear();
       homeRoot?.remove();homeRoot=null;homeHost=null;discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;rows.clear();resumeData={items:[],hidden:[]};librariesCache=[];catalogCache.clear();catalogFetchedAt.clear();
     }
     if(homeRoot && homeRoot.isConnected && homeHost===host){syncCollectionsPage();maybeOpenLinkedGenre();return;}

@@ -14,6 +14,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     // Admin-selected home recommendation rows. Empty list means no rows.
     // Only genre names: never tokens, private per-user watch state or credentials.
     public List<string> RecommendationGenres { get; set; } = new();
+    // v0.4.108: independent admin-created recommendation rows (AND / OR).
+    // Legacy RecommendationGenres is retained only for old installation migrations.
+    public List<MisioFlixRecommendationSet> RecommendationSets { get; set; } = new();
     // Register this callback URL in the MAL API application. Never commit credentials.
     public string MalClientId { get; set; } = string.Empty;
     public string MalClientSecret { get; set; } = string.Empty;
@@ -30,4 +33,12 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     // Only local loopback is allowed by CatalogService. Keep the server port here.
     public string JellyfinLoopbackUrl { get; set; } = "http://127.0.0.1:8096";
+}
+
+
+/// <summary>One admin-defined genre recommendation rail; no user-private data.</summary>
+public sealed class MisioFlixRecommendationSet
+{
+    public List<string> Genres { get; set; } = new();
+    public bool MatchAll { get; set; } = false;
 }

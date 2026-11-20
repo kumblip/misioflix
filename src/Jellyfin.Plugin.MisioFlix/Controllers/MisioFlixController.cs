@@ -120,17 +120,33 @@ public sealed class MisioFlixController : ControllerBase
         catch (InvalidOperationException) { return StatusCode(503, new { error="Niedostępny katalog NFO" }); }
     }
 
-    // Admin-selected genre names only. No private account configuration is exposed.
+    // Public to authenticated Home users: genre labels and boolean match mode,
+    // NEVER any admin credentials or private MAL/Simkl configuration.
     [HttpGet("api/home/recommendation-genres")]
     [Authorize]
     public IActionResult HomeRecommendationGenres()
     {
         if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
         Response.Headers.CacheControl = "private, no-store";
-        var genres = (Plugin.Instance?.Configuration.RecommendationGenres ?? new List<string>())
-            .Where(x => !string.IsNullOrWhiteSpace(x) && x.Length <= 100)
-            .Distinct(StringComparer.OrdinalIgnoreCase).Take(256).ToArray();
-        return Ok(new { genres });
+        var config = Plugin.Instance.Configuration;
+        var sets = (config.RecommendationSets ?? new List<Jellyfin.Plugin.MisioFlix.Configuration.MisioFlixRecommendationSet>())
+            .Take(48)
+            .Select(x => new {
+                genres = (x?.Genres ?? new List<string>()).Where(g => !string.IsNullOrWhiteSpace(g) && g.Length <= 100)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).Take(52).ToArray(),
+                matchAll = x?.MatchAll == true
+            })
+            .Where(x => x.genres.Length != 0).ToArray();
+        // Existing installations keep their selected rails until the administrator saves
+        // the first multi-genre preset. No data migration/writes on Home read.
+        if (sets.Length == 0 && (config.RecommendationSets?.Count ?? 0) == 0)
+        {
+            sets = (config.RecommendationGenres ?? new List<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x) && x.Length <= 100)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Take(48)
+                .Select(x => new { genres = new[] { x }, matchAll = false }).ToArray();
+        }
+        return Ok(new { proposals = sets });
     }
 
     // Only used when the administrator opens the plugin settings page.

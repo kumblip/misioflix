@@ -1,8 +1,25 @@
 <!doctype html>
 <html lang="pl"><head><meta charset="utf-8"><title>MisioFlix</title></head><body>
 <div data-role="page" class="page type-interior pluginConfigurationPage" id="misioflixConfigPage">
+ <style>
+ #misioflixConfigPage .mf-config-collapse{border:1px solid rgba(255,190,222,.27);border-radius:12px;margin:12px 0;background:rgba(255,255,255,.025)}
+ #misioflixConfigPage .mf-config-collapse>summary{display:list-item;cursor:pointer;padding:14px 16px;color:#ffe6f4;font-size:17px;font-weight:650;list-style-position:inside}
+ #misioflixConfigPage .mf-config-collapse>summary:focus-visible{outline:2px solid #ffb7d9;outline-offset:2px}
+ #misioflixConfigPage .mf-config-collapse[open]>summary{border-bottom:1px solid rgba(255,190,222,.2)}
+ #misioflixConfigPage .mf-config-collapse> :not(summary){margin-left:14px;margin-right:14px}
+ #misioflixConfigPage .mf-proposal{border:1px solid rgba(255,190,222,.25);border-radius:10px;margin:12px 0;padding:0 10px 12px}
+ #misioflixConfigPage .mf-proposal>summary{padding:12px 4px;font-weight:650;cursor:pointer}
+ #misioflixConfigPage .mf-proposal-genre-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:6px 10px;max-height:310px;overflow:auto;padding:10px;border:1px solid #77526c;border-radius:9px}
+ #misioflixConfigPage .mf-proposal-genre-list label{display:flex;gap:8px;align-items:center;min-width:0;padding:4px;cursor:pointer}
+ #misioflixConfigPage .mf-proposal-genre-list span{overflow-wrap:anywhere}
+ #misioflixConfigPage .mf-proposal-genre-toggle{margin:10px 0}
+ #misioflixConfigPage .mf-proposal-genre-toggle summary{cursor:pointer;font-weight:550;padding:8px 0}
+ #misioflixConfigPage .mf-proposal-mode{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}
+ </style>
  <div data-role="content">
   <h1>MisioFlix — konfiguracja integracji</h1>
+  <details class="mf-config-collapse">
+   <summary>MyAnimeList — aplikacja i autoryzacja</summary>
   <p>Wpisz dane własnej aplikacji z <a href="https://myanimelist.net/apiconfig">MAL API Config</a>.
    Wspólne Client ID dotyczy całej instalacji Jellyfin, ale każdy użytkownik łączy własne konto MAL w swoim profilu MisioFlix. Użytkownicy mogą korzystać z MAL jednocześnie. Nie wpisuj tokenów ręcznie.</p>
   <form id="mf-config-form">
@@ -23,7 +40,10 @@
    <button type="submit" class="raised button-submit emby-button">Zapisz ustawienia MAL</button>
    <p id="mf-config-status" aria-live="polite"></p>
   </form>
+  </details>
   <hr style="margin:26px 0;border-color:#77526c" />
+  <details class="mf-config-collapse">
+   <summary>Simkl — filmy i seriale bez anime</summary>
   <h2>Simkl — niezależne połączenie filmów i seriali</h2>
   <p>Utwórz własną aplikację <a href="https://simkl.com/settings/developer/new/" target="_blank" rel="noopener noreferrer">Simkl Developer</a>
      w systemie <strong>AUTH V2</strong>, typ <strong>TV, devices &amp; command line</strong>.
@@ -35,7 +55,9 @@
    <button type="submit" class="raised button-submit emby-button">Zapisz ustawienia Simkl</button>
    <p id="mf-simkl-config-status" aria-live="polite"></p>
   </form>
+  </details>
   <hr style="margin:26px 0;border-color:#77526c" />
+  <details class="mf-config-collapse"><summary>Kolekcje Jellyfina z NFO</summary>
   <section id="mf-nfo-collections-panel" aria-labelledby="mf-nfo-collections-heading" style="padding:12px 0 20px">
    <h2 id="mf-nfo-collections-heading">Kolekcje Jellyfina z plików NFO</h2>
    <p>MisioFlix odczytuje powtarzające się tagi <code>&lt;set&gt;</code> z <code>movie.nfo</code> i <code>tvshow.nfo</code>.
@@ -52,7 +74,9 @@
    <pre id="mf-nfo-collections-report-text" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:440px;overflow-y:auto;background:rgba(0,0,0,.25);padding:12px;border-radius:8px" hidden></pre>
    <small>Jeśli liczba tagów &lt;set&gt; i &lt;sorttitle&gt; jest taka sama, odpowiadają sobie kolejnością wpisów. MisioFlix ustawia kolejność pozycji we własnych BoxSetach, bez nadpisywania globalnego SortName. Przy niepełnym mapowaniu nie zmienia kolejności.</small>
   </section>
+  </details>
   <hr style="margin:26px 0;border-color:#77526c" />
+  <details class="mf-config-collapse"><summary>Stałe okładki kolekcji Jellyfina</summary>
   <section id="mf-native-cover-panel" aria-labelledby="mf-native-cover-heading" style="padding:12px 0 22px">
    <h2 id="mf-native-cover-heading">Stałe okładki kolekcji Jellyfina</h2>
    <p>Jeżeli BoxSet nie ma własnej okładki Primary, MisioFlix może połączyć 1–4 plakaty jego filmów i seriali w <strong>jeden obraz JPEG</strong> i zapisać go w Jellyfinie jako natywną okładkę kolekcji. Dzięki temu plakat pozostaje widoczny po przejściu między bibliotekami i w zwykłym Jellyfinie. <strong>Istniejące okładki nigdy nie są nadpisywane</strong>; wtyczka nie zmienia NFO ani plików wideo.</p>
@@ -60,27 +84,26 @@
    <button type="button" class="raised emby-button" id="mf-native-cover-generate">Wygeneruj i zapisz brakujące okładki kolekcji</button>
    <p id="mf-native-cover-status" role="status" aria-live="polite">Nie uruchomiono generowania okładek.</p>
   </section>
+  </details>
   <hr style="margin:26px 0;border-color:#77526c" />
+  <details class="mf-config-collapse"><summary>Propozycje według gatunków — strona główna</summary>
   <section id="mf-recommendation-config" aria-labelledby="mf-recommendation-heading" style="padding:10px 0 22px">
-   <h2 id="mf-recommendation-heading">Propozycje według gatunków — strona główna</h2>
-   <p>Zaznacz gatunki, których karuzele mają być dostępne na stronie głównej MisioFlix.
-      Wybór jest wspólny dla serwera, natomiast każda osoba widzi wyłącznie dostępne dla siebie tytuły.
-      Sekcja na stronie głównej jest <strong>domyślnie ukryta</strong> i można ją włączać osobnym przełącznikiem.
-      Puste zaznaczenie oznacza brak karuzel.</p>
-   <div class="inputContainer">
-    <label class="inputLabel" for="mf-recommendation-filter">Znajdź gatunek</label>
-    <input class="emby-input" id="mf-recommendation-filter" type="search" placeholder="Np. Romans, Akcja, Horror…" autocomplete="off" />
+   <h2 id="mf-recommendation-heading">Zestawy propozycji</h2>
+   <p>Każdy zestaw to osobna karuzela na stronie głównej. Dodaj kilka gatunków i wybierz, czy tytuł ma mieć
+    <strong>wszystkie wskazane gatunki</strong>, czy wystarczy <strong>co najmniej jeden</strong>.
+    Dostępne tytuły są filtrowane według uprawnień zalogowanego użytkownika. Domyślnie propozycje na stronie głównej są ukryte.</p>
+   <div id="mf-recommendation-list" aria-label="Zestawy propozycji"></div>
+   <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:16px 0">
+    <button type="button" class="emby-button raised" id="mf-recommendation-add">+ Dodaj propozycję</button>
+    <button type="button" class="raised button-submit emby-button" id="mf-recommendation-save">Zapisz propozycje</button>
    </div>
-   <p id="mf-recommendation-count" aria-live="polite">Wczytywanie wybranych gatunków…</p>
-   <div id="mf-recommendation-options" role="group" aria-label="Gatunki propozycji"
-        style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px 12px;max-height:350px;overflow:auto;padding:12px;border:1px solid #77526c;border-radius:12px">
-    <p>Wczytywanie listy gatunków…</p>
-   </div>
-   <p id="mf-recommendation-help"><small>Gatunki anime pochodzą z NFO; filmy, seriale i pozostałe animacje korzystają z gatunków Jellyfina. Identyczne nazwy są wyświetlane tylko raz; karuzela może łączyć oba rodzaje treści.</small></p>
-   <button type="button" class="raised button-submit emby-button" id="mf-recommendation-save">Zapisz wybrane gatunki</button>
+   <p><small>Lista gatunków pochodzi z NFO anime oraz gatunków Jellyfina dla filmów, seriali i innych animacji.
+    Wybór „Uwzględnij anime” na stronie głównej działa niezależnie od definicji zestawów.</small></p>
    <p id="mf-recommendation-status" role="status" aria-live="polite"></p>
   </section>
+  </details>
   <hr style="margin:26px 0;border-color:#77526c" />
+  <details class="mf-config-collapse"><summary>Aktualizacje MisioFlix</summary>
   <section id="mf-updates-panel" aria-labelledby="mf-updates-heading" style="padding:12px 0 22px">
    <h2 id="mf-updates-heading">Aktualizacje MisioFlix</h2>
    <p>Porównanie GitHub Release, manifestu i katalogu Jellyfina. Wymuszenie zapisuje w Jellyfinie adres zweryfikowanego manifestu konkretnej rewizji GitHuba; nie instaluje pakietów ani nie zastępuje DLL.</p>
@@ -102,6 +125,7 @@
    <p id="mf-update-status" role="status" aria-live="polite">Gotowe do sprawdzenia.</p>
    <p><small>Instalacja odbywa się wyłącznie przez mechanizm Jellyfina, z repozytorium MisioFlix. Nie jest możliwa, dopóki odpowiednia zgodna wersja nie pojawi się w jego katalogu. Po instalacji może być wymagany restart serwera.</small></p>
   </section>
+  </details>
  </div>
  <script>
  (()=>{
@@ -588,76 +612,111 @@
    return {activate(){/* No automatic write or background operation. */}};
   })();
 
-  // v0.4.107 — admin selection of genre recommendations. Never expose MAL or
-  // Simkl credentials through the public Home endpoint. Genre list includes
-  // existing local NFO genres AND ordinary Jellyfin movie/TV genres.
+  // v0.4.108: independent, collapsible admin genre proposals (AND / OR).
   const recommendations=(()=>{
    const panel=view.querySelector('#mf-recommendation-config');
    if(!panel||typeof panel.querySelector!=='function')return {activate(){}};
-   const options=panel.querySelector('#mf-recommendation-options');
-   const filter=panel.querySelector('#mf-recommendation-filter');
-   const count=panel.querySelector('#mf-recommendation-count');
+   const list=panel.querySelector('#mf-recommendation-list');
    const status=panel.querySelector('#mf-recommendation-status');
    const save=panel.querySelector('#mf-recommendation-save');
-   let selection=new Set();
+   const add=panel.querySelector('#mf-recommendation-add');
+   const clean=x=>String(x||'').trim().slice(0,100);
+   const key=x=>clean(x).toLocaleLowerCase('pl');
    let names=[];
-   let loaded=false;
-   const key=name=>String(name||'').trim().toLocaleLowerCase('pl');
-   const clean=name=>String(name||'').trim().slice(0,100);
-   function paint(){
-    const query=key(filter.value);
-    count.textContent=`Wybrano ${selection.size} gatunków`;
-    options.replaceChildren();
-    const visible=names.filter(name=>key(name).includes(query));
-    if(!visible.length){options.textContent=loaded?'Brak pasujących gatunków.':'Wczytywanie dostępnych gatunków…';return;}
-    for(const name of visible){
-     const line=document.createElement('label');
-     line.style.cssText='display:flex;gap:8px;align-items:center;padding:5px;border-radius:7px;cursor:pointer;';
-     const input=document.createElement('input');input.type='checkbox';input.checked=selection.has(key(name));
-     
-     const caption=document.createElement('span');caption.textContent=name;
-     input.addEventListener('change',()=>{
-      if(input.checked)selection.add(key(name));
-      else selection.delete(key(name));
-      paint();
-     });
-     line.append(input,caption);options.appendChild(line);
-    }
+   let proposals=[];
+   let busy=false;
+   const el=(tag,cls,caption)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(caption!==undefined)node.textContent=caption;return node;};
+   function render(){
+    list.replaceChildren();
+    if(!proposals.length)list.append(el('p','','Brak zestawów. Kliknij „+ Dodaj propozycję”.'));
+    proposals.forEach((preset,index)=>{
+     const outer=el('details','mf-proposal'); // Each proposal starts collapsed.
+     const summary=el('summary','','Propozycja '+(index+1)+' — '+(preset.genres.length?preset.genres.join(' / '):'wybierz gatunki'));
+     const info=el('p','','Wybrano '+preset.genres.length+' gatunków.');
+     const modes=el('div','mf-proposal-mode');
+     for(const [value,label] of [['any','Co najmniej jeden z wybranych gatunków'],['all','Wszystkie wybrane gatunki']]){
+      const wrapper=el('label');const radio=el('input');radio.type='radio';radio.name='mf-proposal-mode-'+index;
+      radio.value=value;radio.checked=(preset.matchAll?'all':'any')===value;
+      radio.addEventListener('change',()=>{if(radio.checked)preset.matchAll=value==='all';});
+      wrapper.append(radio,document.createTextNode(' '+label));modes.append(wrapper);
+     }
+     const choices=el('details','mf-proposal-genre-toggle');
+     const toggle=el('summary','','Pokaż gatunki');
+     const search=el('input','emby-input');search.type='search';search.placeholder='Znajdź gatunek…';
+     search.setAttribute('aria-label','Filtr gatunków propozycji '+(index+1));
+     search.style.cssText='width:100%;max-width:520px;margin:10px 0';
+     const grid=el('div','mf-proposal-genre-list');grid.setAttribute('role','group');
+     grid.setAttribute('aria-label','Gatunki propozycji '+(index+1));
+     const selection=new Map(preset.genres.map(g=>[key(g),g]));
+     function updateName(){
+      preset.genres=[...selection.values()];
+      info.textContent='Wybrano '+preset.genres.length+' gatunków.';
+      summary.textContent='Propozycja '+(index+1)+' — '+(preset.genres.length?preset.genres.join(' / '):'wybierz gatunki');
+     }
+     function paint(){
+      grid.replaceChildren();const q=key(search.value);
+      const all=new Map([...names,...selection.values()].filter(Boolean).map(g=>[key(g),g]));
+      const visible=[...all.values()].sort((a,b)=>a.localeCompare(b,'pl')).filter(g=>key(g).includes(q));
+      if(!visible.length)grid.append(el('p','','Brak gatunków pasujących do wyszukiwania.'));
+      for(const name of visible){
+       const label=el('label');const input=el('input');input.type='checkbox';input.checked=selection.has(key(name));
+       input.addEventListener('change',()=>{
+        if(input.checked)selection.set(key(name),name);else selection.delete(key(name));
+        updateName();
+       });
+       label.append(input,el('span','',name));grid.append(label);
+      }
+     }
+     search.addEventListener('input',paint);
+     choices.addEventListener('toggle',()=>{toggle.textContent=choices.open?'Ukryj gatunki':'Pokaż gatunki';if(choices.open)paint();});
+     choices.append(toggle,search,grid);
+     const remove=el('button','emby-button','Usuń propozycję');remove.type='button';
+     remove.addEventListener('click',()=>{proposals.splice(index,1);render();status.textContent='Zmiana oczekuje na zapis.';});
+     outer.append(summary,info,modes,choices,remove);list.append(outer);
+    });
    }
    async function activate(){
-    loaded=false;status.textContent='';
     try{
+     status.textContent='';
      const cfg=await ApiClient.getPluginConfiguration(pluginId);
-     const selected=Array.isArray(cfg.RecommendationGenres)?cfg.RecommendationGenres.map(clean).filter(Boolean):[];
-     selection=new Set(selected.map(key));
-     const optionsByKey=new Map(selected.map(n=>[key(n),n]));
-     names=[...optionsByKey.values()].sort((a,b)=>a.localeCompare(b,'pl'));
-     paint();
+     const stored=Array.isArray(cfg.RecommendationSets)?cfg.RecommendationSets:[];
+     if(stored.length){
+      proposals=stored.slice(0,48).map(x=>({genres:(Array.isArray(x.Genres)?x.Genres:[]).map(clean).filter(Boolean).slice(0,52),matchAll:x.MatchAll===true}));
+     }else if(Array.isArray(cfg.RecommendationGenres)&&cfg.RecommendationGenres.length){
+      proposals=cfg.RecommendationGenres.slice(0,48).map(g=>({genres:[clean(g)].filter(Boolean),matchAll:false}));
+     }else proposals=[{genres:[],matchAll:false},{genres:[],matchAll:false}];
+     names=[...new Set(proposals.flatMap(x=>x.genres))];render();
      const token=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
      if(typeof token!=='string'||!token)throw Error('Brak autoryzacji Jellyfin.');
      const path=typeof ApiClient.getUrl==='function'?ApiClient.getUrl('MisioFlix/api/home/recommendation-options'):'/MisioFlix/api/home/recommendation-options';
-     const response=await fetch(path,{cache:'no-store',headers:{Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-config-genres", Version="0.4.107", Token="'+token.replace(/["\r\n]/g,'')+'"'}});
+     const response=await fetch(path,{cache:'no-store',headers:{Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-config-proposals", Version="0.4.108", Token="'+token.replace(/["\r\n]/g,'')+'"'}});
      if(!response.ok)throw Error('HTTP '+response.status);
      const data=await response.json();
-     for(const name of [...(Array.isArray(data?.anime)?data.anime:[]),...(Array.isArray(data?.media)?data.media:[])]){
-      const cleaned=clean(name),k=key(cleaned);
-      if(k&&!optionsByKey.has(k))optionsByKey.set(k,cleaned);
+     const all=new Map();
+     for(const g of [...names,...(Array.isArray(data?.anime)?data.anime:[]),...(Array.isArray(data?.media)?data.media:[])]){
+      const value=clean(g);if(value&&!all.has(key(value)))all.set(key(value),value);
      }
-     names=[...optionsByKey.values()].sort((a,b)=>a.localeCompare(b,'pl'));
-     loaded=true;paint();
-    }catch(e){loaded=true;paint();status.textContent='Nie udało się pobrać pełnej listy gatunków: '+e.message+'. Poprzedni wybór pozostaje dostępny.';}
+     names=[...all.values()].sort((a,b)=>a.localeCompare(b,'pl'));
+     // Do not discard unsaved selections if fetching the options ends late.
+     for(const detail of list.querySelectorAll('.mf-proposal-genre-toggle[open]'))detail.dispatchEvent(new Event('toggle'));
+    }catch(e){status.textContent='Nie można wczytać wszystkich gatunków: '+e.message+'. Zachowane gatunki pozostają dostępne.';}
    }
-   filter.addEventListener('input',paint);
+   add.addEventListener('click',()=>{
+    if(proposals.length>=48){status.textContent='Maksymalnie 48 zestawów propozycji.';return;}
+    proposals.push({genres:[],matchAll:false});render();
+    const newPanel=list.lastElementChild;if(newPanel?.tagName==='DETAILS')newPanel.open=true;
+    status.textContent='Nowa propozycja oczekuje na zapis.';
+   });
    save.addEventListener('click',async()=>{
-    save.disabled=true;
+    if(busy)return;busy=true;save.disabled=true;
     try{
      const cfg=await ApiClient.getPluginConfiguration(pluginId);
-     const byKey=new Map(names.map(n=>[key(n),n]));
-     cfg.RecommendationGenres=[...selection].map(k=>byKey.get(k)||k);
+     cfg.RecommendationSets=proposals.map(p=>({Genres:[...new Map(p.genres.filter(Boolean).map(g=>[key(g),clean(g)])).values()].slice(0,52),MatchAll:!!p.matchAll}));
+     cfg.RecommendationGenres=[]; // No duplicate legacy rails after saving.
      await ApiClient.updatePluginConfiguration(pluginId,cfg);
-     status.textContent='Zapisano '+selection.size+' gatunków. Karuzele będą dostępne po włączeniu „Pokaż propozycje” na stronie głównej.';
-    }catch(e){status.textContent='Nie udało się zapisać gatunków: '+e.message;}
-    finally{save.disabled=false;}
+     status.textContent='Zapisano '+proposals.filter(p=>p.genres.length).length+' aktywnych propozycji.';
+    }catch(e){status.textContent='Błąd zapisywania propozycji: '+e.message;}
+    finally{busy=false;save.disabled=false;}
    });
    return {activate};
   })();

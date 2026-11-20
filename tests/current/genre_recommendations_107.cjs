@@ -48,7 +48,7 @@ assert.deepEqual([...randomized].sort((a,b)=>a-b),input);
 assert(!src.includes('RANDOM_LIMIT===5'));
 assert(css.includes('.mf-home-recommendations .mf-home-card-desc{display:none!important}'));
 assert(html.includes('Gatunki propozycji'));
-assert(html.includes('Zapisz wybrane gatunki'));
+assert(html.includes('Zapisz propozycje'));
 assert(src.includes('getCatalogForSearch()'));
 assert(src.includes("const pageStart=row.offset"));
 console.log('PASS v0.4.107: admin genre config, default-OFF switch, full-pool random, paged cards, no descriptions');

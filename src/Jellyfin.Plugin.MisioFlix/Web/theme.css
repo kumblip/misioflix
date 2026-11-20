@@ -1861,6 +1861,24 @@ html.misioflix-skin .mf-home-recommendations .mf-home-card-title{min-height:34px
  html.misioflix-skin .mf-home-recommendations .mf-home-card-body{padding:8px 9px 10px}
 }
 
+/* v0.4.108: all Home visibility switches share one horizontal bar.
+   On narrow screens keep the single row scrollable instead of stacking. */
+html.misioflix-skin .mf-home-switches{
+ display:flex;flex-flow:row nowrap;align-items:center;gap:10px;
+ max-width:100%;overflow-x:auto;overflow-y:hidden;margin-top:-16px;
+ scrollbar-width:thin;padding:2px 1px 6px;
+}
+html.misioflix-skin .mf-home-switches .mf-home-libraries-control,
+html.misioflix-skin .mf-home-switches .mf-home-recommendation-control{margin-top:0;flex:0 0 auto}
+html.misioflix-skin .mf-home-switches .mf-home-libraries-toggle{white-space:nowrap}
+@media(max-width:560px){
+ html.misioflix-skin .mf-home-switches{gap:6px;margin-top:-13px}
+ html.misioflix-skin .mf-home-switches .mf-home-libraries-toggle{font-size:11px;padding:6px 8px;gap:6px}
+ html.misioflix-skin .mf-home-switches .mf-home-libraries-track{width:30px;height:18px}
+ html.misioflix-skin .mf-home-switches .mf-home-libraries-track::after{width:12px;height:12px}
+ html.misioflix-skin .mf-home-switches .mf-home-libraries-toggle[aria-checked="true"] .mf-home-libraries-track::after{transform:translateX(12px)}
+}
+
 /* v0.4.94: the box is the ONLY badge on films such as Bad Boys.
  * Do not reserve the two/three-paw frame width in this case: shrink-wrap
  * the single number + box glyph, but retain identical number/icon columns.

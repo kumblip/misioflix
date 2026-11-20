@@ -10,8 +10,8 @@ CSS=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/theme.css').read_text(encoding='utf
 class LibrariesVisibility106(unittest.TestCase):
     def test_only_home_shelves_hidden(self):
         mount=HOME.split('  function mount(host){',1)[1].split('  function unmountHome(){',1)[0]
-        self.assertLess(mount.index('homeRoot.appendChild(resumeShelf())'),mount.index('homeRoot.appendChild(libraryShelvesToggle())'))
-        self.assertLess(mount.index('homeRoot.appendChild(libraryShelvesToggle())'),mount.index('homeRoot.appendChild(rowsArea)'))
+        self.assertLess(mount.index('homeRoot.appendChild(resumeShelf())'),mount.index('libraryShelvesToggle()'))
+        self.assertLess(mount.index('libraryShelvesToggle()'),mount.index('homeRoot.appendChild(rowsArea)'))
         self.assertIn("rowsArea.hidden=true",mount)
         self.assertIn("homeRoot.appendChild(hero(discoveryRefs.section))",mount)
         self.assertIn('homeRoot.appendChild(collectionsPage.section)',mount)

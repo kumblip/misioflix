@@ -9,8 +9,9 @@ const css=fs.readFileSync(path.join(root,'src/Jellyfin.Plugin.MisioFlix/Web/them
 const start=source.indexOf('  function libraryShelvesToggle(){');
 const end=source.indexOf('  async function loadLibraries(serial)',start);
 assert(start>=0&&end>start,'test runs actual home.js toggle');
-assert(source.indexOf('homeRoot.appendChild(resumeShelf())')<source.indexOf('homeRoot.appendChild(libraryShelvesToggle())'));
-assert(source.indexOf('homeRoot.appendChild(libraryShelvesToggle())')<source.indexOf('homeRoot.appendChild(rowsArea)'));
+const mount=source.slice(source.indexOf('  function mount(host){'),source.indexOf('  function unmountHome(){'));
+assert(mount.indexOf('homeRoot.appendChild(resumeShelf())')<mount.indexOf('libraryShelvesToggle()'));
+assert(mount.indexOf('libraryShelvesToggle()')<mount.indexOf('homeRoot.appendChild(rowsArea)'));
 assert(source.includes("rowsArea.id='mf-home-rows';"),'switch points at the actual shelf container');
 assert(source.includes('rowsArea.hidden=true;'),'initial state is OFF');
 assert(source.includes("void loadLibraries(serial);"),'library metadata still loads for hero/search shortcuts');
