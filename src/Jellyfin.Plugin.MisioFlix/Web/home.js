@@ -1776,6 +1776,33 @@
     append(watch,header,scroll);
     return watch;
   }
+  // The library shelves are optional on Home. This is presentation-only:
+  // leave the hero shortcuts, searches, Continue Watching and native links intact.
+  // Default OFF on each new home mount, with no user/account storage writes.
+  function libraryShelvesToggle(){
+    const control=own('div','mf-home-libraries-control');
+    const button=own('button','mf-home-libraries-toggle');
+    button.type='button';
+    button.setAttribute('role','switch');
+    button.setAttribute('aria-checked','false');
+    button.setAttribute('aria-expanded','false');
+    button.setAttribute('aria-controls','mf-home-rows');
+    const track=own('span','mf-home-libraries-track');
+    track.setAttribute('aria-hidden','true');
+    const label=own('span','mf-home-libraries-label','Pokaż biblioteki');
+    append(button,track,label);
+    button.addEventListener('click',()=>{
+      const area=homeRoot?.querySelector('.mf-home-rows');
+      if(!area)return;
+      const show=area.hidden;
+      area.hidden=!show;
+      button.setAttribute('aria-checked',String(show));
+      button.setAttribute('aria-expanded',String(show));
+      label.textContent=show?'Ukryj biblioteki':'Pokaż biblioteki';
+    });
+    control.appendChild(button);
+    return control;
+  }
   async function loadLibraries(serial){
     const container=homeRoot?.querySelector('.mf-home-rows');
     if(!container)return;
@@ -1833,10 +1860,13 @@
       paintFolderButtons();
       showHiddenResume=false;
       homeRoot.appendChild(resumeShelf());
+      homeRoot.appendChild(libraryShelvesToggle());
       collectionsPage=createCollectionsPage();
       collectionsLoad={busy:false,loaded:false,offset:0,hasMore:true,requestId:0};
       homeRoot.appendChild(collectionsPage.section);
       const rowsArea=own('div','mf-home-rows');
+      rowsArea.id='mf-home-rows';
+      rowsArea.hidden=true; // OFF by default; JS never unhides until user requests it.
       rowsArea.appendChild(own('p','mf-home-empty','Ładowanie bibliotek…'));
       homeRoot.appendChild(rowsArea);
       host.prepend(homeRoot);

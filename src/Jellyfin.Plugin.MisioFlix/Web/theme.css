@@ -624,6 +624,41 @@ html.misioflix-skin .mf-home-genre-filter.mf-genre-no{background:#491f2b;border-
 html.misioflix-skin .mf-home-search-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(162px,1fr));gap:16px;align-items:stretch;min-width:0}
 html.misioflix-skin .mf-home-search-grid .mf-home-card{width:100%;min-width:0;flex:none}
 html.misioflix-skin .mf-home-search-more{align-self:center}
+/* v0.4.106: one compact, accessible Home switch immediately below Oglądaj dalej.
+   The shelves stay in their original DOM and become visible only when requested. */
+html.misioflix-skin .mf-home-libraries-control{
+  display:flex;align-items:center;min-width:0;margin-top:-16px;
+}
+html.misioflix-skin .mf-home-libraries-toggle{
+  display:inline-flex;align-items:center;gap:10px;
+  padding:7px 13px;border:1px solid rgba(245,167,207,.3);border-radius:24px;
+  background:rgba(255,255,255,.06);color:#fff0f7;font:inherit;
+  font-size:13px;font-weight:600;line-height:1.4;cursor:pointer;
+}
+html.misioflix-skin .mf-home-libraries-toggle:hover{background:rgba(245,167,207,.13)}
+html.misioflix-skin .mf-home-libraries-toggle:focus-visible{
+  outline:2px solid #f4a5ce;outline-offset:3px;
+}
+html.misioflix-skin .mf-home-libraries-track{
+  display:block;position:relative;flex:none;width:34px;height:20px;
+  border-radius:999px;border:1px solid rgba(255,255,255,.28);
+  background:#604c60;transition:background-color .16s ease;
+}
+html.misioflix-skin .mf-home-libraries-track::after{
+  content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;
+  border-radius:50%;background:#fff1f7;box-shadow:0 1px 3px rgba(0,0,0,.24);
+  transition:transform .16s ease;
+}
+html.misioflix-skin .mf-home-libraries-toggle[aria-checked="true"] .mf-home-libraries-track{
+  background:#45b879;border-color:#45b879;
+}
+html.misioflix-skin .mf-home-libraries-toggle[aria-checked="true"] .mf-home-libraries-track::after{
+  transform:translateX(14px);
+}
+@media(prefers-reduced-motion:reduce){
+  html.misioflix-skin .mf-home-libraries-track,
+  html.misioflix-skin .mf-home-libraries-track::after{transition:none}
+}
 html.misioflix-skin .mf-home-rows{display:flex;flex-direction:column;gap:32px;min-width:0}
 html.misioflix-skin .mf-home-shelf{display:flex;flex-direction:column;gap:12px;min-width:0}
 html.misioflix-skin .mf-home-shelf-heading{display:flex;justify-content:space-between;align-items:center;gap:8px}

@@ -51,9 +51,9 @@ class SuggestedCardFrameV103(unittest.TestCase):
 
     def test_version_and_existing_release_workflows(self):
         meta = json.loads((ROOT / 'meta.json').read_text(encoding='utf-8'))
-        self.assertEqual(meta['version'], '0.4.105.0')
+        self.assertRegex(meta['version'], r'^\d+\.\d+\.\d+\.\d+$')
         csproj = (ROOT / 'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf-8')
-        for name, version in [('Version','0.4.105'),('AssemblyVersion','0.4.105.0'),('FileVersion','0.4.105.0')]:
+        for name, version in [('Version',meta['version'].removesuffix('.0')),('AssemblyVersion',meta['version']),('FileVersion',meta['version'])]:
             self.assertIn(f'<{name}>{version}</{name}>', csproj)
         for f in ['tools/sync_version.py','tools/package.py','.github/workflows/release.yml','.github/workflows/build.yml']:
             self.assertTrue((ROOT / f).is_file())

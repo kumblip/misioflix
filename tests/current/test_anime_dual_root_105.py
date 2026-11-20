@@ -38,9 +38,9 @@ class DualAnimeSource105(unittest.TestCase):
         self.assertIn('typeof(Plugin).Assembly.GetName().Version?.ToString()',ctrl)
         self.assertNotIn('version = "0.4.30"',ctrl)
         meta=json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))
-        self.assertEqual('0.4.105.0',meta['version'])
+        self.assertRegex(meta['version'],r'^\d+\.\d+\.\d+\.\d+$')
         project=(SRC/'Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf-8')
-        self.assertIn('<AssemblyVersion>0.4.105.0</AssemblyVersion>',project)
+        self.assertIn(f"<AssemblyVersion>{meta['version']}</AssemblyVersion>",project)
         for name in ['tools/sync_version.py','tools/package.py','.github/workflows/build.yml','.github/workflows/release.yml']:
             self.assertTrue((ROOT/name).is_file())
 
