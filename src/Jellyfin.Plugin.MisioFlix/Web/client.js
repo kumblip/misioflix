@@ -278,6 +278,45 @@
     // Episode stills are intrinsically 16:9: preserve them, do not crop faces.
     return kind==='anime' && !['Episode','Video'].includes(card.getAttribute('data-type')||'');
   }
+  // v0.4.115: true native Jellyfin library tiles use .card, not .mf-home-card.
+  // Append a sibling to cardBox; never reparent React-owned title/poster nodes.
+  function nativeLibraryInfoPosition(card,button){
+    const title=card.querySelector('.cardText-first'),box=card.querySelector('.cardBox');
+    if(!title||!box||!button)return;
+    if(typeof title.getBoundingClientRect!=='function'||typeof box.getBoundingClientRect!=='function')return;
+    const a=title.getBoundingClientRect(),b=box.getBoundingClientRect();
+    if(!a.height||!b.height)return;
+    const top=Math.max(0,a.top-b.top+2);
+    if(button.style.top!==top+'px')button.style.top=top+'px';
+  }
+  function makeNativeLibraryInfo(card){
+    if(!mfLibraryRoute()||mfFolderType(card)||!mfValid(card.getAttribute('data-id')))return;
+    if(card.closest('#mf-home-0412,.mf-home-card-info-overlay,.dialog,[role="dialog"]'))return;
+    const box=card.querySelector('.cardBox'),title=card.querySelector('.cardText-first');
+    if(!box||!title)return;
+    let button=box.querySelector(':scope > .mf-native-info-button');
+    if(!button){
+      button=makeEl('button','mf-native-info-button','i');button.type='button';
+      button.title='Pełna nazwa, plakat, gatunki i opis';
+      button.addEventListener('click',event=>{
+        event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
+        const id=mfCompact(card.getAttribute('data-id'));
+        if(!mfValid(id))return;
+        const meta=metadataCache.get(id),title=text(card.querySelector('.cardText-first'));
+        const genres=Array.isArray(meta?.genres)?meta.genres:
+          [...card.querySelectorAll('.mf-native-genre')].map(text).filter(Boolean);
+        const item={id,serverId:mfServerId(),title,genres,
+          description:meta?.description||text(card.querySelector('.mf-native-description')),
+          hasPrimary:meta?.hasPrimary!==false};
+        if(typeof window.MisioFlixOpenCardInfo==='function')
+          window.MisioFlixOpenCardInfo(item,button);
+      });
+      box.appendChild(button);
+    }
+    const label='Informacje: '+text(title);
+    if(button.getAttribute('aria-label')!==label)button.setAttribute('aria-label',label);
+    nativeLibraryInfoPosition(card,button);
+  }
   // v0.4.29 library presentation, including in #/mixed. Only previously
   // existing Jellyfin cards are decorated, never copied or recreated.
   function clearMixedCard(card){
@@ -293,6 +332,7 @@
   }
   function markCards(){
     document.documentElement.classList.toggle('mf-modern-mixed-route',modernMixedRoute());
+    document.documentElement.classList.toggle('mf-native-library-route',mfLibraryRoute());
     if(!mixedDecorationsAllowed())return;
     // Never change hidden, React-cached cards of another view while /mixed
     // mounts or virtualizes its own list.
@@ -332,6 +372,7 @@
       }
       // v0.4.29's exact paw/genre/year badge DOM, pointer-events:none.
       if(n++<220 || card.hasAttribute('data-mf-library-infinite-card'))attachOverlay(card);
+      if(mfLibraryRoute())makeNativeLibraryInfo(card);
     }
   }
   // Nonblocking, permission-filtered metadata for VISIBLE original cards only.

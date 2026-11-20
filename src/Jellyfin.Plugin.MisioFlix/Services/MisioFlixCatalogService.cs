@@ -587,7 +587,7 @@ public sealed class MisioFlixCatalogService
                 simklExcluded = simklExcluded,
                 year = anime ? (nfo?.Year ?? string.Empty) : Text(Get(item,"ProductionYear")),
                 format = anime ? (nfo?.Kind ?? string.Empty) : string.Empty,
-                genres = genres.Take(3).ToList(),
+                genres = genres.ToList(),
                 description = (anime ? (nfo?.Plot ?? string.Empty) : Text(Get(item,"Overview"))).Trim(),
                 hasPrimary = HasPrimaryImage(item),
                 seasons = type == "Series" ? PositiveInt(Get(item,"ChildCount")) : null,

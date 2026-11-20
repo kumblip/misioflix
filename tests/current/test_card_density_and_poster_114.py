@@ -55,7 +55,7 @@ class CardDensityAndPoster114(unittest.TestCase):
 
     def test_version_and_ci_are_pinned_to_one_source(self):
         version=json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version']
-        self.assertEqual(version,'0.4.114.0')
+        self.assertGreaterEqual(tuple(map(int, version.split('.'))),(0,4,114,0))
         csproj=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf8')
         self.assertIn('<AssemblyVersion>'+version+'</AssemblyVersion>',csproj)
         self.assertTrue((ROOT/'.github/workflows/build.yml').is_file())

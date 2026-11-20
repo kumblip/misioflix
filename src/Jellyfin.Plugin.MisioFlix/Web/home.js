@@ -939,6 +939,8 @@
     document.body.classList.add('mf-home-card-info-active');
     close.focus();
   }
+  // Reuse the existing read-only preview on native Jellyfin library cards.
+  if(typeof window!=='undefined') window.MisioFlixOpenCardInfo = (item,opener) => openCardInfo(item,opener);
   function normalized(value){
     return String(value || '').normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pl-PL').trim();

@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix v0.4.114: spójne kompaktowe kafelki, widoczne i oraz podgląd z plakatem",
+  "description": "MisioFlix 0.4.115: kafelki mobilne bez opisow, tytuly na 2 linie i informacja na kafelkach natywnych",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.114.0",
+  "version": "0.4.115.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,
