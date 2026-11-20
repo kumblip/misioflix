@@ -61,6 +61,26 @@
    <p id="mf-native-cover-status" role="status" aria-live="polite">Nie uruchomiono generowania okładek.</p>
   </section>
   <hr style="margin:26px 0;border-color:#77526c" />
+  <section id="mf-recommendation-config" aria-labelledby="mf-recommendation-heading" style="padding:10px 0 22px">
+   <h2 id="mf-recommendation-heading">Propozycje według gatunków — strona główna</h2>
+   <p>Zaznacz gatunki, których karuzele mają być dostępne na stronie głównej MisioFlix.
+      Wybór jest wspólny dla serwera, natomiast każda osoba widzi wyłącznie dostępne dla siebie tytuły.
+      Sekcja na stronie głównej jest <strong>domyślnie ukryta</strong> i można ją włączać osobnym przełącznikiem.
+      Puste zaznaczenie oznacza brak karuzel.</p>
+   <div class="inputContainer">
+    <label class="inputLabel" for="mf-recommendation-filter">Znajdź gatunek</label>
+    <input class="emby-input" id="mf-recommendation-filter" type="search" placeholder="Np. Romans, Akcja, Horror…" autocomplete="off" />
+   </div>
+   <p id="mf-recommendation-count" aria-live="polite">Wczytywanie wybranych gatunków…</p>
+   <div id="mf-recommendation-options" role="group" aria-label="Gatunki propozycji"
+        style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px 12px;max-height:350px;overflow:auto;padding:12px;border:1px solid #77526c;border-radius:12px">
+    <p>Wczytywanie listy gatunków…</p>
+   </div>
+   <p id="mf-recommendation-help"><small>Gatunki anime pochodzą z NFO; filmy, seriale i pozostałe animacje korzystają z gatunków Jellyfina. Identyczne nazwy są wyświetlane tylko raz; karuzela może łączyć oba rodzaje treści.</small></p>
+   <button type="button" class="raised button-submit emby-button" id="mf-recommendation-save">Zapisz wybrane gatunki</button>
+   <p id="mf-recommendation-status" role="status" aria-live="polite"></p>
+  </section>
+  <hr style="margin:26px 0;border-color:#77526c" />
   <section id="mf-updates-panel" aria-labelledby="mf-updates-heading" style="padding:12px 0 22px">
    <h2 id="mf-updates-heading">Aktualizacje MisioFlix</h2>
    <p>Porównanie GitHub Release, manifestu i katalogu Jellyfina. Wymuszenie zapisuje w Jellyfinie adres zweryfikowanego manifestu konkretnej rewizji GitHuba; nie instaluje pakietów ani nie zastępuje DLL.</p>
@@ -568,8 +588,83 @@
    return {activate(){/* No automatic write or background operation. */}};
   })();
 
+  // v0.4.107 — admin selection of genre recommendations. Never expose MAL or
+  // Simkl credentials through the public Home endpoint. Genre list includes
+  // existing local NFO genres AND ordinary Jellyfin movie/TV genres.
+  const recommendations=(()=>{
+   const panel=view.querySelector('#mf-recommendation-config');
+   if(!panel||typeof panel.querySelector!=='function')return {activate(){}};
+   const options=panel.querySelector('#mf-recommendation-options');
+   const filter=panel.querySelector('#mf-recommendation-filter');
+   const count=panel.querySelector('#mf-recommendation-count');
+   const status=panel.querySelector('#mf-recommendation-status');
+   const save=panel.querySelector('#mf-recommendation-save');
+   let selection=new Set();
+   let names=[];
+   let loaded=false;
+   const key=name=>String(name||'').trim().toLocaleLowerCase('pl');
+   const clean=name=>String(name||'').trim().slice(0,100);
+   function paint(){
+    const query=key(filter.value);
+    count.textContent=`Wybrano ${selection.size} gatunków`;
+    options.replaceChildren();
+    const visible=names.filter(name=>key(name).includes(query));
+    if(!visible.length){options.textContent=loaded?'Brak pasujących gatunków.':'Wczytywanie dostępnych gatunków…';return;}
+    for(const name of visible){
+     const line=document.createElement('label');
+     line.style.cssText='display:flex;gap:8px;align-items:center;padding:5px;border-radius:7px;cursor:pointer;';
+     const input=document.createElement('input');input.type='checkbox';input.checked=selection.has(key(name));
+     
+     const caption=document.createElement('span');caption.textContent=name;
+     input.addEventListener('change',()=>{
+      if(input.checked)selection.add(key(name));
+      else selection.delete(key(name));
+      paint();
+     });
+     line.append(input,caption);options.appendChild(line);
+    }
+   }
+   async function activate(){
+    loaded=false;status.textContent='';
+    try{
+     const cfg=await ApiClient.getPluginConfiguration(pluginId);
+     const selected=Array.isArray(cfg.RecommendationGenres)?cfg.RecommendationGenres.map(clean).filter(Boolean):[];
+     selection=new Set(selected.map(key));
+     const optionsByKey=new Map(selected.map(n=>[key(n),n]));
+     names=[...optionsByKey.values()].sort((a,b)=>a.localeCompare(b,'pl'));
+     paint();
+     const token=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
+     if(typeof token!=='string'||!token)throw Error('Brak autoryzacji Jellyfin.');
+     const path=typeof ApiClient.getUrl==='function'?ApiClient.getUrl('MisioFlix/api/home/recommendation-options'):'/MisioFlix/api/home/recommendation-options';
+     const response=await fetch(path,{cache:'no-store',headers:{Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-config-genres", Version="0.4.107", Token="'+token.replace(/["\r\n]/g,'')+'"'}});
+     if(!response.ok)throw Error('HTTP '+response.status);
+     const data=await response.json();
+     for(const name of [...(Array.isArray(data?.anime)?data.anime:[]),...(Array.isArray(data?.media)?data.media:[])]){
+      const cleaned=clean(name),k=key(cleaned);
+      if(k&&!optionsByKey.has(k))optionsByKey.set(k,cleaned);
+     }
+     names=[...optionsByKey.values()].sort((a,b)=>a.localeCompare(b,'pl'));
+     loaded=true;paint();
+    }catch(e){loaded=true;paint();status.textContent='Nie udało się pobrać pełnej listy gatunków: '+e.message+'. Poprzedni wybór pozostaje dostępny.';}
+   }
+   filter.addEventListener('input',paint);
+   save.addEventListener('click',async()=>{
+    save.disabled=true;
+    try{
+     const cfg=await ApiClient.getPluginConfiguration(pluginId);
+     const byKey=new Map(names.map(n=>[key(n),n]));
+     cfg.RecommendationGenres=[...selection].map(k=>byKey.get(k)||k);
+     await ApiClient.updatePluginConfiguration(pluginId,cfg);
+     status.textContent='Zapisano '+selection.size+' gatunków. Karuzele będą dostępne po włączeniu „Pokaż propozycje” na stronie głównej.';
+    }catch(e){status.textContent='Nie udało się zapisać gatunków: '+e.message;}
+    finally{save.disabled=false;}
+   });
+   return {activate};
+  })();
+
   view.addEventListener('pageshow',async()=>{
    updates.activate();
+   void recommendations.activate();
    void nfoCollections.activate();
    try{const config=await ApiClient.getPluginConfiguration(pluginId);
     view.querySelector('#mf-mal-client').value=config.MalClientId||'';

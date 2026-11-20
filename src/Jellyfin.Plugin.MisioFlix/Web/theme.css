@@ -1846,6 +1846,21 @@ html.misioflix-skin .mf-native-box-icon {
   }
 }
 
+/* v0.4.107: independent admin-selected genre recommendations. Keep the exact
+   original poster, MAL/Simkl frame and paw rules; omit descriptions ONLY here. */
+html.misioflix-skin .mf-home-recommendation-control{margin-top:-16px}
+html.misioflix-skin .mf-home-recommendations[hidden]{display:none!important}
+html.misioflix-skin .mf-home-recommendations .mf-home-card-body{
+  min-height:0!important;padding:9px 10px 11px;gap:0;
+}
+html.misioflix-skin .mf-home-recommendations .mf-home-card-desc{display:none!important}
+html.misioflix-skin .mf-home-recommendations .mf-home-shelf-scroll{min-height:0}
+html.misioflix-skin .mf-home-recommendations .mf-home-card-title{min-height:34px}
+@media(max-width:560px){
+ html.misioflix-skin .mf-home-recommendation-control{margin-top:-13px}
+ html.misioflix-skin .mf-home-recommendations .mf-home-card-body{padding:8px 9px 10px}
+}
+
 /* v0.4.94: the box is the ONLY badge on films such as Bad Boys.
  * Do not reserve the two/three-paw frame width in this case: shrink-wrap
  * the single number + box glyph, but retain identical number/icon columns.
@@ -1870,3 +1885,4 @@ html.misioflix-skin .mf-home-stats > .mf-home-member-collection:only-child {
     padding:2px 3px;
   }
 }
+

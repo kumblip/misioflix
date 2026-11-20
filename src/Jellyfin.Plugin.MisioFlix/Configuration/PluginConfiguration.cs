@@ -1,4 +1,5 @@
 using MediaBrowser.Model.Plugins;
+using System.Collections.Generic;
 
 namespace Jellyfin.Plugin.MisioFlix.Configuration;
 
@@ -10,6 +11,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public bool AutoCheckUpdates { get; set; } = true;
     // Synchronize native Jellyfin BoxSets bidirectionally from <set> tags; prune only tracked links.
     public bool AutoSyncNfoCollections { get; set; } = true;
+    // Admin-selected home recommendation rows. Empty list means no rows.
+    // Only genre names: never tokens, private per-user watch state or credentials.
+    public List<string> RecommendationGenres { get; set; } = new();
     // Register this callback URL in the MAL API application. Never commit credentials.
     public string MalClientId { get; set; } = string.Empty;
     public string MalClientSecret { get; set; } = string.Empty;

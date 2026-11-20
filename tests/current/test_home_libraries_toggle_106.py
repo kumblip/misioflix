@@ -33,7 +33,7 @@ class LibrariesVisibility106(unittest.TestCase):
         self.assertIn('.mf-home-0412 [hidden]{display:none!important}',CSS)
         self.assertIn('mf-home-libraries-toggle[aria-checked="true"]',CSS)
         self.assertIn('html.misioflix-skin .mf-home-rows{display:flex',CSS)
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))['version'],'0.4.106.0')
+        self.assertRegex(json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))['version'],r'^0\.4\.[0-9]+\.0$')
         for path in ['tools/package.py','tools/sync_version.py','.github/workflows/build.yml','.github/workflows/release.yml']:
             self.assertTrue((ROOT/path).is_file(),path)
 

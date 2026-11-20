@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System;
 using System.IO;
 using System.Reflection;
@@ -117,6 +118,54 @@ public sealed class MisioFlixController : ControllerBase
         catch (ArgumentOutOfRangeException) { return BadRequest(); }
         catch (HttpRequestException) { return StatusCode(502, new { error="Nie udało się odczytać biblioteki" }); }
         catch (InvalidOperationException) { return StatusCode(503, new { error="Niedostępny katalog NFO" }); }
+    }
+
+    // Admin-selected genre names only. No private account configuration is exposed.
+    [HttpGet("api/home/recommendation-genres")]
+    [Authorize]
+    public IActionResult HomeRecommendationGenres()
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        var genres = (Plugin.Instance?.Configuration.RecommendationGenres ?? new List<string>())
+            .Where(x => !string.IsNullOrWhiteSpace(x) && x.Length <= 100)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(256).ToArray();
+        return Ok(new { genres });
+    }
+
+    // Only used when the administrator opens the plugin settings page.
+    // The costly full NFO scan is deliberately NOT run by Home recommendation rows.
+    [HttpGet("api/home/recommendation-options")]
+    [Authorize]
+    public async Task<IActionResult> HomeRecommendationOptions(CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        try
+        {
+            var catalog = await _catalog.ReadForAuthenticatedUserAsync(Request, cancel).ConfigureAwait(false);
+            return Ok(catalog.genres);
+        }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (HttpRequestException) { return StatusCode(502, new { error = "Nie można odczytać gatunków Jellyfina" }); }
+        catch (InvalidOperationException) { return StatusCode(503, new { error = "Niedostępny katalog" }); }
+    }
+
+    // Turn small catalog-ID pages into EXACT home tiles with MAL/Simkl isolation,
+    // permissions and original posters/paws. No arbitrary paths or NFO writes.
+    [HttpGet("api/home/recommendation-cards")]
+    [Authorize]
+    public async Task<IActionResult> HomeRecommendationCards([FromQuery] string? ids, CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        if (string.IsNullOrWhiteSpace(ids) || ids.Length > 1024 ||
+            ids.Split(',', StringSplitOptions.RemoveEmptyEntries).Length > 24)
+            return BadRequest(new { error = "Zbyt wiele identyfikatorów kart" });
+        Response.Headers.CacheControl = "private, no-store";
+        try { return Ok(await _catalog.ReadHomeRecommendationCardsAsync(Request, ids, cancel).ConfigureAwait(false)); }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (HttpRequestException) { return StatusCode(502, new { error = "Nie można odczytać propozycji" }); }
+        catch (InvalidOperationException) { return StatusCode(503, new { error = "Niedostępne dane" }); }
     }
 
     [HttpGet("api/home/collections")]

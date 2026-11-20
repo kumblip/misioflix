@@ -442,6 +442,47 @@ public sealed class MisioFlixCatalogService
         };
     }
 
+    // Only returns item IDs already visible through the caller's authenticated
+    // Jellyfin Items API. The genre order comes from the caller's own catalog,
+    // never a user-supplied filesystem path. This API does not scan the library.
+    public async Task<List<HomeTile>> ReadHomeRecommendationCardsAsync(HttpRequest caller,
+        string? ids, CancellationToken cancel)
+    {
+        var requested = (ids ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => Guid.TryParse(x, out _)).Select(Guid.Parse).Distinct().Take(24).ToArray();
+        if (requested.Length == 0) return new List<HomeTile>();
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
+            $"&Ids={Uri.EscapeDataString(string.Join(",", requested.Select(x => x.ToString("N"))))}" +
+            "&IncludeItemTypes=Movie,Series&Recursive=true&CollapseBoxSetItems=false" +
+            "&EnableUserData=true&Fields=Genres,Overview,Tags,ChildCount,RecursiveItemCount" +
+            $"&Limit={requested.Length}";
+        using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
+        var rows = Get(doc.RootElement, "Items");
+        if (rows.ValueKind != JsonValueKind.Array) return new List<HomeTile>();
+        var allowed = requested.ToHashSet();
+        var found = new Dictionary<Guid, HomeTile>();
+        foreach (var item in rows.EnumerateArray())
+        {
+            if (!Guid.TryParse(Text(Get(item, "Id")), out var id) || !allowed.Contains(id)) continue;
+            var media = _library.GetItemById(id);
+            if (media is null) continue;
+            var category = AnimeSource(media.Path).Length != 0 ? "anime" : "movies";
+            var tile = MakeHomeTile(item, category);
+            if (tile is not null) found[id] = tile;
+        }
+        if (found.Count != 0)
+        {
+            var membership = await ReadCollectionMembershipAsync(origin, auth, userId, found.Keys, cancel)
+                .ConfigureAwait(false);
+            foreach (var (id, info) in membership)
+                if (found.TryGetValue(id, out var tile))
+                { tile.memberCollectionCount = info.Count; tile.memberCollectionName = info.Name; }
+        }
+        return requested.Where(found.ContainsKey).Select(id => found[id]).ToList();
+    }
+
     public async Task<HomeResumeResponse> ReadHomeResumeAsync(HttpRequest caller, CancellationToken cancel)
     {
         var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);

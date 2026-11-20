@@ -19,6 +19,9 @@
   let showHiddenResume = false;
   let librariesCache = [];
   let discoveryRefs = null;
+  let recommendationRows = new Map();
+  let recommendationInitialized = false;
+  let recommendationObserver = null;
   let processedGenreLink = '';
   const catalogCache = new Map();
   // v0.4.100: search-only snapshots; never persist authorization tokens.
@@ -540,9 +543,10 @@
       scheduled=true;
       requestAnimationFrame(()=>{
         scheduled=false;
-        if (!row.busy && row.hasMore && row.mode==='latest' &&
+        if (!row.busy && row.hasMore && (row.isGenre || row.mode==='latest') &&
             scroll.scrollLeft + scroll.clientWidth >= scroll.scrollWidth-360) {
-          void loadShelf(row,'latest',false);
+          if(row.isGenre)void loadRecommendationPage(row,false);
+          else void loadShelf(row,'latest',false);
         }
       });
     },{passive:true});
@@ -1776,6 +1780,187 @@
     append(watch,header,scroll);
     return watch;
   }
+  // v0.4.107: optional Netflix-style genre rails. The administrator selects
+  // their names in the original Jellyfin plugin settings page; personal media
+  // are always sourced from the CURRENT user's authenticated catalog. A small
+  // authorized item-ID batch hydrates real HomeTile posters/paws/frames.
+  // Never load this full catalog on initial Home or when the switch is OFF.
+  function recommendationToggle(){
+    const control=own('div','mf-home-libraries-control mf-home-recommendation-control');
+    const button=own('button','mf-home-libraries-toggle mf-home-recommendation-toggle');
+    button.type='button';button.setAttribute('role','switch');
+    button.setAttribute('aria-checked','false');button.setAttribute('aria-expanded','false');
+    button.setAttribute('aria-controls','mf-home-recommendations');
+    const track=own('span','mf-home-libraries-track');track.setAttribute('aria-hidden','true');
+    const label=own('span','mf-home-libraries-label','Pokaż propozycje');
+    append(button,track,label);
+    button.addEventListener('click',()=>{
+      const area=homeRoot?.querySelector('#mf-home-recommendations');
+      if(!area)return;
+      const show=area.hidden;
+      area.hidden=!show;
+      button.setAttribute('aria-checked',String(show));
+      button.setAttribute('aria-expanded',String(show));
+      label.textContent=show?'Ukryj propozycje':'Pokaż propozycje';
+      if(show&&!recommendationInitialized)void initializeRecommendations(epoch);
+    });
+    control.appendChild(button);return control;
+  }
+  function randomizeRecommendations(pool){
+    // Fisher–Yates over the ENTIRE eligible list: no five-item random limit.
+    const result=[...pool];
+    for(let i=result.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));
+      [result[i],result[j]]=[result[j],result[i]];
+    }
+    return result;
+  }
+  function recommendationShelf(genre,items){
+    const section=own('section','mf-home-shelf mf-home-genre-shelf');
+    section.dataset.mfGenre=genre;
+    const top=own('div','mf-home-shelf-heading');
+    const heading=own('h2','',genre);
+    const tools=own('div','mf-home-actions');
+    const shuffle=own('button','mf-home-button mf-home-shuffle','Losuj ↻');shuffle.type='button';
+    const reset=own('button','mf-home-button mf-home-latest mf-home-view-active','Ostatnio dodane');reset.type='button';
+    const prev=own('button','mf-home-nav','‹');prev.type='button';prev.setAttribute('aria-label','Przewiń '+genre+' w lewo');
+    const next=own('button','mf-home-nav','›');next.type='button';next.setAttribute('aria-label','Przewiń '+genre+' w prawo');
+    append(tools,shuffle,reset,prev,next);append(top,heading,tools);
+    const scroll=own('div','mf-home-shelf-scroll');scroll.setAttribute('aria-label','Propozycje: '+genre);
+    scroll.appendChild(own('p','mf-home-empty','Wczytywanie pozycji…'));
+    append(section,top,scroll);
+    const base=[...items].sort((a,b)=>String(b.date_added||'').localeCompare(String(a.date_added||'')));
+    const row={isGenre:true,genre,section,scroll,shuffle,reset,prev,next,
+      base,ordered:base,mode:'latest',offset:0,hasMore:base.length>0,busy:false};
+    enableShelfDrag(scroll,row);
+    const swap=mode=>{
+      if(row.busy)return;
+      row.mode=mode;row.ordered=mode==='random'?randomizeRecommendations(row.base):row.base;
+      row.offset=0;row.hasMore=row.ordered.length>0;
+      row.reset.classList.toggle('mf-home-view-active',mode==='latest');
+      row.shuffle.classList.toggle('mf-home-view-active',mode==='random');
+      void loadRecommendationPage(row,true);
+    };
+    shuffle.addEventListener('click',()=>swap('random'));
+    reset.addEventListener('click',()=>swap('latest'));
+    prev.addEventListener('click',()=>scroll.scrollBy({left:-Math.max(400,scroll.clientWidth*.75),behavior:'smooth'}));
+    next.addEventListener('click',async()=>{
+      if(!row.busy&&row.hasMore&&scroll.scrollLeft+scroll.clientWidth>=scroll.scrollWidth-220)
+        await loadRecommendationPage(row,false);
+      scroll.scrollBy({left:Math.max(420,scroll.clientWidth*.77),behavior:'smooth'});
+    });
+    return row;
+  }
+  async function loadRecommendationPage(row,reset){
+    if(row.busy||!homeRoot?.isConnected)return;
+    row.busy=true;
+    const serial=epoch;
+    row.shuffle.disabled=true;row.reset.disabled=true;
+    if(reset){row.scroll.replaceChildren(own('p','mf-home-empty','Ładowanie…'));row.scroll.scrollLeft=0;}
+    try{
+      // Iterate over ALL matches in 12-item pages; a removed/inaccessible
+      // Jellyfin entry cannot stop pagination or leak a title from another user.
+      let added=0,tries=0;
+      while(row.offset<row.ordered.length&&added===0&&tries<5){
+        const batch=row.ordered.slice(row.offset,row.offset+SHELF_LIMIT).map(x=>compactId(x.id));
+        if(!batch.length)break;
+        const pageStart=row.offset;
+        row.offset+=batch.length;tries++;
+        let list;
+        try{list=await request('/home/recommendation-cards?ids='+encodeURIComponent(batch.join(',')));}
+        catch(error){row.offset=pageStart;throw error;} // retry the SAME page
+        if(!isCurrent(serial)||!row.section.isConnected)return;
+        if(reset){row.scroll.replaceChildren();reset=false;}
+        for(const item of (Array.isArray(list)?list:[])){
+          const card=makeCard(item);card.classList.add('mf-home-genre-card');
+          card.querySelector('.mf-home-card-desc')?.remove(); // No descriptions, no empty placeholder.
+          row.scroll.appendChild(card);added++;
+        }
+      }
+      row.hasMore=row.offset<row.ordered.length;
+      if(reset)row.scroll.replaceChildren(); // No candidates: remove the loading placeholder.
+      // Remove previous retry errors after a successful page, but keep tiles.
+      for(const stale of row.scroll.querySelectorAll('.mf-home-empty'))stale.remove();
+      if(!row.scroll.childElementCount)
+        row.scroll.appendChild(own('p','mf-home-empty','Brak dostępnych pozycji dla tego gatunku.'));
+      // On very wide screens the first page may not fill the row. Load the
+      // next page only on demand via a normal scroll or the right arrow.
+    }catch(e){
+      if(!isCurrent(serial))return;
+      const msg=own('p','mf-home-empty','Nie udało się wczytać propozycji. ');
+      const again=own('button','mf-home-button','Spróbuj ponownie');again.type='button';
+      again.addEventListener('click',()=>loadRecommendationPage(row,false));
+      msg.appendChild(again);
+      if(reset)row.scroll.replaceChildren(msg);else row.scroll.appendChild(msg);
+    }finally{row.busy=false;row.shuffle.disabled=false;row.reset.disabled=false;}
+  }
+  async function initializeRecommendations(serial){
+    const area=homeRoot?.querySelector('#mf-home-recommendations');
+    if(!area||recommendationInitialized)return;
+    recommendationInitialized=true;
+    area.replaceChildren(own('p','mf-home-empty','Odczytywanie wybranych gatunków…'));
+    try{
+      const config=await request('/home/recommendation-genres');
+      if(!isCurrent(serial)||!area.isConnected)return;
+      const selected=Array.isArray(config?.genres)?config.genres.slice(0,256).filter(x=>typeof x==='string'&&x.trim()):[];
+      if(!selected.length){
+        area.replaceChildren(own('p','mf-home-empty','Nie wybrano gatunków. Administrator może dodać je w ustawieniach wtyczki MisioFlix.'));
+        return;
+      }
+      area.replaceChildren(own('p','mf-home-empty','Wczytywanie katalogu propozycji…'));
+      // Reuse the existing per-server/per-user IndexedDB catalog snapshot.
+      // It already contains real NFO genres for AnimePL/Anime EN and Jellyfin
+      // genres for ordinary film, TV and animation — nothing to guess.
+      const data=await getCatalogForSearch();
+      if(!isCurrent(serial)||!area.isConnected)return;
+      const all=Array.isArray(data?.items)?data.items:[];
+      const seasons=new Map();
+      for(const item of all){
+        if(!item?.anime||item.type!=='Season'||!validId(item.parent_series_id))continue;
+        const id=compactId(item.parent_series_id);
+        const values=seasons.get(id)||[];
+        if(Array.isArray(item.genres))values.push(...item.genres);
+        seasons.set(id,values);
+      }
+      const candidates=all.filter(x=>validId(x?.id)&&(x.type==='Movie'||x.type==='Series'));
+      const genrePool=new Map();
+      for(const item of candidates){
+        const available=new Set([...(Array.isArray(item.genres)?item.genres:[]),
+          ...(item.anime&&item.type==='Series'?(seasons.get(compactId(item.id))||[]):[])].map(normalized));
+        for(const genre of selected){
+          const key=normalized(genre);
+          if(available.has(key)){
+            if(!genrePool.has(key))genrePool.set(key,[]);
+            genrePool.get(key).push(item);
+          }
+        }
+      }
+      area.replaceChildren();recommendationRows.clear();
+      for(const genre of selected){
+        const matching=genrePool.get(normalized(genre))||[];
+        const row=recommendationShelf(genre,matching);
+        area.appendChild(row.section);recommendationRows.set(normalized(genre),row);
+      }
+      // Only hydrate visible rows, not dozens of full page requests at once.
+      recommendationObserver?.disconnect();recommendationObserver=null;
+      if(typeof IntersectionObserver==='function'){
+        recommendationObserver=new IntersectionObserver(entries=>{
+          for(const entry of entries){
+            if(!entry.isIntersecting)continue;
+            recommendationObserver?.unobserve(entry.target);
+            const row=recommendationRows.get(entry.target.dataset.mfGenreKey);
+            if(row)void loadRecommendationPage(row,true);
+          }
+        },{rootMargin:'400px 0px'});
+        for(const [key,row] of recommendationRows){row.section.dataset.mfGenreKey=key;recommendationObserver.observe(row.section);}
+      }else for(const row of recommendationRows.values())void loadRecommendationPage(row,true);
+    }catch(e){
+      if(!isCurrent(serial))return;
+      recommendationInitialized=false;
+      area.replaceChildren(own('p','mf-home-empty','Nie udało się pobrać propozycji. Wyłącz i ponownie włącz sekcję, aby spróbować jeszcze raz.'));
+    }
+  }
+
   // The library shelves are optional on Home. This is presentation-only:
   // leave the hero shortcuts, searches, Continue Watching and native links intact.
   // Default OFF on each new home mount, with no user/account storage writes.
@@ -1861,6 +2046,7 @@
       showHiddenResume=false;
       homeRoot.appendChild(resumeShelf());
       homeRoot.appendChild(libraryShelvesToggle());
+      homeRoot.appendChild(recommendationToggle());
       collectionsPage=createCollectionsPage();
       collectionsLoad={busy:false,loaded:false,offset:0,hasMore:true,requestId:0};
       homeRoot.appendChild(collectionsPage.section);
@@ -1869,6 +2055,10 @@
       rowsArea.hidden=true; // OFF by default; JS never unhides until user requests it.
       rowsArea.appendChild(own('p','mf-home-empty','Ładowanie bibliotek…'));
       homeRoot.appendChild(rowsArea);
+      const genreArea=own('div','mf-home-rows mf-home-recommendations');
+      genreArea.id='mf-home-recommendations';genreArea.hidden=true;
+      homeRoot.appendChild(genreArea);
+      recommendationInitialized=false;recommendationRows.clear();
       host.prepend(homeRoot);
       observeCollectionsFeed();
       document.documentElement.classList.add('mf-home-custom-active');
@@ -1880,6 +2070,8 @@
   function unmountHome(){
     if(homeRoot){
       closeSearch();collectionsPage?.observer?.disconnect();
+      recommendationObserver?.disconnect();recommendationObserver=null;
+      recommendationInitialized=false;recommendationRows.clear();
       homeRoot.remove();homeRoot=null;homeHost=null;
       discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;epoch++;rows.clear();
     }
@@ -1902,7 +2094,8 @@
     }
     if(owner!==token){
       owner=token;epoch++;
-      closeSearch();homeRoot?.remove();homeRoot=null;homeHost=null;discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;rows.clear();resumeData={items:[],hidden:[]};librariesCache=[];catalogCache.clear();catalogFetchedAt.clear();
+      closeSearch();recommendationObserver?.disconnect();recommendationObserver=null;recommendationRows.clear();recommendationInitialized=false;
+      homeRoot?.remove();homeRoot=null;homeHost=null;discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;rows.clear();resumeData={items:[],hidden:[]};librariesCache=[];catalogCache.clear();catalogFetchedAt.clear();
     }
     if(homeRoot && homeRoot.isConnected && homeHost===host){syncCollectionsPage();maybeOpenLinkedGenre();return;}
     homeRoot?.remove();mount(host);
