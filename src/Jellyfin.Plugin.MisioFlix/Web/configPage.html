@@ -15,6 +15,15 @@
  #misioflixConfigPage .mf-proposal-genre-toggle{margin:10px 0}
  #misioflixConfigPage .mf-proposal-genre-toggle summary{cursor:pointer;font-weight:550;padding:8px 0}
  #misioflixConfigPage .mf-proposal-mode{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}
+ /* v0.4.110: reorderable admin proposals, without touching MAL/Simkl sections. */
+ #misioflixConfigPage .mf-proposal>summary{display:list-item;user-select:none}
+ #misioflixConfigPage .mf-proposal-drag-handle{display:inline-flex;align-items:center;justify-content:center;margin-right:9px;min-width:27px;min-height:28px;border:1px solid rgba(245,167,207,.4);border-radius:7px;background:rgba(255,255,255,.07);cursor:grab;touch-action:none;vertical-align:middle;color:#ffe6f4;font-size:17px}
+ #misioflixConfigPage .mf-proposal-drag-handle:active{cursor:grabbing}
+ #misioflixConfigPage .mf-proposal-drag-handle:focus-visible{outline:2px solid #f4a5ce;outline-offset:2px}
+ #misioflixConfigPage .mf-proposal.mf-proposal-being-dragged{opacity:.48}
+ #misioflixConfigPage .mf-proposal.mf-proposal-drop-target{border-color:#f4a5ce;box-shadow:0 0 0 2px rgba(244,165,206,.35)}
+ #misioflixConfigPage .mf-plugin-overview-return{display:inline-flex;align-items:center;gap:7px;margin:20px 0 30px;padding:12px 16px;border:1px solid rgba(245,167,207,.6);border-radius:11px;text-decoration:none!important;background:#43243e;color:#ffe9f6!important;font-weight:650}
+ #misioflixConfigPage .mf-plugin-overview-return:hover{background:#5f3151}
  </style>
  <div data-role="content">
   <h1>MisioFlix — konfiguracja integracji</h1>
@@ -126,6 +135,9 @@
    <p><small>Instalacja odbywa się wyłącznie przez mechanizm Jellyfina, z repozytorium MisioFlix. Nie jest możliwa, dopóki odpowiednia zgodna wersja nie pojawi się w jego katalogu. Po instalacji może być wymagany restart serwera.</small></p>
   </section>
   </details>
+ <div class="mf-plugin-overview-navigation">
+  <a id="mf-plugin-overview-return" class="mf-plugin-overview-return" href="#/dashboard/plugins/97d15b37b868492b83daeb67b16a0d44?name=MisioFlix">← Wróć do MisioFlix — widok ogólny wtyczki</a>
+ </div>
  </div>
  <script>
  (()=>{
@@ -626,12 +638,88 @@
    let proposals=[];
    let busy=false;
    const el=(tag,cls,caption)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(caption!==undefined)node.textContent=caption;return node;};
-   function render(){
+   function moveProposal(from,to){
+    if(!Number.isInteger(from)||!Number.isInteger(to)||from<0||to<0||from>=proposals.length||to>=proposals.length||from===to)return false;
+    // Preserve the open/closed state of each exact preset, not its old index.
+    const opened=new Set([...list.querySelectorAll('.mf-proposal[open]')].map(node=>node._mfProposal));
+    const moved=proposals.splice(from,1)[0];proposals.splice(to,0,moved);
+    render(opened);
+    status.textContent='Zmieniono kolejność propozycji. Kliknij „Zapisz propozycje”, aby ją zachować.';
+    return true;
+   }
+   function render(opened=null){
+    list._mfDragSource=null;
     list.replaceChildren();
     if(!proposals.length)list.append(el('p','','Brak zestawów. Kliknij „+ Dodaj propozycję”.'));
     proposals.forEach((preset,index)=>{
      const outer=el('details','mf-proposal'); // Each proposal starts collapsed.
-     const summary=el('summary','','Propozycja '+(index+1)+' — '+(preset.genres.length?preset.genres.join(' / '):'wybierz gatunki'));
+     outer._mfProposal=preset;
+     if(opened?.has(preset))outer.open=true;
+     const summary=el('summary');
+     const grip=el('span','mf-proposal-drag-handle','⠿');
+     grip.tabIndex=0;grip.draggable=true;grip.setAttribute('role','button');
+     grip.setAttribute('aria-label','Przeciągnij propozycję '+(index+1)+' w nowe miejsce; strzałki góra/dół przenoszą klawiaturą');
+     grip.title='Przeciągnij, aby zmienić kolejność; ↑ / ↓ na klawiaturze';
+     const summaryLabel=el('span','mf-proposal-name','Propozycja '+(index+1)+' — '+(preset.genres.length?preset.genres.join(' / '):'wybierz gatunki'));
+     summary.append(grip,summaryLabel);
+     grip.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
+     grip.addEventListener('keydown',e=>{
+      if(e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;
+      e.preventDefault();e.stopPropagation();
+      const old=proposals.indexOf(preset),target=old+(e.key==='ArrowUp'?-1:1);
+      if(moveProposal(old,target))list.querySelectorAll('.mf-proposal-drag-handle')[target]?.focus();
+     });
+     grip.addEventListener('dragstart',e=>{
+      const from=proposals.indexOf(preset);if(from<0)return;
+      e.stopPropagation();
+      list._mfDragSource=from;outer.classList.add('mf-proposal-being-dragged');
+      if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','misioflix-proposal-'+from);}
+     });
+     outer.addEventListener('dragover',e=>{
+      if(!Number.isInteger(list._mfDragSource))return;
+      e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='move';
+      list.querySelectorAll('.mf-proposal-drop-target').forEach(node=>node.classList.remove('mf-proposal-drop-target'));
+      outer.classList.add('mf-proposal-drop-target');
+     });
+     outer.addEventListener('drop',e=>{
+      if(!Number.isInteger(list._mfDragSource))return;
+      e.preventDefault();e.stopPropagation();
+      const from=list._mfDragSource;list._mfDragSource=null;
+      moveProposal(from,proposals.indexOf(preset));
+     });
+     grip.addEventListener('dragend',()=>{
+      list._mfDragSource=null;
+      list.querySelectorAll('.mf-proposal').forEach(node=>node.classList.remove('mf-proposal-being-dragged','mf-proposal-drop-target'));
+     });
+     // Pointer-based drop targets for touch/pen: native HTML draggable isn't
+     // reliable in Jellyfin mobile/WebViews. Only the grip starts reordering.
+     let pointer=null;
+     grip.addEventListener('pointerdown',e=>{
+      if(e.pointerType==='mouse'||!e.isPrimary)return;
+      e.preventDefault();e.stopPropagation();
+      pointer={id:e.pointerId,startY:e.clientY,to:proposals.indexOf(preset),moved:false};
+      try{grip.setPointerCapture(e.pointerId);}catch(_){ }
+     });
+     grip.addEventListener('pointermove',e=>{
+      if(!pointer||pointer.id!==e.pointerId)return;
+      if(!pointer.moved&&Math.abs(e.clientY-pointer.startY)<8)return;
+      pointer.moved=true;e.preventDefault();
+      outer.classList.add('mf-proposal-being-dragged');
+      const hovered=document.elementFromPoint(e.clientX,e.clientY)?.closest?.('.mf-proposal');
+      const target=hovered?proposals.indexOf(hovered._mfProposal):-1;
+      list.querySelectorAll('.mf-proposal-drop-target').forEach(node=>node.classList.remove('mf-proposal-drop-target'));
+      if(target>=0){pointer.to=target;hovered.classList.add('mf-proposal-drop-target');}
+     },{passive:false});
+     function finishPointer(e){
+      if(!pointer||pointer.id!==e.pointerId)return;
+      const to=pointer.to,moved=pointer.moved;pointer=null;
+      try{if(grip.hasPointerCapture(e.pointerId))grip.releasePointerCapture(e.pointerId);}catch(_){ }
+      outer.classList.remove('mf-proposal-being-dragged');
+      list.querySelectorAll('.mf-proposal-drop-target').forEach(node=>node.classList.remove('mf-proposal-drop-target'));
+      if(moved)moveProposal(proposals.indexOf(preset),to);
+     }
+     grip.addEventListener('pointerup',finishPointer);
+     grip.addEventListener('pointercancel',()=>{pointer=null;outer.classList.remove('mf-proposal-being-dragged');});
      const info=el('p','','Wybrano '+preset.genres.length+' gatunków.');
      const modes=el('div','mf-proposal-mode');
      for(const [value,label] of [['any','Co najmniej jeden z wybranych gatunków'],['all','Wszystkie wybrane gatunki']]){
@@ -651,7 +739,7 @@
      function updateName(){
       preset.genres=[...selection.values()];
       info.textContent='Wybrano '+preset.genres.length+' gatunków.';
-      summary.textContent='Propozycja '+(index+1)+' — '+(preset.genres.length?preset.genres.join(' / '):'wybierz gatunki');
+      summaryLabel.textContent='Propozycja '+(proposals.indexOf(preset)+1)+' — '+(preset.genres.length?preset.genres.join(' / '):'wybierz gatunki');
      }
      function paint(){
       grid.replaceChildren();const q=key(search.value);

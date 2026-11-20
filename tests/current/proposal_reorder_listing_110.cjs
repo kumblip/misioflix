@@ -1,0 +1,24 @@
+'use strict';
+const assert=require('assert');
+const fs=require('fs');
+const vm=require('vm');
+const path=require('path');
+const root=path.resolve(__dirname,'../..');
+const admin=fs.readFileSync(path.join(root,'src/Jellyfin.Plugin.MisioFlix/Web/configPage.html'),'utf8');
+const home=fs.readFileSync(path.join(root,'src/Jellyfin.Plugin.MisioFlix/Web/home.js'),'utf8');
+const script=(admin.match(/<script>([\s\S]*?)<\/script>/)||[])[1];
+assert(script,'configuration script must exist');
+new vm.Script(script,{filename:'configPage.html'});
+new vm.Script(home,{filename:'home.js'});
+assert(admin.includes('function moveProposal(from,to)'));
+assert(admin.includes('proposals.splice(from,1)[0];proposals.splice(to,0,moved)'));
+assert(admin.includes('cfg.RecommendationSets=proposals.map('));
+for(const marker of ["grip.addEventListener('dragstart'","outer.addEventListener('drop'","grip.addEventListener('pointermove'","grip.addEventListener('keydown'"])
+  assert(admin.includes(marker),marker);
+assert(admin.includes('href="#/dashboard/plugins/97d15b37b868492b83daeb67b16a0d44?name=MisioFlix"'));
+assert(home.includes("headingButton.addEventListener('click',()=>openRecommendationListing(row))"));
+assert(home.includes('const ordered=[...row.ordered]'));
+assert(home.includes('ordered.slice(offset,offset+24)'));
+assert(home.includes('root:scroller,rootMargin:'));
+assert(home.includes("row.mode==='random'?'Losowo':'Ostatnio dodane'"));
+console.log('OK: proposals can be dragged, saved in order, and opened as all-item paginated genre results.');

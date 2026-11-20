@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix v0.4.109: nazwy gatunków bez numeracji i ukrywanie pustych propozycji",
+  "description": "MisioFlix v0.4.110: sortowanie propozycji, pełne widoki gatunków i dwie pozycje menu administratora Jellyfin",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.109.0",
+  "version": "0.4.110.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

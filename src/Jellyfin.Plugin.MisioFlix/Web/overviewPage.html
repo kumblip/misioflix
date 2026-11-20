@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><title>MisioFlix — widok ogólny</title></head><body>
+<div data-role="page" class="page type-interior pluginConfigurationPage" id="misioflixOverviewPage">
+ <div data-role="content">
+  <h1>MisioFlix — widok ogólny wtyczki</h1>
+  <p>Przechodzenie do ogólnego widoku MisioFlix…</p>
+  <p><a class="emby-button raised" id="mf-open-plugin-overview" href="#/dashboard/plugins/97d15b37b868492b83daeb67b16a0d44?name=MisioFlix">Otwórz widok ogólny MisioFlix</a></p>
+ </div>
+ <script>
+ (function(){
+  'use strict';
+  const view=document.getElementById('misioflixOverviewPage');
+  const target='#/dashboard/plugins/97d15b37b868492b83daeb67b16a0d44?name=MisioFlix';
+  // The target is a Jellyfin dashboard route, not a hardcoded LAN hostname.
+  // Use the normal hash router so this also works behind Tailscale/reverse proxy.
+  function showOverview(){
+   if(window.location.hash!==target)window.location.hash=target;
+  }
+  if(view)view.addEventListener('pageshow',showOverview);
+ })();
+ </script>
+</div>
+</body></html>

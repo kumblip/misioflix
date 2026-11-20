@@ -1880,6 +1880,28 @@ html.misioflix-skin .mf-home-switches .mf-home-libraries-toggle{white-space:nowr
  html.misioflix-skin .mf-home-switches .mf-home-libraries-toggle[aria-checked="true"] .mf-home-libraries-track::after{transform:translateX(12px)}
 }
 
+/* v0.4.110: a genre heading opens the complete matching proposal grid.
+   Same badges/frames as the rail, with no description in the grid. */
+html.misioflix-skin .mf-home-recommendations .mf-home-genre-heading-link{
+  appearance:none;background:none;border:0;padding:0;color:inherit;
+  font:inherit;font-weight:inherit;text-align:left;cursor:pointer;
+}
+html.misioflix-skin .mf-home-recommendations .mf-home-genre-heading-link:hover{
+  color:#ffd9ef;text-decoration:underline;text-underline-offset:4px;
+}
+html.misioflix-skin .mf-home-recommendations .mf-home-genre-heading-link:focus-visible{
+  outline:2px solid #f4a5ce;outline-offset:5px;border-radius:3px;
+}
+html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-card-body{
+  min-height:0!important;padding:9px 10px 11px;gap:0;
+}
+html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-card-desc{
+  display:none!important;
+}
+html.misioflix-skin .mf-home-recommendation-dialog .mf-home-recommendation-grid .mf-home-card-title{
+  min-height:34px;
+}
+
 /* v0.4.94: the box is the ONLY badge on films such as Bad Boys.
  * Do not reserve the two/three-paw frame width in this case: shrink-wrap
  * the single number + box glyph, but retain identical number/icon columns.

@@ -1024,6 +1024,7 @@
     const opener=activeSearch?.opener;
     if(activeSearch?.kind==='anime'&&activeSearch.watchCacheHandler)
       window.removeEventListener('misioflix-mal-cache-changed',activeSearch.watchCacheHandler);
+    if(activeSearch?.kind==='proposal')activeSearch.cleanup?.();
     searchModal.remove();searchModal=null;activeSearch=null;
     document.body.classList.remove('mf-home-search-open');
     window.dispatchEvent(new Event('misioflix-search-toggle'));
@@ -1837,11 +1838,103 @@
     }
     return result;
   }
+  // v0.4.110: Clicking a genre rail opens its entire authorized catalog as
+  // a paginated modal (all matched titles, same current random/latest order).
+  // No new server endpoint, no MAL/Simkl writes and no global route changes.
+  function openRecommendationListing(row){
+    if(!homeRoot?.isConnected||!row?.ordered?.length)return;
+    closeSearch();
+    const opener=document.activeElement;
+    const overlay=own('div','mf-home-search-overlay');overlay.setAttribute('role','presentation');
+    const dialog=own('section','mf-home-search-dialog mf-home-recommendation-dialog');
+    dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');
+    dialog.setAttribute('aria-label','Wszystkie propozycje: '+row.genre);
+    const header=own('div','mf-home-search-modal-header');
+    const heading=own('h2','',row.genre);
+    const close=own('button','mf-home-button mf-home-search-close','✕ Zamknij');
+    close.type='button';close.addEventListener('click',closeSearch);
+    append(header,heading,close);
+    const scroller=own('div','mf-home-search-modal-main');
+    const summary=own('p','mf-home-search-summary',
+      'Wszystkie pasujące tytuły · '+(row.mode==='random'?'Losowo':'Ostatnio dodane'));
+    const grid=own('div','mf-home-search-grid mf-home-recommendation-grid');
+    const status=own('p','mf-home-search-status','Ładowanie propozycji…');
+    const more=own('button','mf-home-button','Wczytaj kolejne');more.type='button';
+    append(scroller,summary,grid,status,more);append(dialog,header,scroller);overlay.appendChild(dialog);
+    const ordered=[...row.ordered]; // Snapshot of the rail order when clicked.
+    const serial=epoch;
+    const state={kind:'proposal',opener,overlay,cleanup:null};
+    let offset=0,loading=false,observer=null;
+    const alive=()=>activeSearch===state&&searchModal===overlay&&isCurrent(serial)&&overlay.isConnected;
+    async function next(){
+      if(!alive()||loading||offset>=ordered.length)return;
+      loading=true;more.disabled=true;
+      status.textContent='Wczytywanie kolejnych pozycji…';
+      try{
+        let added=0,attempts=0;
+        // One page of at most 24 IDs: match the authorization gate and server
+        // recommendation-cards limit; skip removed/inaccessible entries safely.
+        while(alive()&&offset<ordered.length&&added===0&&attempts<5){
+          const ids=ordered.slice(offset,offset+24).map(x=>compactId(x.id));
+          if(!ids.length)break;
+          const start=offset;offset+=ids.length;attempts++;
+          let list;
+          try{list=await request('/home/recommendation-cards?ids='+encodeURIComponent(ids.join(',')));}
+          catch(e){offset=start;throw e;}
+          if(!alive())return;
+          for(const item of (Array.isArray(list)?list:[])){
+            const card=makeCard(item);card.classList.add('mf-home-genre-card');
+            card.querySelector('.mf-home-card-desc')?.remove();
+            grid.appendChild(card);added++;
+          }
+        }
+        if(!alive())return;
+        const displayed=grid.querySelectorAll('.mf-home-card').length;
+        status.textContent=displayed?
+          'Wyświetlono '+displayed+' pozycji'+(offset<ordered.length?' · przewiń niżej po kolejne':' · koniec listy'):
+          (offset<ordered.length?'Nie znaleziono dostępnych kafelków w tej partii.':'Brak dostępnych pozycji.');
+        more.hidden=offset>=ordered.length;
+        more.textContent='Wczytaj kolejne';
+      }catch(e){
+        if(!alive())return;
+        status.textContent='Nie udało się pobrać kolejnych propozycji.';
+        more.hidden=false;more.textContent='Spróbuj ponownie';
+      }finally{
+        loading=false;more.disabled=false;
+      }
+    }
+    more.addEventListener('click',()=>void next());
+    scroller.addEventListener('scroll',()=>{
+      if(!loading&&scroller.scrollTop+scroller.clientHeight>=scroller.scrollHeight-500)void next();
+    },{passive:true});
+    overlay.addEventListener('click',e=>{if(e.target===overlay)closeSearch();});
+    grid.addEventListener('click',e=>{if(e.target.closest?.('a[href^="#/details?"]'))closeSearch();});
+    state.cleanup=()=>{observer?.disconnect();observer=null;};
+    activeSearch=state;searchModal=overlay;
+    document.body.appendChild(overlay);
+    document.body.classList.add('mf-home-search-open');
+    window.dispatchEvent(new Event('misioflix-search-toggle'));
+    close.focus();
+    // IntersectionObserver makes infinite scrolling work even when a page is
+    // too short to produce a scroll event (and on touch / narrow WebViews).
+    if(typeof IntersectionObserver==='function'){
+      observer=new IntersectionObserver(entries=>{
+        if(entries.some(entry=>entry.isIntersecting))void next();
+      },{root:scroller,rootMargin:'360px 0px'});
+      observer.observe(more);
+    }
+    void next();
+  }
   function recommendationShelf(genre,items){
     const section=own('section','mf-home-shelf mf-home-genre-shelf');
     section.dataset.mfGenre=genre;
     const top=own('div','mf-home-shelf-heading');
-    const heading=own('h2','',genre);
+    // The heading is a real action: open the complete genre set, not just
+    // the first twelve tiles. It uses the exact AND/OR result and current sort.
+    const heading=own('h2');
+    const headingButton=own('button','mf-home-genre-heading-link',genre);
+    headingButton.type='button';headingButton.setAttribute('aria-label','Zobacz wszystkie propozycje: '+genre);
+    heading.appendChild(headingButton);
     const tools=own('div','mf-home-actions');
     const shuffle=own('button','mf-home-button mf-home-shuffle mf-home-view-active','Losuj ↻');shuffle.type='button';
     const reset=own('button','mf-home-button mf-home-latest','Ostatnio dodane');reset.type='button';
@@ -1855,6 +1948,7 @@
     const row={isGenre:true,genre,section,scroll,shuffle,reset,prev,next,
       base,ordered:randomizeRecommendations(base),mode:'random',offset:0,hasMore:base.length>0,busy:false};
     enableShelfDrag(scroll,row);
+    headingButton.addEventListener('click',()=>openRecommendationListing(row));
     const swap=mode=>{
       if(row.busy)return;
       row.mode=mode;row.ordered=mode==='random'?randomizeRecommendations(row.base):row.base;

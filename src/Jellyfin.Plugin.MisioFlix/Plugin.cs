@@ -31,6 +31,18 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         {
             Name = "MisioFlix",
             EmbeddedResourcePath = "Jellyfin.Plugin.MisioFlix.Web.configPage.html",
+            DisplayName = "MisioFlix — ustawienia",
+            MenuIcon = "settings",
+            EnableInMainMenu = true
+        };
+
+        // A second native Jellyfin dashboard navigation entry. Keep the existing
+        // configuration page first: Jellyfin's Configure action must continue to
+        // resolve to the real settings page, not to the overview redirect.
+        yield return new PluginPageInfo
+        {
+            Name = "MisioFlixOverview",
+            EmbeddedResourcePath = "Jellyfin.Plugin.MisioFlix.Web.overviewPage.html",
             DisplayName = "MisioFlix",
             MenuIcon = "movie",
             EnableInMainMenu = true
