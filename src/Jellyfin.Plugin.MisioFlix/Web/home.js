@@ -8,7 +8,7 @@
   window.__MISIOFLIX_HOME_0424__ = true;
 
   const API = '/MisioFlix/api';
-  const SHELF_LIMIT = 12;
+  const SHELF_LIMIT = 10; // v0.4.112: no more than ten initial tiles per home rail (and each later batch).
   const RANDOM_LIMIT = 5;
   let homeRoot = null;
   let homeHost = null;
@@ -1691,6 +1691,51 @@
     section.appendChild(folderButtons);
     return {section,folderButtons};
   }
+  // Jellyfin's /Users/{userId}/Views can temporarily return both labels of a
+  // renamed view (e.g. AnimeENG and Anime ENG). Home buttons, search library
+  // choices and shelves all read librariesCache, so coalesce cosmetic rename
+  // aliases *once* at that boundary, without mutating Jellyfin or persisted
+  // search data. Never merge exact-name views with different IDs: those may be
+  // intentionally separate libraries. Never merge different categories.
+  function coalesceRenamedLibraryViews(libraries){
+    if(!Array.isArray(libraries))return [];
+    const answer=[];
+    const seenIds=new Map();
+    const renameGroups=new Map();
+    const keyFor=lib=>String(lib.name||'').replace(/\s+/gu,'').toLocaleLowerCase('pl-PL');
+    const prettyScore=lib=>(String(lib.name||'').match(/\s+/gu)||[]).length;
+    for(const lib of libraries){
+      if(!lib||!validId(lib.id))continue;
+      const id=compactId(lib.id);
+      const currentIndex=seenIds.get(id);
+      if(currentIndex!==undefined){
+        // Same physical Jellyfin view; prefer its newer, more readable label.
+        if(prettyScore(lib)>=prettyScore(answer[currentIndex]))answer[currentIndex]=lib;
+        continue;
+      }
+      const category=String(lib.category||'');
+      const normalized=keyFor(lib);
+      const key=category+':'+normalized;
+      const matches=renameGroups.get(key)||[];
+      const matchIndex=matches.find(index=>
+        String(answer[index].name||'').toLocaleLowerCase('pl-PL')!==String(lib.name||'').toLocaleLowerCase('pl-PL') &&
+        (prettyScore(answer[index])>0 || prettyScore(lib)>0));
+      if(matchIndex!==undefined){
+        // One label has word spaces and the other does not. Prefer the spaced
+        // label as the current human-readable name, with its own live ID/URL.
+        if(prettyScore(lib)>prettyScore(answer[matchIndex])){
+          seenIds.delete(compactId(answer[matchIndex].id));
+          answer[matchIndex]=lib;
+          seenIds.set(id,matchIndex);
+        }
+        continue;
+      }
+      const next=answer.length;
+      answer.push(lib);seenIds.set(id,next);
+      matches.push(next);renameGroups.set(key,matches);
+    }
+    return answer;
+  }
   function paintFolderButtons(){
     const box=discoveryRefs?.folderButtons;
     if(!box)return;
@@ -2028,7 +2073,7 @@
     row.shuffle.disabled=true;row.reset.disabled=true;
     if(reset){row.scroll.replaceChildren(own('p','mf-home-empty','Ładowanie…'));row.scroll.scrollLeft=0;}
     try{
-      // Iterate over ALL matches in 12-item pages; a removed/inaccessible
+      // Iterate over ALL matches in 10-item pages; a removed/inaccessible
       // Jellyfin entry cannot stop pagination or leak a title from another user.
       let added=0,tries=0;
       while(row.offset<row.ordered.length&&added===0&&tries<5){
@@ -2097,7 +2142,7 @@
       area.appendChild(row.section);
     }
     if(!recommendationRows.size)return; // No configured set matches this user's catalog.
-    // Only hydrate visible rows. Each row has independent 12-item paging,
+    // Only hydrate visible rows. Each row has independent 10-item paging,
     // unlimited shuffle and identical existing cards minus descriptions.
     if(typeof IntersectionObserver==='function'){
       recommendationObserver=new IntersectionObserver(entries=>{
@@ -2185,13 +2230,14 @@
       const libs=await request('/home/libraries');
       if(!isCurrent(serial))return;
       container.replaceChildren();rows.clear();
-      librariesCache = Array.isArray(libs) ? libs : [];
+      // Do not cache stale library *names*; resolve each fresh /Views response.
+      librariesCache = coalesceRenamedLibraryViews(libs);
       paintFolderButtons();
       maybeOpenLinkedGenre();
       if(!Array.isArray(libs)||!libs.length){container.appendChild(own('p','mf-home-empty','Nie znaleziono dostępnych bibliotek.'));return;}
       // Collections are a separate home row, never Jellyfin's optional
       // 'group movies into collections' setting. Place directly after AnimePL.
-      const valid=libs.filter(lib=>validId(lib.id) && ['anime','movies','series'].includes(lib.category));
+      const valid=librariesCache.filter(lib=>validId(lib.id) && ['anime','movies','series'].includes(lib.category));
       // A global BoxSet shelf is always available; /Users/Me/Views commonly
       // omits the Collections library entirely. No made-up parent GUIDs.
       const collectionsShelf={id:'collections',name:'Kolekcje',category:'collections',href:''};

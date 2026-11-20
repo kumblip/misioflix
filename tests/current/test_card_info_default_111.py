@@ -53,7 +53,9 @@ class CardInfoAndVisibleProposals111(unittest.TestCase):
 
     def test_version_and_unchanged_release(self):
         version=json.loads((ROOT/'meta.json').read_text('utf-8'))['version']
-        self.assertEqual(version,'0.4.111.0')
+        # Feature test must remain valid for later releases.
+        self.assertRegex(version, r'^0\.4\.\d+\.0$')
+        self.assertEqual((ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text('utf-8').split('<AssemblyVersion>')[1].split('</AssemblyVersion>')[0],version)
         for file in ['build.yml','release.yml']:
             self.assertTrue((ROOT/'.github/workflows'/file).is_file())
 
