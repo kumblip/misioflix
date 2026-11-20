@@ -25,8 +25,8 @@ class RenameLibrariesAndTen112(unittest.TestCase):
         self.assertNotIn('localStorage.setItem(\'libraries',HOME)
     def test_versioning(self):
         meta=json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))
-        self.assertEqual(meta['version'],'0.4.112.0')
+        self.assertRegex(meta['version'],r'^0\.4\.(?:11[2-9]|1[2-9][0-9])\.0$')
         project=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf-8')
-        self.assertIn('<AssemblyVersion>0.4.112.0</AssemblyVersion>',project)
+        self.assertIn(f"<AssemblyVersion>{meta['version']}</AssemblyVersion>",project)
 
 if __name__=='__main__': unittest.main()

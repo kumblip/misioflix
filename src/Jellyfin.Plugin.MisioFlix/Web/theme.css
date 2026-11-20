@@ -1982,6 +1982,94 @@ html.misioflix-skin .mf-home-card-info-open{
   html.misioflix-skin .mf-home-card-info-button{flex-basis:24px;width:24px;min-width:24px;height:24px}
 }
 
+/* v0.4.113: compact single-container Home navigation; preserve the
+   independent MAL/Simkl controls without rewriting their DOM or callbacks. */
+html.misioflix-skin .mf-home-hero{
+  display:flex;align-items:center;flex-direction:row;gap:18px;
+  min-height:0;padding:12px 18px;
+}
+html.misioflix-skin .mf-home-hero .mf-home-intro{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;min-width:0;
+}
+html.misioflix-skin .mf-home-hero .mf-home-logo{
+  max-width:84px;max-height:54px;display:block;
+}
+html.misioflix-skin .mf-home-hero .mf-home-discovery{
+  flex:1 1 0;min-width:0;display:flex;align-items:center;
+}
+html.misioflix-skin .mf-home-hero .mf-home-folder-buttons{
+  display:flex;flex-wrap:wrap;align-items:center;align-content:center;gap:8px;
+}
+/* Shrink each button by 2px at BOTH top and bottom. */
+html.misioflix-skin .mf-home-hero .mf-home-folder-button{
+  padding:6px 14px;min-height:36px;
+}
+/* CSS ordering survives MAL and Simkl mounting after the library list. */
+html.misioflix-skin .mf-home-hero .mf-home-folder-button:not(.mf-home-search-launch):not(.mf-home-mal-button):not(.mf-home-simkl-button){order:0}
+html.misioflix-skin .mf-home-hero .mf-home-search-launch{order:1}
+html.misioflix-skin .mf-home-hero .mf-home-mal-button{order:2}
+html.misioflix-skin .mf-home-hero .mf-home-simkl-button{order:3}
+@media(max-width:920px){
+  html.misioflix-skin .mf-home-hero{
+    display:flex;flex-direction:row;align-items:center;gap:13px;padding:11px 13px;
+  }
+}
+@media(max-width:560px){
+  html.misioflix-skin .mf-home-hero{
+    display:flex;flex-direction:row;align-items:flex-start;gap:9px;padding:10px;
+  }
+  html.misioflix-skin .mf-home-hero .mf-home-logo{max-width:51px;max-height:42px}
+  html.misioflix-skin .mf-home-hero .mf-home-folder-buttons{gap:6px}
+  html.misioflix-skin .mf-home-hero .mf-home-folder-button{
+    padding:5px 9px;min-height:32px;font-size:11px;border-radius:9px;
+  }
+}
+
+/* v0.4.113: same compact three-across density as the Anime search on mobile.
+   Limit scope to HOME library and proposal carousels: search modal, Collections
+   grid, native Jellyfin cards and desktop remain unchanged. The info modal
+   retains the full description and all genres even when card copy is hidden. */
+@media(max-width:680px){
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll{gap:8px}
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll > .mf-home-card{
+    flex:0 0 calc((100% - 16px)/3);width:calc((100% - 16px)/3);
+    min-width:0;max-width:none;border-radius:11px;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll > .mf-home-card .mf-home-card-desc{display:none}
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll > .mf-home-card .mf-home-card-body{
+    min-height:0;padding:6px 6px 8px;gap:4px;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll > .mf-home-card .mf-home-card-title{
+    display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    -webkit-line-clamp:unset;min-height:1.3em;max-height:1.3em;
+    font-size:10.5px;line-height:1.3;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll > .mf-home-card .mf-home-card-info-button{
+    flex-basis:21px;width:21px;min-width:21px;height:21px;font-size:12px;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll .mf-home-poster[data-mf-item-id] .mf-home-kind{display:none}
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll .mf-home-top-left{left:5px;top:5px;gap:2px}
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll .mf-home-year{font-size:10px;padding:2px 4px}
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll .mf-home-stats{
+    top:4px;right:4px;gap:1px;padding:2px 3px;min-width:0;border-radius:7px;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll .mf-home-stat,
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll .mf-home-mal-score{
+    padding:0;margin:0;gap:2px;border:0;background:transparent;
+    font-size:10px;line-height:1.03;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll .mf-home-paw,
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll .mf-mal-rating-paw{
+    width:10px;height:10px;flex:0 0 10px;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll .mf-home-genres{
+    left:4px;right:4px;bottom:5px;gap:2px;
+  }
+  html.misioflix-skin .mf-home-0412 .mf-home-shelf-scroll .mf-home-genre{
+    padding:2px 4px;font-size:9px;
+  }
+}
+
 /* v0.4.94: the box is the ONLY badge on films such as Bad Boys.
  * Do not reserve the two/three-paw frame width in this case: shrink-wrap
  * the single number + box glyph, but retain identical number/icon columns.

@@ -1743,19 +1743,21 @@
     if(!librariesCache.length){
       box.appendChild(own('p','mf-home-search-helper','Brak dostępnych bibliotek.'));
     }
+    // v0.4.113: all library shortcuts (including Collections) are alphabetic.
+    // Search buttons follow them; MAL/Simkl buttons are appended by independent
+    // modules and CSS order keeps them LAST regardless of mount timing.
+    const libraryLinks=[];
     for(const lib of librariesCache){
-      // The new Collections view belongs only in its separate shelf, not in
-      // the five established library buttons or the two search pop-outs.
       if(lib.category==='collections')continue;
       const link=set(own('a','mf-home-folder-button',lib.name),'href',safeLibraryHref(lib.href,lib.id));
       link.setAttribute('aria-label',`Otwórz bibliotekę ${lib.name}`);
-      box.appendChild(link);
+      libraryLinks.push({name:lib.name,link});
     }
-    // Match the five native-style library buttons: an actual addressable
-    // list view, never scrollIntoView on the home carousel.
     const collectionButton=set(own('a','mf-home-folder-button','Kolekcje'),'href',COLLECTIONS_URL);
     collectionButton.setAttribute('aria-label','Otwórz listę wszystkich kolekcji');
-    box.appendChild(collectionButton);
+    libraryLinks.push({name:'Kolekcje',link:collectionButton});
+    libraryLinks.sort((a,b)=>a.name.localeCompare(b.name,'pl',{sensitivity:'base',numeric:true}));
+    for(const entry of libraryLinks)box.appendChild(entry.link);
     for(const [kind,name] of [['anime','Wyszukiwarka anime'],['media','Wyszukiwarka filmów i seriali']]){
       const btn=own('button','mf-home-folder-button mf-home-search-launch',name);
       btn.type='button';btn.setAttribute('aria-haspopup','dialog');
@@ -1853,10 +1855,9 @@
     const hero=own('section','mf-home-hero');
     const intro=own('div','mf-home-intro');
     const logo=own('img','mf-home-logo');logo.src='/MisioFlix/assets/logo.png';logo.alt='MisioFlix';
-    const title=own('h1','', 'Twój świat filmów i anime');
-    const sub=own('p','','Własna biblioteka. Oryginalny odtwarzacz Jellyfin.');
-    append(intro,logo,title,sub);
-    // The original right-hand hero zone now holds the library/search shortcuts.
+    // v0.4.113: one compact banner: logo + navigation, without redundant copy.
+    intro.appendChild(logo);
+    // The same hero contains the logo and library/search/account shortcuts.
     append(hero,intro,shortcuts);
     return hero;
   }
