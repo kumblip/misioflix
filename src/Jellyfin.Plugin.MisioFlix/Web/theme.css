@@ -2337,6 +2337,44 @@ html.misioflix-skin.mf-native-library-route .card[data-mf-card="1"] .mf-native-i
   }
 }
 
+/* v0.4.117 — only CSS: density of EXISTING Jellyfin native library tiles.
+   Jellyfin can lay out native .itemsContainer as flex or grid depending on
+   client/view. Do not hide, clone, regenerate or move ANY .card, nor replace
+   any native click handler, scroller or pagination mechanism. The browser
+   simply fits the same cards three across on phone-width library pages. */
+@media (max-width:680px){
+  html.misioflix-skin.mf-native-library-route .itemsContainer{
+    /* A grid container uses this; flex ignores it. Never change display. */
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    column-gap:4px!important;
+    row-gap:12px!important;
+    flex-wrap:wrap!important;
+    justify-content:flex-start!important;
+    align-content:flex-start!important;
+    min-width:0!important;
+  }
+  html.misioflix-skin.mf-native-library-route .itemsContainer > .card{
+    /* Flex uses flex-basis; grid ignores flex and uses width:100% instead.
+       This keeps three columns in either native layout implementation. */
+    flex:0 0 calc((100% - 8px)/3)!important;
+    width:100%!important;
+    min-width:0!important;
+    max-width:none!important;
+    box-sizing:border-box!important;
+    margin:0!important;
+    padding:0 0 2px!important;
+  }
+  html.misioflix-skin.mf-native-library-route .itemsContainer > .card > .cardBox{
+    width:100%!important;
+    min-width:0!important;
+    max-width:100%!important;
+    margin:0!important;
+    box-sizing:border-box!important;
+  }
+  /* Reuse the existing 2-line title and i-button from v0.4.115/116.
+     Do NOT touch poster/frame/paw overlays or native card DOM. */
+}
+
 /* v0.4.94: the box is the ONLY badge on films such as Bad Boys.
  * Do not reserve the two/three-paw frame width in this case: shrink-wrap
  * the single number + box glyph, but retain identical number/icon columns.

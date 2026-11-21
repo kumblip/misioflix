@@ -34,7 +34,7 @@ class Mobile116(unittest.TestCase):
   self.assertIn('data-mf-watch',CSS)
  def test_version_matches_assembly(self):
   v=json.loads((R/'meta.json').read_text(encoding='utf8'))['version']
-  self.assertEqual(v,'0.4.116.0')
+  self.assertGreaterEqual(tuple(map(int,v.split('.'))),(0,4,116,0))
   csproj=(R/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf8')
   self.assertIn('<AssemblyVersion>'+v+'</AssemblyVersion>',csproj)
 if __name__=='__main__':unittest.main()
