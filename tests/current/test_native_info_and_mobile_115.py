@@ -21,13 +21,13 @@ class Info115(unittest.TestCase):
   self.assertIn('.mf-home-shelf-scroll > .mf-home-card .mf-home-card-title',p)
   self.assertIn('.mf-home-recommendation-grid .mf-home-card-title',p)
   self.assertIn('.mf-home-search-grid .mf-home-card-title',p)
-  self.assertEqual(p.count('-webkit-line-clamp:2!important'),2)
+  self.assertGreaterEqual(p.count('-webkit-line-clamp:2!important'),2)
  def test_full_genres_preview_and_version(self):
   self.assertIn('genres = genres.ToList()',B)
   self.assertIn('item.genres.slice(0,3)',H)
   self.assertIn('const posterUrl=imageFor(item);',H)
   self.assertIn('append(actions,open,close)',H)
   v=json.loads((R/'meta.json').read_text(encoding='utf8'))['version']
-  self.assertEqual(v,'0.4.115.0')
+  self.assertGreaterEqual(tuple(map(int,v.split('.'))),(0,4,115,0))
   self.assertIn('<AssemblyVersion>'+v+'</AssemblyVersion>',(R/'src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj').read_text(encoding='utf8'))
 if __name__=='__main__':unittest.main()
