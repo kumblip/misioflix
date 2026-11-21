@@ -41,7 +41,7 @@ class Carousel119(unittest.TestCase):
         self.assertNotIn('display:none',rule)
         self.assertNotIn('!important',rule)
     def test_version_and_integrations_unchanged(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'],'0.4.119.0')
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'], '0.4.120.0')
         self.assertIn('data-mf-watch',CSS)
         self.assertIn('data-mf-simkl-watch',CSS)
         self.assertIn('function makeCard(item)',HOME)
