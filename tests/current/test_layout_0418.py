@@ -40,7 +40,7 @@ class Layout0418(unittest.TestCase):
         self.assertNotIn('Users/{userId}/PlayedItems',SERVICE)
     def test_random_five_and_permanent_buttons(self):
         self.assertIn('const RANDOM_LIMIT = 5',HOME)
-        self.assertIn("mode==='random'?RANDOM_LIMIT:SHELF_LIMIT",HOME)
+        self.assertIn("mode==='random'?RANDOM_LIMIT:(reset?SHELF_LIMIT:SHELF_MORE_LIMIT)",HOME)
         self.assertIn('const int randomCount = 5',SERVICE)
         self.assertIn('var resultLimit = random ? randomCount : limit',SERVICE)
         self.assertIn('if (list.Count >= resultLimit) break',SERVICE)

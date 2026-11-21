@@ -16,8 +16,10 @@ class RenameLibrariesAndTen112(unittest.TestCase):
         self.assertIn('const valid=librariesCache.filter(',HOME)  # Same names/IDs for buttons, searches and shelves.
     def test_initial_10_and_scroll_unlimited(self):
         self.assertIn('const SHELF_LIMIT = 10;',HOME)
-        self.assertIn('row.offset+SHELF_LIMIT',HOME)
-        self.assertIn("mode==='random'?RANDOM_LIMIT:SHELF_LIMIT",HOME)
+        self.assertIn('row.offset+batchLimit',HOME)
+        self.assertIn('const batchLimit=reset?SHELF_LIMIT:SHELF_MORE_LIMIT;',HOME)
+        self.assertIn('const SHELF_MORE_LIMIT = 25;',HOME)
+        self.assertIn("mode==='random'?RANDOM_LIMIT:(reset?SHELF_LIMIT:SHELF_MORE_LIMIT)",HOME)
         self.assertIn('row.hasMore',HOME)
     def test_source_of_live_names_is_jellyfin_not_14_day_search_cache(self):
         self.assertIn('Users/{Uri.EscapeDataString(userId)}/Views',CONTROLLER)

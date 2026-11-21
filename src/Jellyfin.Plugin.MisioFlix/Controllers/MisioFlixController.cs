@@ -110,7 +110,7 @@ public sealed class MisioFlixController : ControllerBase
         [FromQuery] int limit=12, CancellationToken cancel=default)
     {
         if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
-        if (libraryId == Guid.Empty || startIndex < 0 || startIndex > 40000 || limit < 1 || limit > 24)
+        if (libraryId == Guid.Empty || startIndex < 0 || startIndex > 40000 || limit < 1 || limit > 25)
             return BadRequest(new { error="Nieprawidłowe parametry karuzeli" });
         Response.Headers.CacheControl = "private, no-store";
         try { return Ok(await _catalog.ReadHomeShelfAsync(Request, libraryId, mode, startIndex, limit, cancel).ConfigureAwait(false)); }
@@ -175,7 +175,7 @@ public sealed class MisioFlixController : ControllerBase
     {
         if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
         if (string.IsNullOrWhiteSpace(ids) || ids.Length > 1024 ||
-            ids.Split(',', StringSplitOptions.RemoveEmptyEntries).Length > 24)
+            ids.Split(',', StringSplitOptions.RemoveEmptyEntries).Length > 25)
             return BadRequest(new { error = "Zbyt wiele identyfikatorów kart" });
         Response.Headers.CacheControl = "private, no-store";
         try { return Ok(await _catalog.ReadHomeRecommendationCardsAsync(Request, ids, cancel).ConfigureAwait(false)); }
@@ -191,7 +191,7 @@ public sealed class MisioFlixController : ControllerBase
         CancellationToken cancel=default)
     {
         if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
-        if (startIndex < 0 || startIndex > 40000 || limit < 1 || limit > 24)
+        if (startIndex < 0 || startIndex > 40000 || limit < 1 || limit > 25)
             return BadRequest(new { error="Nieprawidłowe parametry kolekcji" });
         Response.Headers.CacheControl = "private, no-store";
         try { return Ok(await _catalog.ReadHomeCollectionsAsync(Request, mode, startIndex, limit, cancel).ConfigureAwait(false)); }

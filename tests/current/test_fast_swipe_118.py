@@ -34,5 +34,5 @@ class FasterSwipe118(unittest.TestCase):
   self.assertIn('data-mf-watch',CSS)
   self.assertIn('data-mf-simkl-watch',CSS)
   self.assertIn('function makeCard(item)',WEB)
-  self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'],'0.4.118.0')
+  self.assertRegex(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'],r'^0\.4\.(?:11[8-9]|1[2-9][0-9])\.0$')
 if __name__=='__main__':unittest.main()

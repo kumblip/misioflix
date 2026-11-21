@@ -21,7 +21,7 @@ const guid=i=>i.toString(16).padStart(32,'0');
 const items=Array.from({length:37},(_,i)=>({id:guid(i+1)}));
 let calls=0, fail=false;
 const ctx={
-  SHELF_LIMIT:12,epoch:7,homeRoot:{isConnected:true},
+  SHELF_LIMIT:10,SHELF_MORE_LIMIT:25,epoch:7,homeRoot:{isConnected:true},
   isCurrent:serial=>serial===7,
   compactId:id=>id,
   own:(tag,cls,txt)=>{const n=new DummyNode(cls);n.textContent=txt;return n;},
@@ -39,11 +39,15 @@ function row(data){return {busy:false,hasMore:true,mode:'random',offset:0,ordere
   shuffle:{disabled:false},reset:{disabled:false}};}
 (async()=>{
   const r=row(items);
-  for(let i=0;i<4;i++)await ctx.loadRecommendationPage(r,i===0);
+  await ctx.loadRecommendationPage(r,true);
+  assert.equal(r.offset,10);
+  await ctx.loadRecommendationPage(r,false);
+  assert.equal(r.offset,35);
+  await ctx.loadRecommendationPage(r,false);
   assert.equal(r.offset,37);
   assert.equal(r.scroll.children.filter(x=>x.className==='mf-home-card').length,37);
   assert.equal(r.hasMore,false);
-  assert.equal(calls,4);
+  assert.equal(calls,3);
   assert.equal(r.mode,'random'); // random mode can paginate through ALL 37 entries
   const empty=row([]);
   await ctx.loadRecommendationPage(empty,true);
@@ -54,6 +58,6 @@ function row(data){return {busy:false,hasMore:true,mode:'random',offset:0,ordere
   fail=true;await ctx.loadRecommendationPage(failed,true);
   assert.equal(failed.offset,0,'network failure must not skip the failed batch');
   await ctx.loadRecommendationPage(failed,false);
-  assert.equal(failed.offset,12,'retry starts at the same candidate page');
-  console.log('PASS v0.4.107: 37 randomized items paginated 12+12+12+1, empty rows, retry without gaps');
+  assert.equal(failed.offset,25,'retry starts at the same candidate page');
+  console.log('PASS v0.4.107: 37 randomized items paginated 10+25+2, empty rows, retry without gaps');
 })().catch(e=>{console.error(e);process.exitCode=1;});

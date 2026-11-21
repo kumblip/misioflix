@@ -2337,6 +2337,18 @@ html.misioflix-skin.mf-native-library-route .card[data-mf-card="1"] .mf-native-i
   }
 }
 
+/* v0.4.119: slightly larger poster genre labels on desktop only.
+   Applies to existing native Jellyfin cards and MisioFlix cards everywhere:
+   library pages, Home rails, proposals, collections, search and genre lists.
+   Phone-size badges retain their current layout and typography. */
+@media (min-width:921px){
+  html.misioflix-skin .mf-native-genre,
+  html.misioflix-skin .mf-home-genre{
+    font-size:11.5px;
+    line-height:1.2;
+  }
+}
+
 /* v0.4.118 — fast, free native swipe momentum on touchscreens.
    The previous proximity snap can slow or shorten a rapid swipe. Keep browser-
    controlled Android/iOS kinetic scrolling and vertical page gestures: no JS

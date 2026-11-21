@@ -8,7 +8,8 @@
   window.__MISIOFLIX_HOME_0424__ = true;
 
   const API = '/MisioFlix/api';
-  const SHELF_LIMIT = 10; // v0.4.112: no more than ten initial tiles per home rail (and each later batch).
+  const SHELF_LIMIT = 10; // Initial tiles per library and recommendation rail.
+  const SHELF_MORE_LIMIT = 25; // Subsequent infinity-scroll pages; never changes the first ten.
   const RANDOM_LIMIT = 5;
   let homeRoot = null;
   let homeHost = null;
@@ -610,7 +611,7 @@
         ? '/home/collections?'
         : `/home/shelf?libraryId=${encodeURIComponent(row.lib.id)}&`;
       const data=await request(endpoint+
-        `mode=${mode}&startIndex=${start}&limit=${mode==='random'?RANDOM_LIMIT:SHELF_LIMIT}`);
+        `mode=${mode}&startIndex=${start}&limit=${mode==='random'?RANDOM_LIMIT:(reset?SHELF_LIMIT:SHELF_MORE_LIMIT)}`);
       if(!isCurrent(serial)||!row.section.isConnected)return;
       if(reset)row.scroll.replaceChildren();
       const list=Array.isArray(data.items)?data.items:[];
@@ -2093,11 +2094,12 @@
     row.shuffle.disabled=true;row.reset.disabled=true;
     if(reset){row.scroll.replaceChildren(own('p','mf-home-empty','Ładowanie…'));row.scroll.scrollLeft=0;}
     try{
-      // Iterate over ALL matches in 10-item pages; a removed/inaccessible
-      // Jellyfin entry cannot stop pagination or leak a title from another user.
+      // Ten items on first render, 25 on each later infinity-scroll event.
+      // Removed/inaccessible titles must not leak data or break pagination.
+      const batchLimit=reset?SHELF_LIMIT:SHELF_MORE_LIMIT;
       let added=0,tries=0;
       while(row.offset<row.ordered.length&&added===0&&tries<5){
-        const batch=row.ordered.slice(row.offset,row.offset+SHELF_LIMIT).map(x=>compactId(x.id));
+        const batch=row.ordered.slice(row.offset,row.offset+batchLimit).map(x=>compactId(x.id));
         if(!batch.length)break;
         const pageStart=row.offset;
         row.offset+=batch.length;tries++;
@@ -2162,7 +2164,7 @@
       area.appendChild(row.section);
     }
     if(!recommendationRows.size)return; // No configured set matches this user's catalog.
-    // Only hydrate visible rows. Each row has independent 10-item paging,
+    // Only hydrate visible rows. Each row loads 10 initially then 25 per further scroll,
     // unlimited shuffle and identical existing cards minus descriptions.
     if(typeof IntersectionObserver==='function'){
       recommendationObserver=new IntersectionObserver(entries=>{

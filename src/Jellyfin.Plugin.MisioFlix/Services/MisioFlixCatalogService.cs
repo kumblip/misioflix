@@ -314,7 +314,7 @@ public sealed class MisioFlixCatalogService
         var view = views.FirstOrDefault(v => v.id.Equals(libraryId.ToString("N"), StringComparison.OrdinalIgnoreCase));
         if (view is null) throw new UnauthorizedAccessException("Library is not accessible to this user");
         if (startIndex < 0 || startIndex > 40000) throw new ArgumentOutOfRangeException(nameof(startIndex));
-        if (limit < 1 || limit > 24) throw new ArgumentOutOfRangeException(nameof(limit));
+        if (limit < 1 || limit > 25) throw new ArgumentOutOfRangeException(nameof(limit));
         var random = string.Equals(mode, "random", StringComparison.OrdinalIgnoreCase);
         const int randomCount = 5;
         var resultLimit = random ? randomCount : limit;
@@ -375,7 +375,7 @@ public sealed class MisioFlixCatalogService
     {
         var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
         if (startIndex < 0 || startIndex > 40000) throw new ArgumentOutOfRangeException(nameof(startIndex));
-        if (limit < 1 || limit > 24) throw new ArgumentOutOfRangeException(nameof(limit));
+        if (limit < 1 || limit > 25) throw new ArgumentOutOfRangeException(nameof(limit));
         var random = string.Equals(mode, "random", StringComparison.OrdinalIgnoreCase);
         var wanted = random ? 5 : limit;
         // Crucially: NO ParentId. A collections library need not be present
@@ -452,7 +452,7 @@ public sealed class MisioFlixCatalogService
     {
         var requested = (ids ?? string.Empty)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(x => Guid.TryParse(x, out _)).Select(Guid.Parse).Distinct().Take(24).ToArray();
+            .Where(x => Guid.TryParse(x, out _)).Select(Guid.Parse).Distinct().Take(25).ToArray();
         if (requested.Length == 0) return new List<HomeTile>();
         var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
         var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
