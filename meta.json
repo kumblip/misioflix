@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.120: etykiety gatunków na plakatach 150% na komputerach (telefony bez zmian)",
+  "description": "MisioFlix 0.4.121: etykiety gatunków na plakatach 14px na komputerach (mobile bez zmian)",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.120.0",
+  "version": "0.4.121.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,
