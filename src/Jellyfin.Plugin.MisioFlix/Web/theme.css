@@ -2337,6 +2337,20 @@ html.misioflix-skin.mf-native-library-route .card[data-mf-card="1"] .mf-native-i
   }
 }
 
+/* v0.4.118 — fast, free native swipe momentum on touchscreens.
+   The previous proximity snap can slow or shorten a rapid swipe. Keep browser-
+   controlled Android/iOS kinetic scrolling and vertical page gestures: no JS
+   touch capture, no preventDefault, and no changes to card elements or click. */
+@media (pointer:coarse), (any-pointer:coarse){
+  html.misioflix-skin .mf-home-shelf-scroll,
+  html.misioflix-skin .mf-home-resume-items,
+  html.misioflix-skin .mf-home-resume-hidden{
+    scroll-snap-type:none!important;
+    scroll-behavior:auto!important;
+    -webkit-overflow-scrolling:touch;
+  }
+}
+
 /* v0.4.117 — only CSS: density of EXISTING Jellyfin native library tiles.
    Jellyfin can lay out native .itemsContainer as flex or grid depending on
    client/view. Do not hide, clone, regenerate or move ANY .card, nor replace

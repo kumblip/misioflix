@@ -521,7 +521,9 @@
         try {scroll.setPointerCapture(event.pointerId);} catch (_) {}
       }
       if (event.cancelable) event.preventDefault();
-      scroll.scrollLeft = g.scrollStart - dx;
+      // Faster mouse/stylus dragging without hijacking native touch scrolling.
+      // PointerType touch is deliberately left to browser-native kinetic scrolling.
+      scroll.scrollLeft = g.scrollStart - dx * 1.35;
     }, {passive:false});
     function endDrag(event) {
       const g=gesture;
@@ -584,11 +586,11 @@
     enableShelfDrag(scroll,row);
     shuffle.addEventListener('click',()=>loadShelf(row,'random',true));
     reset.addEventListener('click',()=>loadShelf(row,'latest',true));
-    prev.addEventListener('click',()=>scroll.scrollBy({left:-Math.max(400,scroll.clientWidth*0.75),behavior:'smooth'}));
+    prev.addEventListener('click',()=>scroll.scrollBy({left:-Math.max(460,scroll.clientWidth*1.12),behavior:'smooth'}));
     next.addEventListener('click',async()=>{
       const nearEnd=scroll.scrollLeft+scroll.clientWidth>=scroll.scrollWidth-220;
       if(nearEnd&&row.hasMore&&!row.busy&&row.mode==='latest')await loadShelf(row,'latest',false);
-      scroll.scrollBy({left:Math.max(420,scroll.clientWidth*.77),behavior:'smooth'});
+      scroll.scrollBy({left:Math.max(480,scroll.clientWidth*1.15),behavior:'smooth'});
     });
     return row;
   }
@@ -1897,8 +1899,8 @@
     // Reuse the tested carousel drag/touch behavior without any pagination trigger.
     enableShelfDrag(scroll,{busy:true,hasMore:false,mode:'resume'});
     toggle.addEventListener('click',()=>{showHiddenResume=!showHiddenResume;paintResume();});
-    prev.addEventListener('click',()=>scroll.scrollBy({left:-Math.max(400,scroll.clientWidth*.75),behavior:'smooth'}));
-    next.addEventListener('click',()=>scroll.scrollBy({left:Math.max(420,scroll.clientWidth*.77),behavior:'smooth'}));
+    prev.addEventListener('click',()=>scroll.scrollBy({left:-Math.max(460,scroll.clientWidth*1.12),behavior:'smooth'}));
+    next.addEventListener('click',()=>scroll.scrollBy({left:Math.max(480,scroll.clientWidth*1.15),behavior:'smooth'}));
     append(watch,header,scroll);
     return watch;
   }
@@ -2076,11 +2078,11 @@
     };
     shuffle.addEventListener('click',()=>swap('random'));
     reset.addEventListener('click',()=>swap('latest'));
-    prev.addEventListener('click',()=>scroll.scrollBy({left:-Math.max(400,scroll.clientWidth*.75),behavior:'smooth'}));
+    prev.addEventListener('click',()=>scroll.scrollBy({left:-Math.max(460,scroll.clientWidth*1.12),behavior:'smooth'}));
     next.addEventListener('click',async()=>{
       if(!row.busy&&row.hasMore&&scroll.scrollLeft+scroll.clientWidth>=scroll.scrollWidth-220)
         await loadRecommendationPage(row,false);
-      scroll.scrollBy({left:Math.max(420,scroll.clientWidth*.77),behavior:'smooth'});
+      scroll.scrollBy({left:Math.max(480,scroll.clientWidth*1.15),behavior:'smooth'});
     });
     return row;
   }
