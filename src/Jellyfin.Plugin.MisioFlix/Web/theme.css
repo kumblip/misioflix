@@ -2005,20 +2005,26 @@ html.misioflix-skin .mf-home-hero .mf-home-folder-button{
   padding:6px 14px;min-height:36px;
 }
 /* CSS ordering survives MAL and Simkl mounting after the library list. */
-html.misioflix-skin .mf-home-hero .mf-home-folder-button:not(.mf-home-search-launch):not(.mf-home-mal-button):not(.mf-home-simkl-button){order:0}
+html.misioflix-skin .mf-home-hero .mf-home-folder-button:not(.mf-home-search-launch):not(.mf-home-mal-button):not(.mf-home-simkl-button):not(.mf-home-smart-downloads-button){order:0}
 html.misioflix-skin .mf-home-hero .mf-home-search-launch{order:1}
 html.misioflix-skin .mf-home-hero .mf-home-mal-button{order:2}
 html.misioflix-skin .mf-home-hero .mf-home-simkl-button{order:3}
+html.misioflix-skin .mf-home-hero .mf-home-smart-downloads-button{order:4}
 @media(max-width:920px){
   html.misioflix-skin .mf-home-hero{
     display:flex;flex-direction:row;align-items:center;gap:13px;padding:11px 13px;
   }
 }
+@media(max-width:680px){
+  /* The logo occupies a short ROW, never a left-hand column that steals the
+     width of the library/search/account shortcuts on Android phones. */
+  html.misioflix-skin .mf-home-hero{flex-direction:column;align-items:stretch;gap:8px;padding:10px}
+  html.misioflix-skin .mf-home-hero .mf-home-intro{width:100%;justify-content:flex-start;align-items:flex-start}
+  html.misioflix-skin .mf-home-hero .mf-home-discovery{width:100%;flex:0 0 auto}
+  html.misioflix-skin .mf-home-hero .mf-home-folder-buttons{width:100%;gap:6px}
+  html.misioflix-skin .mf-home-hero .mf-home-logo{max-width:58px;max-height:42px}
+}
 @media(max-width:560px){
-  html.misioflix-skin .mf-home-hero{
-    display:flex;flex-direction:row;align-items:flex-start;gap:9px;padding:10px;
-  }
-  html.misioflix-skin .mf-home-hero .mf-home-logo{max-width:51px;max-height:42px}
   html.misioflix-skin .mf-home-hero .mf-home-folder-buttons{gap:6px}
   html.misioflix-skin .mf-home-hero .mf-home-folder-button{
     padding:5px 9px;min-height:32px;font-size:11px;border-radius:9px;
@@ -2473,3 +2479,39 @@ html.misioflix-skin .mf-home-stats > .mf-home-member-collection:only-child {
 
 
 
+
+/* Smart Downloads: a dedicated button at the END of Home shortcuts opens
+   user/device settings. It does not replace Jellyfin Android's downloader. */
+html.misioflix-skin .mf-smart-downloads-overlay{
+  position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;
+  background:rgba(12,7,16,.78);padding:14px;box-sizing:border-box;
+}
+html.misioflix-skin .mf-smart-downloads-dialog{
+  width:min(100%,570px);max-height:calc(100dvh - 28px);overflow-y:auto;
+  border:1px solid rgba(244,165,206,.4);border-radius:16px;
+  background:#261629;color:#fff1f8;padding:20px;box-shadow:0 20px 60px #0009;
+  box-sizing:border-box;
+}
+html.misioflix-skin .mf-smart-downloads-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+html.misioflix-skin .mf-smart-downloads-head h2{margin:0;font-size:22px}
+html.misioflix-skin .mf-smart-downloads-info,
+html.misioflix-skin .mf-smart-downloads-note{font-size:13px;line-height:1.45;opacity:.82}
+html.misioflix-skin .mf-smart-downloads-status{font-size:13px;line-height:1.4;min-height:18px;color:#ffbfdc}
+html.misioflix-skin .mf-smart-downloads-fields{display:grid;gap:10px;margin:16px 0}
+html.misioflix-skin .mf-smart-downloads-row{
+  display:flex;gap:12px;align-items:center;justify-content:space-between;min-width:0;
+}
+html.misioflix-skin .mf-smart-downloads-row>span{flex:1 1 auto;min-width:0;font-size:14px}
+html.misioflix-skin .mf-smart-downloads-row input[type=checkbox]{width:21px;height:21px;accent-color:#eb85b4;flex:0 0 auto}
+html.misioflix-skin .mf-smart-downloads-input{
+  flex:0 0 130px;min-width:0;width:130px;box-sizing:border-box;
+  color:#fff1f8;background:#39253d;border:1px solid #936181;
+  border-radius:8px;padding:9px 11px;font-size:15px;
+}
+html.misioflix-skin .mf-smart-downloads-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+html.misioflix-skin .mf-smart-downloads-actions button{min-height:36px}
+@media(max-width:420px){
+  html.misioflix-skin .mf-smart-downloads-dialog{padding:14px}
+  html.misioflix-skin .mf-smart-downloads-row{flex-wrap:wrap}
+  html.misioflix-skin .mf-smart-downloads-row .mf-smart-downloads-input{flex:1 1 100%;width:100%}
+}

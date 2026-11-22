@@ -26,7 +26,7 @@ function pick(start,end){const a=js.indexOf(start);const b=js.indexOf(end,a+1);a
 vm.runInNewContext(pick('  function paintFolderButtons(){','  function createCollectionsPage(){')+'\npaintFolderButtons();',ctx);
 assert.deepEqual(box.children.map(x=>x.textContent),[
   'Anime ENG','AnimePL','Filmy PL','Kolekcje','Seriale PL',
-  'Wyszukiwarka anime','Wyszukiwarka filmów i seriali']);
+  'Wyszukiwarka anime','Wyszukiwarka filmów i seriali','Smart Downloads']);
 const hero=vm.runInNewContext(pick('  function hero(shortcuts){','  function resumeShelf(){')+'\nhero(discoveryRefs.section);',{
   own,append,discoveryRefs:{section:own('nav','mf-home-discovery')}
 });

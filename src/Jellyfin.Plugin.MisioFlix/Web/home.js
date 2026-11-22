@@ -1784,6 +1784,177 @@
       btn.addEventListener('click',()=>openSearch(kind));
       box.appendChild(btn);
     }
+    const smart=own('button','mf-home-folder-button mf-home-smart-downloads-button','Smart Downloads');
+    smart.type='button';smart.setAttribute('aria-haspopup','dialog');
+    smart.setAttribute('aria-label','Otwórz ustawienia Smart Downloads');
+    smart.addEventListener('click',()=>openSmartDownloadsDialog(smart));
+    box.appendChild(smart);
+  }
+  // Smart Downloads v1: ONLY the settings dialog lives in MisioFlix.
+  // Downloading remains in MisioCache and is delegated to the official
+  // Jellyfin Android NativeShell. Use the exact same device-scoped preference
+  // schema as MisioCache Web/overviewPage.html: never enable by default.
+  let smartDownloadsDialog=null;
+  function closeSmartDownloadsDialog(){
+    if(!smartDownloadsDialog)return;
+    const {overlay,opener,onKeyDown}=smartDownloadsDialog;
+    document.removeEventListener('keydown',onKeyDown,true);
+    overlay.remove();smartDownloadsDialog=null;
+    if(opener?.isConnected)opener.focus();
+  }
+  function smartNativeShellSupported(){
+    const shell=window.NativeShell;
+    try{return !!(shell&&typeof shell.downloadFiles==='function'&&
+      typeof shell.openDownloadManager==='function'&&shell.AppHost&&
+      typeof shell.AppHost.supports==='function'&&shell.AppHost.supports('filedownload'));}
+    catch(_){return false;}
+  }
+  function smartDeviceKey(){
+    try{const host=window.NativeShell?.AppHost;
+      return host&&typeof host.deviceId==='function'?String(host.deviceId()):'android-device';}
+    catch(_){return 'android-device';}
+  }
+  function smartCount(value){
+    const text=String(value??'').trim();
+    if(!/^[1-9]\d*$/.test(text))return null;
+    const number=Number(text);
+    return Number.isSafeInteger(number)?number:null;
+  }
+  function smartGB(value){
+    const text=String(value??'').trim().replace(',', '.');
+    if(!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(text))return null;
+    const number=Number(text);
+    return Number.isFinite(number)&&number>0&&Number.isSafeInteger(Math.ceil(number*1000000000))?number:null;
+  }
+  function smartSettingsFromStorage(key){
+    try{
+      const raw=JSON.parse(localStorage.getItem(key)||'null');
+      if(!raw||typeof raw!=='object')return {enabled:false,count:2,budgetGB:5};
+      const old=raw.budgetGB===undefined&&raw.budgetGiB!==undefined?
+        Number(raw.budgetGiB)*1073741824/1000000000:null;
+      return {enabled:raw.enabled===true,count:smartCount(raw.count)??2,
+        budgetGB:smartGB(raw.budgetGB===undefined?old:raw.budgetGB)??5};
+    }catch(_){return {enabled:false,count:2,budgetGB:5};}
+  }
+  function openSmartDownloadsDialog(opener){
+    if(smartDownloadsDialog){smartDownloadsDialog.overlay.querySelector('button')?.focus();return;}
+    closeSearch();
+    const overlay=own('div','mf-smart-downloads-overlay');
+    const dialog=own('section','mf-smart-downloads-dialog');
+    dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');
+    dialog.setAttribute('aria-label','Smart Downloads — ustawienia');
+    const header=own('div','mf-smart-downloads-head');
+    const title=own('h2','','Smart Downloads');
+    const close=own('button','mf-home-button mf-smart-downloads-close','✕ Zamknij');
+    close.type='button';close.addEventListener('click',closeSmartDownloadsDialog);
+    append(header,title,close);dialog.appendChild(header);
+    const info=own('p','mf-smart-downloads-info',
+      'Oddzielne ustawienia dla każdego konta Jellyfin i telefonu. Domyślnie wyłączone.');
+    dialog.appendChild(info);
+    const user=own('p','mf-smart-downloads-status','Sprawdzanie telefonu i konta…');
+    user.setAttribute('role','status');user.setAttribute('aria-live','polite');dialog.appendChild(user);
+    const panel=own('div','mf-smart-downloads-fields');
+    function field(labelText,input){
+      const row=own('label','mf-smart-downloads-row');
+      const text=own('span','',labelText);append(row,text,input);panel.appendChild(row);
+    }
+    const enabled=own('input');enabled.type='checkbox';enabled.disabled=true;
+    field('Chcę korzystać ze Smart Downloads',enabled);
+    const count=own('input','mf-smart-downloads-input');
+    count.type='number';count.min='1';count.step='1';count.inputMode='numeric';count.value='2';count.disabled=true;
+    field('Liczba kolejnych odcinków (domyślnie 2)',count);
+    const gb=own('input','mf-smart-downloads-input');
+    gb.type='text';gb.inputMode='decimal';gb.value='5';gb.placeholder='np. 7,5';gb.disabled=true;
+    field('Limit pojedynczej kolejki (GB)',gb);
+    const note=own('p','mf-smart-downloads-note',
+      'Limit GB chroni rozmiar nowo zlecanej paczki, nie mierzy całego zajętego miejsca na telefonie. ' +
+      'Automatyczne usuwanie po obejrzeniu i lokalne odtwarzanie po kliknięciu w bibliotece nie są jeszcze dostępne.');
+    const actions=own('div','mf-smart-downloads-actions');
+    const save=own('button','mf-home-button mf-smart-downloads-save','Zapisz ustawienia');
+    save.type='button';save.disabled=true;
+    const download=own('button','mf-home-button','Wybierz odcinki');
+    download.type='button';
+    download.addEventListener('click',()=>{
+      closeSmartDownloadsDialog();
+      // This is a Jellyfin-registered page of the separate MisioCache plugin.
+      window.location.hash='#/configurationpage?name=MisioCacheOverview';
+    });
+    const openDownloads=own('button','mf-home-button','Otwórz Pobrane');
+    openDownloads.type='button';openDownloads.disabled=true;
+    openDownloads.addEventListener('click',()=>{
+      if(smartNativeShellSupported())window.NativeShell.openDownloadManager();
+    });
+    append(actions,save,download,openDownloads);
+    append(dialog,panel,note,actions);overlay.appendChild(dialog);
+    overlay.addEventListener('click',e=>{if(e.target===overlay)closeSmartDownloadsDialog();});
+    const onKeyDown=event=>{
+      if(event.key==='Escape'){event.preventDefault();closeSmartDownloadsDialog();}
+      if(event.key==='Tab'&&smartDownloadsDialog){
+        const focusables=[...dialog.querySelectorAll('button:not(:disabled),input:not(:disabled)')];
+        if(!focusables.length)return;
+        if(event.shiftKey&&document.activeElement===focusables[0]){
+          event.preventDefault();focusables[focusables.length-1].focus();
+        }else if(!event.shiftKey&&document.activeElement===focusables[focusables.length-1]){
+          event.preventDefault();focusables[0].focus();
+        }
+      }
+    };
+    document.body.appendChild(overlay);
+    smartDownloadsDialog={overlay,opener,onKeyDown};
+    document.addEventListener('keydown',onKeyDown,true);
+    close.focus();
+    const connected=smartNativeShellSupported();
+    let preferenceKey=null,accountId=null,api=null;
+    async function setup(){
+      try{
+        api=window.ApiClient||window.ConnectionManager?.getApiClient?.();
+        if(!api||typeof api.getCurrentUser!=='function')throw Error('Brak aktywnej sesji Jellyfin.');
+        const account=await api.getCurrentUser();
+        if(!smartDownloadsDialog||smartDownloadsDialog.overlay!==overlay)return;
+        if(!account||!validId(account.Id))throw Error('Brak identyfikatora konta.');
+        accountId=String(account.Id);
+        const server=typeof api.serverId==='function'?String(api.serverId()):location.origin;
+        preferenceKey='misio.cache.smart.v1:'+server+':'+accountId+':'+smartDeviceKey();
+        const prefs=smartSettingsFromStorage(preferenceKey);
+        enabled.checked=prefs.enabled&&connected;
+        count.value=String(prefs.count);gb.value=String(prefs.budgetGB);
+        enabled.disabled=!connected;save.disabled=!connected;openDownloads.disabled=!connected;
+        count.disabled=!connected||!enabled.checked;gb.disabled=!connected||!enabled.checked;
+        user.textContent='Konto: '+String(account.Name||'Jellyfin')+' · '+
+          (connected?'Oficjalna aplikacja Jellyfin Android wykryta.':
+           'Brak natywnego menedżera pobierania Androida — nie można włączyć pobrań na tym urządzeniu.');
+      }catch(e){user.textContent='Smart Downloads: '+String(e.message||e);}
+    }
+    enabled.addEventListener('change',()=>{
+      count.disabled=!enabled.checked;gb.disabled=!enabled.checked;
+      user.textContent=enabled.checked?'Zapisz ustawienia, aby włączyć pobieranie tylko na tym telefonie.':
+        'Zapisz ustawienia, aby wyłączyć pobieranie na tym telefonie.';
+    });
+    save.addEventListener('click',async()=>{
+      if(!preferenceKey||!accountId||!connected)return;
+      save.disabled=true;
+      try{
+        // Fail closed if the user changes Jellyfin account while modal is open.
+        const current=await api.getCurrentUser();
+        if(!smartDownloadsDialog||smartDownloadsDialog.overlay!==overlay)return;
+        if(String(current?.Id||'')!==accountId)throw Error('Zmieniono konto Jellyfin. Otwórz ustawienia ponownie.');
+        const parsedCount=smartCount(count.value);
+        const parsedGB=smartGB(gb.value);
+        if(enabled.checked&&(parsedCount===null||parsedGB===null))
+          throw Error('Podaj dodatnią całkowitą liczbę odcinków i dodatnią liczbę GB (np. 7,5).');
+        const previous=smartSettingsFromStorage(preferenceKey);
+        const state={enabled:enabled.checked,count:parsedCount??previous.count,budgetGB:parsedGB??previous.budgetGB};
+        localStorage.setItem(preferenceKey,JSON.stringify(state));
+        user.textContent=state.enabled?
+          'Zapisano: Smart Downloads włączone tylko dla tego konta i telefonu.':
+          'Zapisano: Smart Downloads wyłączone dla tego konta i telefonu.';
+        window.dispatchEvent(new Event('misiocache-smart-downloads-changed'));
+      }catch(e){
+        // If saving fails, never claim the new consent is active.
+        user.textContent='Nie zapisano: '+String(e.message||e);
+      }finally{if(smartDownloadsDialog?.overlay===overlay)save.disabled=false;}
+    });
+    void setup();
   }
   function createCollectionsPage(){
     const section=own('section','mf-collections-page');
@@ -2329,6 +2500,7 @@
     }finally{mounting=false;}
   }
   function unmountHome(){
+    closeSmartDownloadsDialog();
     closeCardInfo();
     if(homeRoot){
       closeSearch();collectionsPage?.observer?.disconnect();

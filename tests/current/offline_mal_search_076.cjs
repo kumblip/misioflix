@@ -37,7 +37,7 @@ assert.equal(ctx.watchClassification({watchStatus:'watched'},{kind:'anime',watch
  assert.equal(ctx.watchClassification(online,state),'watched');
  assert.deepEqual(requests,['/mal/status?refresh=false','/mal/archive/watch-status']);
  // User-specific status content is never persisted in the browser.
- assert(!source.includes('localStorage.setItem('));
+ assert(!source.slice(begin,end).includes('localStorage.setItem('), 'MAL watch status is never persisted; Smart Downloads preferences are separate');
  assert(source.includes('.slice(0,18);'),'Search suggestions expanded 8 to 18');
  assert(css.includes('max-height:min(55dvh,540px)'),'Scrollable expanded suggestions');
  assert(css.includes('overflow-wrap:anywhere!important'),'Long detail titles wrap without clipping');
