@@ -37,6 +37,7 @@ public sealed class MisioFlixCatalogService
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private readonly string _hiddenResumePath;
     private readonly string _removedResumePath;
+    private readonly string _languageFlagsPath;
     private static readonly SemaphoreSlim HiddenGate = new(1, 1);
 
     public MisioFlixCatalogService(HttpClient client, ILibraryManager library, IApplicationPaths applicationPaths,
@@ -49,6 +50,7 @@ public sealed class MisioFlixCatalogService
         // Separate JSON state, never the Jellyfin database, media or NFO files.
         _hiddenResumePath = Path.Combine(applicationPaths.DataPath, "misioflix", "hidden-resume.json");
         _removedResumePath = Path.Combine(applicationPaths.DataPath, "misioflix", "removed-resume.json");
+        _languageFlagsPath = Path.Combine(applicationPaths.DataPath, "misioflix", "language-flags-index.json");
     }
 
     public async Task<CatalogResponse> ReadForAuthenticatedUserAsync(HttpRequest caller, CancellationToken cancel, Guid? libraryId = null)
@@ -621,11 +623,86 @@ public sealed class MisioFlixCatalogService
         return output;
     }
 
-    // Language badges are read-only. Never infer audio from a library or file name.
-    // Cache is keyed by Jellyfin user + item: permission filtering is still repeated
-    // for every request, before consulting the cache. Values expire after 10 minutes.
-    private static readonly ConcurrentDictionary<string, (DateTimeOffset Until, LanguageFlagInfo Value)>
-        LanguageFlagsCache = new(StringComparer.Ordinal);
+    // v127: durable server-side language index. There is NO TTL and NO polling for
+    // media changes. A card performs a small, authenticated visibility check; only
+    // previously UNKNOWN items are indexed on first view. The administrator can
+    // explicitly rebuild the complete index in MisioFlix settings.
+    // Store only availability flags, never file paths, tokens or watched state.
+    private static readonly ConcurrentDictionary<string, LanguageFlagInfo> LanguageFlagsCache =
+        new(StringComparer.OrdinalIgnoreCase);
+    private static readonly SemaphoreSlim LanguageFlagsGate = new(1, 1);
+    private static bool _languageFlagsLoaded;
+    private static DateTimeOffset? _languageFlagsUpdatedUtc;
+    public sealed class LanguageIndexFile
+    {
+        public int Schema { get; set; } = 2;
+        public DateTimeOffset? UpdatedUtc { get; set; }
+        public Dictionary<string, LanguageFlagInfo> Items { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task EnsureLanguageIndexAsync(CancellationToken cancel)
+    {
+        if (_languageFlagsLoaded) return;
+        await LanguageFlagsGate.WaitAsync(cancel).ConfigureAwait(false);
+        try
+        {
+            if (_languageFlagsLoaded) return;
+            try
+            {
+                if (File.Exists(_languageFlagsPath))
+                {
+                    await using var source = File.OpenRead(_languageFlagsPath);
+                    var disk = await JsonSerializer.DeserializeAsync<LanguageIndexFile>(source, cancellationToken:cancel)
+                        .ConfigureAwait(false);
+                    if (disk?.Schema == 2 && disk.Items is not null)
+                    {
+                        foreach (var (key, value) in disk.Items)
+                            if (Guid.TryParse(key, out _) && value is not null) LanguageFlagsCache[key] = value;
+                        _languageFlagsUpdatedUtc = disk.UpdatedUtc;
+                    }
+                }
+            }
+            catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
+            {
+                // Corrupt/inaccessible index must not break the existing Jellyfin UI.
+                // Keep the in-memory results; do not automatically overwrite the file.
+                _languageFlagsUpdatedUtc = null;
+            }
+            _languageFlagsLoaded = true;
+        }
+        finally { LanguageFlagsGate.Release(); }
+    }
+
+    private async Task SaveLanguageIndexUnderGateAsync(CancellationToken cancel,
+        Dictionary<string, LanguageFlagInfo>? replacing = null, DateTimeOffset? refreshedUtc = null)
+    {
+        var folder = Path.GetDirectoryName(_languageFlagsPath)!;
+        Directory.CreateDirectory(folder);
+        var temporary = _languageFlagsPath + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                65536, useAsync:true))
+            {
+                var index = new LanguageIndexFile
+                {
+                    UpdatedUtc = refreshedUtc ?? _languageFlagsUpdatedUtc,
+                    Items = replacing ?? LanguageFlagsCache.ToDictionary(entry=>entry.Key, entry=>entry.Value,
+                        StringComparer.OrdinalIgnoreCase)
+                };
+                await JsonSerializer.SerializeAsync(output, index, cancellationToken:cancel).ConfigureAwait(false);
+                await output.FlushAsync(cancel).ConfigureAwait(false);
+            }
+            File.Move(temporary, _languageFlagsPath, overwrite:true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    public async Task<LanguageFlagIndexStatus> ReadLanguageFlagsIndexStatusAsync(CancellationToken cancel)
+    {
+        await EnsureLanguageIndexAsync(cancel).ConfigureAwait(false);
+        return new LanguageFlagIndexStatus(LanguageFlagsCache.Count, _languageFlagsUpdatedUtc);
+    }
 
     public async Task<List<LanguageFlagInfo>> ReadLanguageFlagsForAuthenticatedUserAsync(
         HttpRequest caller, string? ids, CancellationToken cancel)
@@ -635,152 +712,283 @@ public sealed class MisioFlixCatalogService
             .Where(x => Guid.TryParse(x, out _))
             .Select(Guid.Parse).Distinct().Take(12).ToArray();
         if (requested.Length == 0) return new List<LanguageFlagInfo>();
-
         var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
-        // Exactly the same user-scoped Jellyfin authorization gate as /api/overlays.
+        // Always verify permissions for this exact Jellyfin user BEFORE reading a
+        // shared cache entry. The lookup itself contains no heavy stream fields.
         using var verified = await GetJsonAsync(origin,
             $"Items?UserId={Uri.EscapeDataString(userId)}" +
-            $"&Ids={Uri.EscapeDataString(string.Join(",", requested.Select(x => x.ToString("N"))))}" +
-            "&Fields=MediaSources,MediaStreams&EnableUserData=false&Limit=12",
-            auth, cancel).ConfigureAwait(false);
+            $"&Ids={Uri.EscapeDataString(string.Join(',', requested.Select(x => x.ToString("N"))))}" +
+            "&EnableUserData=false&Limit=12", auth, cancel).ConfigureAwait(false);
         var found = Get(verified.RootElement, "Items");
         var output = new List<LanguageFlagInfo>();
         if (found.ValueKind != JsonValueKind.Array) return output;
+        await EnsureLanguageIndexAsync(cancel).ConfigureAwait(false);
         var requestedSet = requested.ToHashSet();
         foreach (var item in found.EnumerateArray())
         {
             if (!Guid.TryParse(Text(Get(item, "Id")), out var id) || !requestedSet.Contains(id)) continue;
             var type = Text(Get(item, "Type"));
             if (type is not ("Movie" or "Episode" or "Video" or "Series" or "Season")) continue;
-            var cacheKey = userId + ":" + id.ToString("N");
-            if (LanguageFlagsCache.TryGetValue(cacheKey, out var cached) &&
-                cached.Until > DateTimeOffset.UtcNow)
+            var key = id.ToString("N");
+            if (LanguageFlagsCache.TryGetValue(key, out var cached)) { output.Add(cached); continue; }
+            await LanguageFlagsGate.WaitAsync(cancel).ConfigureAwait(false);
+            try
             {
-                output.Add(cached.Value);
-                continue;
-            }
-            var availability = new TrackAvailability();
-            var partial = false;
-            if (type is "Movie" or "Episode" or "Video")
-            {
-                availability.AddItem(item);
-                // Some Jellyfin Item lists omit stream data even when requested.
-                // Use the already-authorized single-item endpoint in that case.
-                if (!availability.SawStreamInfo)
+                if (!LanguageFlagsCache.TryGetValue(key, out cached))
                 {
-                    try
-                    {
-                        using var detailed = await GetJsonAsync(origin,
-                            $"Items/{id:N}?UserId={Uri.EscapeDataString(userId)}" +
-                            "&Fields=MediaSources,MediaStreams", auth, cancel).ConfigureAwait(false);
-                        availability.AddItem(detailed.RootElement);
-                    }
-                    catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
-                    { partial = true; }
+                    cached = await CalculateLanguageFlagsAsync(origin, auth, userId, id, type, cancel)
+                        .ConfigureAwait(false);
+                    LanguageFlagsCache[key] = cached;
+                    _languageFlagsUpdatedUtc = DateTimeOffset.UtcNow;
+                    await SaveLanguageIndexUnderGateAsync(cancel).ConfigureAwait(false);
                 }
+                output.Add(cached);
             }
-            else
-            {
-                // Season / Series: union of actual episode tracks, NEVER assumed
-                // from the parent title. Every page remains user-scoped.
-                const int pageSize = 250;
-                const int maxEpisodes = 3000;
-                for (var offset = 0; offset < maxEpisodes; offset += pageSize)
-                {
-                    var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
-                        $"&ParentId={id:N}&Recursive=true&IncludeItemTypes=Episode" +
-                        "&Fields=MediaSources,MediaStreams&EnableUserData=false" +
-                        $"&StartIndex={offset}&Limit={pageSize}";
-                    using var page = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
-                    var episodes = Get(page.RootElement, "Items");
-                    if (episodes.ValueKind != JsonValueKind.Array) { partial = true; break; }
-                    foreach (var episode in episodes.EnumerateArray()) availability.AddItem(episode);
-                    if (episodes.GetArrayLength() < pageSize) break;
-                    if (offset + pageSize >= maxEpisodes) partial = true;
-                }
-            }
-            // No guessed flag for unscanned or unknown-language streams.
-            var result = new LanguageFlagInfo(id.ToString("N"),
-                availability.Mode("pl"), availability.Mode("en"), partial);
-            LanguageFlagsCache[cacheKey] = (DateTimeOffset.UtcNow.AddMinutes(10), result);
-            output.Add(result);
+            finally { LanguageFlagsGate.Release(); }
         }
         return output;
     }
 
+    private async Task<LanguageFlagInfo> CalculateLanguageFlagsAsync(Uri origin, string auth,
+        string userId, Guid id, string type, CancellationToken cancel)
+    {
+        var availability = new TrackAvailability();
+        var partial = false;
+        if (type is "Movie" or "Episode" or "Video")
+        {
+            using var detailed = await GetJsonAsync(origin,
+                $"Items/{id:N}?UserId={Uri.EscapeDataString(userId)}&Fields=MediaSources,MediaStreams",
+                auth, cancel).ConfigureAwait(false);
+            availability.AddItem(detailed.RootElement, LibraryAudioHint(id));
+            partial = !availability.SawStreamInfo;
+        }
+        else
+        {
+            // Aggregate actual episode streams. Do not decide the language of
+            // all episodes merely from the Series/Season's own name.
+            const int pageSize = 250;
+            const int maxEpisodes = 30000;
+            for (var offset = 0; offset < maxEpisodes; offset += pageSize)
+            {
+                using var page = await GetJsonAsync(origin,
+                    $"Items?UserId={Uri.EscapeDataString(userId)}" +
+                    $"&ParentId={id:N}&Recursive=true&IncludeItemTypes=Episode" +
+                    "&Fields=MediaSources,MediaStreams&EnableUserData=false" +
+                    $"&StartIndex={offset}&Limit={pageSize}",auth,cancel).ConfigureAwait(false);
+                var episodes=Get(page.RootElement,"Items");
+                if (episodes.ValueKind != JsonValueKind.Array) { partial=true; break; }
+                foreach (var episode in episodes.EnumerateArray())
+                {
+                    if (!Guid.TryParse(Text(Get(episode,"Id")),out var episodeId)) continue;
+                    var episodeFlags = new TrackAvailability();
+                    episodeFlags.AddItem(episode, LibraryAudioHint(episodeId));
+                    if (!episodeFlags.SawStreamInfo)
+                    {
+                        try
+                        {
+                            using var detail=await GetJsonAsync(origin,
+                                $"Items/{episodeId:N}?UserId={Uri.EscapeDataString(userId)}" +
+                                "&Fields=MediaSources,MediaStreams",auth,cancel).ConfigureAwait(false);
+                            episodeFlags.AddItem(detail.RootElement, LibraryAudioHint(episodeId));
+                        }
+                        catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+                        { partial=true; }
+                    }
+                    availability.Merge(episodeFlags);
+                    if (!episodeFlags.SawStreamInfo) partial=true;
+                }
+                if (episodes.GetArrayLength() < pageSize) break;
+                if (offset+pageSize >= maxEpisodes) partial=true;
+            }
+        }
+        return new LanguageFlagInfo(id.ToString("N"), availability.Mode("pl"), availability.Mode("en"), partial);
+    }
+
+    // The name comes from the real Jellyfin CollectionFolder(s) containing
+    // this exact item. It is not inferred from the title, path or NFO.
+    // Where multiple libraries disagree, do not force an audio language.
+    private string LibraryAudioHint(Guid itemId)
+    {
+        var item = _library.GetItemById(itemId);
+        if (item is null) return string.Empty;
+        try
+        {
+            var hints = _library.GetCollectionFolders(item)
+                .Select(folder=>folder.Name?.Trim() ?? string.Empty)
+                .Select(name=>name.EndsWith("PL",StringComparison.OrdinalIgnoreCase) ? "pl" :
+                    name.EndsWith("ENG",StringComparison.OrdinalIgnoreCase) ? "en" : "")
+                .Where(x=>x.Length!=0).Distinct(StringComparer.Ordinal).Take(2).ToArray();
+            return hints.Length==1 ? hints[0] : string.Empty;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        { return string.Empty; }
+    }
+
+    // Run ONLY on explicit admin click. Read all visible media and rebuild
+    // series/season unions in a single paginated pass; never run on Home mount.
+    // Incomplete API responses do not replace a previously valid index.
+    public async Task<LanguageFlagIndexStatus> RefreshLanguageFlagsIndexAsync(
+        HttpRequest caller, CancellationToken cancel)
+    {
+        var (origin,auth,userId)=await AuthenticatedUserAsync(caller,cancel).ConfigureAwait(false);
+        await EnsureLanguageIndexAsync(cancel).ConfigureAwait(false);
+        await LanguageFlagsGate.WaitAsync(cancel).ConfigureAwait(false);
+        try
+        {
+            var fresh = new Dictionary<string, LanguageFlagInfo>(StringComparer.OrdinalIgnoreCase);
+            var parents = new Dictionary<string, TrackAvailability>(StringComparer.OrdinalIgnoreCase);
+            var incomplete = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var typed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            const int pageSize = 250;
+            const int maxItems = 50000;
+            var reachedEnd = false;
+            for (var offset = 0; offset < maxItems; offset += pageSize)
+            {
+                cancel.ThrowIfCancellationRequested();
+                using var page=await GetJsonAsync(origin,
+                    $"Items?UserId={Uri.EscapeDataString(userId)}&Recursive=true" +
+                    "&IncludeItemTypes=Movie,Video,Series,Season,Episode" +
+                    "&Fields=MediaSources,MediaStreams,ParentId,SeriesId" +
+                    $"&EnableUserData=false&StartIndex={offset}&Limit={pageSize}",auth,cancel).ConfigureAwait(false);
+                var items=Get(page.RootElement,"Items");
+                if (items.ValueKind != JsonValueKind.Array)
+                    throw new InvalidOperationException("Jellyfin zwrócił niepełną listę mediów.");
+                foreach (var item in items.EnumerateArray())
+                {
+                    if (!Guid.TryParse(Text(Get(item,"Id")),out var id)) continue;
+                    var idText = id.ToString("N");
+                    var type=Text(Get(item,"Type"));
+                    if (type is not ("Movie" or "Video" or "Series" or "Season" or "Episode")) continue;
+                    typed[idText]=type;
+                    if (type is "Series" or "Season") { parents.TryAdd(idText,new TrackAvailability()); continue; }
+                    var flags=new TrackAvailability();
+                    flags.AddItem(item,LibraryAudioHint(id));
+                    if (!flags.SawStreamInfo)
+                    {
+                        // Some Jellyfin installations omit streams from lists.
+                        // The manual refresh may issue a detail request for such an item.
+                        try
+                        {
+                            using var detail=await GetJsonAsync(origin,
+                                $"Items/{id:N}?UserId={Uri.EscapeDataString(userId)}"+
+                                "&Fields=MediaSources,MediaStreams",auth,cancel).ConfigureAwait(false);
+                            flags.AddItem(detail.RootElement,LibraryAudioHint(id));
+                        }
+                        catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+                        { /* No invented tracks for inaccessible/unreadable files. */ }
+                    }
+                    fresh[idText]=new LanguageFlagInfo(idText,flags.Mode("pl"),flags.Mode("en"),!flags.SawStreamInfo);
+                    if (type=="Episode")
+                    {
+                        foreach (var parentKey in new[] {Text(Get(item,"ParentId")),Text(Get(item,"SeasonId")),Text(Get(item,"SeriesId"))})
+                        {
+                            if (!Guid.TryParse(parentKey,out var pid)) continue;
+                            var key=pid.ToString("N");
+                            if (!parents.TryGetValue(key,out var union)) parents[key]=union=new TrackAvailability();
+                            union.Merge(flags);
+                            if (!flags.SawStreamInfo) incomplete.Add(key);
+                        }
+                    }
+                }
+                if (items.GetArrayLength()<pageSize) { reachedEnd=true; break; }
+            }
+            if (!reachedEnd) throw new InvalidOperationException("Zbyt wiele plików w bibliotece — nie zastąpiono bazy niepełnymi danymi.");
+            foreach (var (key,type) in typed)
+            {
+                if (type is not ("Season" or "Series")) continue;
+                if (!parents.TryGetValue(key,out var union)) union=new TrackAvailability();
+                fresh[key]=new LanguageFlagInfo(key,union.Mode("pl"),union.Mode("en"),incomplete.Contains(key));
+            }
+            // One atomic commit only after the COMPLETE scan succeeded.
+            var refreshedUtc=DateTimeOffset.UtcNow;
+            await SaveLanguageIndexUnderGateAsync(cancel,fresh,refreshedUtc).ConfigureAwait(false);
+            LanguageFlagsCache.Clear();
+            foreach (var (id,flags) in fresh) LanguageFlagsCache[id]=flags;
+            _languageFlagsUpdatedUtc=refreshedUtc;
+            return new LanguageFlagIndexStatus(LanguageFlagsCache.Count,_languageFlagsUpdatedUtc);
+        }
+        finally { LanguageFlagsGate.Release(); }
+    }
+
     private sealed class TrackAvailability
     {
-        private bool _plAudio, _plSubs, _enAudio, _enSubs;
+        private bool _plAudio,_plSubs,_enAudio,_enSubs;
         public bool SawStreamInfo { get; private set; }
         public string? Mode(string language)
         {
-            var audio = language == "pl" ? _plAudio : _enAudio;
-            var subs = language == "pl" ? _plSubs : _enSubs;
+            var audio=language=="pl" ? _plAudio : _enAudio;
+            var subs=language=="pl" ? _plSubs : _enSubs;
             return audio && subs ? "both" : audio ? "audio" : subs ? "subtitles" : null;
         }
-        public void AddItem(JsonElement item)
+        public void Merge(TrackAvailability other)
         {
-            AddStreams(Get(item, "MediaStreams"));
-            var sources = Get(item, "MediaSources");
-            if (sources.ValueKind != JsonValueKind.Array) return;
-            foreach (var source in sources.EnumerateArray()) AddStreams(Get(source, "MediaStreams"));
+            _plAudio |= other._plAudio; _enAudio |= other._enAudio;
+            _plSubs |= other._plSubs; _enSubs |= other._enSubs;
+            SawStreamInfo |= other.SawStreamInfo;
         }
-        private void AddStreams(JsonElement streams)
+        public void AddItem(JsonElement item,string libraryHint)
         {
-            if (streams.ValueKind != JsonValueKind.Array) return;
-            SawStreamInfo = true;
+            // Versions may each carry their own streams. Use MediaSources first
+            // and the item-level stream list only when source streams are absent.
+            var sources=Get(item,"MediaSources");
+            var hadSourceStreams=false;
+            if (sources.ValueKind==JsonValueKind.Array)
+                foreach (var source in sources.EnumerateArray())
+                {
+                    var tracks=Get(source,"MediaStreams");
+                    if (tracks.ValueKind!=JsonValueKind.Array) continue;
+                    hadSourceStreams=true;
+                    AddStreams(tracks,libraryHint);
+                }
+            if (!hadSourceStreams) AddStreams(Get(item,"MediaStreams"),libraryHint);
+        }
+        private void AddStreams(JsonElement streams,string libraryHint)
+        {
+            if (streams.ValueKind!=JsonValueKind.Array) return;
+            SawStreamInfo=true;
+            var audioTracks=streams.EnumerateArray().Where(e=>Text(Get(e,"Type"))=="Audio").ToArray();
             foreach (var stream in streams.EnumerateArray())
             {
-                var kind = Text(Get(stream, "Type"));
-                if (kind is not ("Audio" or "Subtitle")) continue;
-                var language = LanguageOf(stream);
-                if (language == "pl")
-                {
-                    if (kind == "Audio") _plAudio = true;
-                    else _plSubs = true;
-                }
-                else if (language == "en")
-                {
-                    if (kind == "Audio") _enAudio = true;
-                    else _enSubs = true;
-                }
+                var type=Text(Get(stream,"Type"));
+                if (type is not ("Audio" or "Subtitle")) continue;
+                var lang=type=="Audio" && audioTracks.Length==1 && libraryHint.Length>0
+                    ? libraryHint : LanguageOf(stream);
+                if (lang=="pl")
+                { if (type=="Audio") _plAudio=true; else _plSubs=true; }
+                else if (lang=="en")
+                { if (type=="Audio") _enAudio=true; else _enSubs=true; }
             }
         }
         private static string LanguageOf(JsonElement stream)
         {
-            // Language is authoritative. Do not reinterpret German/French
-            // tracks whose title happens to mention English or Polish.
-            var specified = Text(Get(stream, "Language"));
+            var specified=Text(Get(stream,"Language"));
             if (!string.IsNullOrWhiteSpace(specified))
             {
-                var resolved = NormalizeLanguage(specified);
-                if (resolved.Length != 0) return resolved;
-                // An explicit non-PL/EN language must not be overridden by a
-                // track title. Only Jellyfin's undefined-language codes may
-                // fall back to the track's displayed name.
+                var resolved=NormalizeLanguage(specified);
+                if (resolved.Length!=0) return resolved;
                 if (specified.Trim().ToLowerInvariant() is not ("und" or "unk" or "unknown"))
                     return string.Empty;
             }
-            foreach (var key in new[] { "DisplayLanguage", "Title", "DisplayTitle" })
+            foreach (var key in new[]{"DisplayLanguage","Title","DisplayTitle"})
             {
-                var parsed = NormalizeLanguage(Text(Get(stream, key)));
-                if (parsed.Length != 0) return parsed;
+                var parsed=NormalizeLanguage(Text(Get(stream,key)));
+                if (parsed.Length!=0) return parsed;
             }
             return string.Empty;
         }
         private static string NormalizeLanguage(string? raw)
         {
-            var value = (raw ?? string.Empty).Trim().ToLowerInvariant().Replace('_', '-');
+            var value=(raw??string.Empty).Trim().ToLowerInvariant().Replace('_','-');
             if (value is "pl" or "pol" or "polish" or "polski" ||
-                value.StartsWith("pl-", StringComparison.Ordinal) ||
-                value.StartsWith("pol-", StringComparison.Ordinal) ||
-                value.StartsWith("polish ", StringComparison.Ordinal) ||
-                value.StartsWith("polski ", StringComparison.Ordinal)) return "pl";
+                value.StartsWith("pl-",StringComparison.Ordinal) ||
+                value.StartsWith("pol-",StringComparison.Ordinal) ||
+                value.StartsWith("polish ",StringComparison.Ordinal) ||
+                value.StartsWith("polski ",StringComparison.Ordinal)) return "pl";
             if (value is "en" or "eng" or "english" or "angielski" ||
-                value.StartsWith("en-", StringComparison.Ordinal) ||
-                value.StartsWith("eng-", StringComparison.Ordinal) ||
-                value.StartsWith("english ", StringComparison.Ordinal) ||
-                value.StartsWith("angielski ", StringComparison.Ordinal)) return "en";
+                value.StartsWith("en-",StringComparison.Ordinal) ||
+                value.StartsWith("eng-",StringComparison.Ordinal) ||
+                value.StartsWith("english ",StringComparison.Ordinal) ||
+                value.StartsWith("angielski ",StringComparison.Ordinal)) return "en";
             return string.Empty;
         }
     }
@@ -1855,6 +2063,7 @@ public sealed record EpisodeInfo(string id, string title, int? season, int? numb
 
 /// <summary>Exactly the fields needed by decorative badges on existing Jellyfin cards.</summary>
 public sealed record LanguageFlagInfo(string id, string? pl, string? en, bool partial);
+public sealed record LanguageFlagIndexStatus(int indexed, DateTimeOffset? updatedUtc);
 
 public sealed class OverlayInfo
 {

@@ -1,33 +1,67 @@
-# MisioFlix — oznaczenia języków na kartach
+# MisioFlix — flagi języków po lewej i trwały indeks audio / napisów
 
-**Źródło:** dostarczona wersja MisioFlixa 0.4.121.0 z wcześniej przygotowaną poprawką układu banera i naprawą testów CI. Ta łatka **nie zmienia wersji ręcznie i nie zawiera folderu `.github`**.
+## Zmiany
 
-## Co robi łatka
+- Ikony flag PL/EN są w **pionowej kolumnie po lewej stronie** plakatu,
+  zaraz pod etykietą rodzaju i roku, bez nakładania się na oznaczenia łapek.
+- Są mniejsze: 16 px na desktopie i 14 px na telefonie.
+- Kółko = audio, romb = napisy, pięciokąt = audio + napisy.
+- Jeśli **pojedyncza wersja pliku ma dokładnie jedną ścieżkę audio**,
+  a jej realna biblioteka Jellyfina ma nazwę kończącą się `PL` albo `ENG`,
+  MisioFlix uznaje ten język za język dźwięku (także przy błędnych metadanych
+  pojedynczej ścieżki). Przy więcej niż jednej ścieżce audio odczytuje rzeczywiste
+  języki z MediaStreams. Napisy zawsze pochodzą z MediaStreams, nie z nazwy biblioteki.
+- Serial i sezon pokazują sumę języków znalezionych w odcinkach. Obecność
+  flagi nie gwarantuje jej dla **każdego** odcinka.
+- Zapis do trwałego indeksu JSON pod katalogiem danych Jellyfin:
+  `misioflix/language-flags-index.json` (na NAS-ie, nie w przeglądarce).
+  Nie są zapisywane ścieżki plików, tokeny ani dane kont.
+- Każda karta jest sprawdzana na uprawnieniach użytkownika. Pozycję nieobecną
+  w indeksie MisioFlix analizuje **raz na pierwszym wyświetleniu**. Zapisane pozycje
+  nie są ponownie skanowane automatycznie.
+- W `Kokpit → Wtyczki → MisioFlix — ustawienia` nowa rozwijana sekcja
+  `Flagi PL / ENG — dźwięk i napisy`, z przyciskiem
+  **Odśwież bazę języków audio i napisów**. Wyłącznie administrator może wymusić
+  skan całej dostępnej biblioteki. Zapis następuje atomowo po pełnym skanie.
+- Bez zmian w MAL, Simkl, NFO, odtwarzaczu, przyciskach i pozostałych karuzelach.
+- **Bez zmian `.github` i mechanizmu numerowania wydań**. Następny wolny numer
+  wybierze istniejący workflow publikacji.
 
-- Polska flaga `PL` i brytyjska flaga `EN` na istniejących kafelkach w karuzelach, bibliotekach, na kartach sezonów i odcinków, również w „Oglądaj dalej”.
-- **Kółko** = audio, **romb** = napisy, **pięciokąt** = audio i napisy.
-- Dla pojedynczego filmu/odcinka sprawdza faktyczne ścieżki audio i napisy z Jellyfina; uwzględnia dostępne, a nie aktualnie wybrane ścieżki.
-- Dla sezonu i serialu łączy informacje z rzeczywistych odcinków: flaga oznacza, że dana ścieżka występuje **w co najmniej jednym odcinku**, niekoniecznie wszystkich.
-- Nie odgaduje języka z nazwy biblioteki, ścieżki folderu, nazwy pliku ani samego typu anime.
-- Jeśli brak informacji o języku, nie wyświetla żadnej flagi; nie zastępuje odtwarzacza i nie zapisuje metadanych.
-- Ładuje dane dla widocznych kart, ma krótkotrwały cache po stronie serwera, weryfikuje dostęp użytkownika.
+## Wgrywanie TYLKO przez stronę GitHub (bez terminala)
 
-## Wgrywanie — tylko przez WWW GitHuba
+1. Rozpakuj **łatkę ZIP** na komputerze. **Nie wgrywaj ZIP-a jako pliku**.
+2. Otwórz repozytorium `kumblip/misioflix` na gałęzi `main`.
+3. Wgraj pliki ze ścieżek w ZIP-ie do **identycznych ścieżek** na GitHubie:
 
-Rozpakuj ZIP. **Nie wgrywaj samego ZIP-a do repozytorium.** W `kumblip/misioflix` na gałęzi `main` przejdź do folderu i wybierz `Add file → Upload files`, a następnie zatwierdź zmianę przez `Commit changes`.
+```
+src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixCatalogService.cs
+src/Jellyfin.Plugin.MisioFlix/Controllers/MisioFlixController.cs
+src/Jellyfin.Plugin.MisioFlix/Web/configPage.html
+src/Jellyfin.Plugin.MisioFlix/Web/language-flags.css
+tests/current/test_language_flags_126.py
+tests/current/test_language_flags_127.py
+tests/current/test_proposal_sets_108.py
+```
 
-1. Folder `src/Jellyfin.Plugin.MisioFlix/Web/`: wgraj `language-flags.js` i `language-flags.css` (nowe pliki), a także zastąp `home.js` (pozwala rozpoznać dokładny odcinek w „Oglądaj dalej”).
-2. Folder `src/Jellyfin.Plugin.MisioFlix/Services/`: zastąp `MisioFlixCatalogService.cs` oraz `ScriptInjection.cs`.
-3. Folder `src/Jellyfin.Plugin.MisioFlix/Controllers/`: zastąp `MisioFlixController.cs`.
-4. Folder `tests/current/`: wgraj `test_language_flags_126.py` (nowy test).
+4. Dla istniejącego pliku otwórz odpowiedni folder, wybierz
+   `Add file → Upload files`, prześlij plik i zatwierdź commit na `main`.
+   Nowy plik `test_language_flags_127.py` trafi do `tests/current`.
+5. Sprawdź w `Actions`, czy testy i build przeszły.
+6. Uruchom *nowe* wydanie przez `Actions → MisioFlix - opublikuj wydanie dla
+   Jellyfin → Run workflow → main → PUBLIKUJ` (nie `Re-run` starego commita).
+7. Zainstaluj nową wersję w Jellyfin, zrestartuj Jellyfin, a potem wejdź
+   w ustawienia MisioFlixa i kliknij **Odśwież bazę języków audio i napisów**.
+   Skan całej biblioteki uruchamia się **tylko na żądanie**. Gdy się powiedzie,
+   nowe kafelki korzystają już z trwałego indeksu.
 
-Plik `INSTRUKCJA.md` jest tylko dla Ciebie — nie trzeba go dodawać do repozytorium. Nie ruszaj `.github`, `meta.json`, `manifest.json` ani plików `.csproj`.
+**Wymaga:** istniejącego kodu poprzedniej łatki flag PL/EN, w tym
+`language-flags.js`, `ScriptInjection.cs` i metody `api/language-flags`.
+W tej poprawce tych niezmienionych plików nie trzeba wgrywać ponownie.
 
-Po wgraniu: `Actions → MisioFlix — build dla Jellyfin 12.4`; sprawdź kompilację .NET i testy. Osobne wydanie publikuje dotychczasowy `release.yml` po uruchomieniu `Run workflow → PUBLIKUJ`. Numer zostanie wybrany automatycznie przez dotychczasowy skrypt.
+## Weryfikacja
 
-## Weryfikacja lokalna
-
-- `node --check language-flags.js` — OK.
-- W dotychczasowym projekcie 534 testy Python i 60 skryptów Node — OK.
-- Przeglądarka Chromium z przykładową odpowiedzią API: oba rodzaje kart otrzymują odpowiednie flagi i kształty.
-- **Uwaga:** w tym środowisku nie ma SDK .NET 10; kompilacja C# i działanie na rzeczywistym serwerze Jellyfin wymagają sprawdzenia w GitHub Actions i wtyczce. Przed finalną publikacją sprawdź nowy build.
+- 539 testów Python oraz 60 skryptów Node: zaliczone w środowisku roboczym.
+- `node --check` nowych skryptów oraz JavaScriptu strony konfiguracji: zaliczone.
+- Podgląd Chromium: ikony na lewej krawędzi, pionowo, z szerokością SVG 16 px.
+- **Nie przeprowadzono** kompilacji .NET 10 ani testu integracyjnego na Twoim NAS.
+  Ostateczna weryfikacja nastąpi w GitHub Actions po wgraniu kodu.

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.MisioFlix.Services;
 using Microsoft.AspNetCore.Authorization;
+using MediaBrowser.Common.Api;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -106,6 +107,27 @@ public sealed class MisioFlixController : ControllerBase
         catch (UnauthorizedAccessException) { return Unauthorized(); }
         catch (HttpRequestException) { return StatusCode(502, new { error = "Błąd odczytu ścieżek mediów" }); }
         catch (InvalidOperationException) { return StatusCode(503, new { error = "Metadane niedostępne" }); }
+    }
+
+    [HttpGet("api/language-flags/index-status")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public async Task<IActionResult> LanguageFlagsIndexStatus(CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        Response.Headers.CacheControl="private, no-store";
+        return Ok(await _catalog.ReadLanguageFlagsIndexStatusAsync(cancel).ConfigureAwait(false));
+    }
+
+    [HttpPost("api/language-flags/refresh")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public async Task<IActionResult> RefreshLanguageFlagsIndex(CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        Response.Headers.CacheControl="private, no-store";
+        try { return Ok(await _catalog.RefreshLanguageFlagsIndexAsync(Request,cancel).ConfigureAwait(false)); }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (InvalidOperationException ex) { return Conflict(new {error=ex.Message}); }
+        catch (HttpRequestException) { return StatusCode(502,new {error="Nie można pobrać listy mediów Jellyfina"}); }
     }
 
     // Original Jellyfin home only. These endpoints return small user-authorized

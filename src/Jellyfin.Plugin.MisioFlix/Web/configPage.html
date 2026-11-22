@@ -66,6 +66,16 @@
   </form>
   </details>
   <hr style="margin:26px 0;border-color:#77526c" />
+  <details class="mf-config-collapse" id="mf-language-index-panel">
+   <summary>Flagi PL / ENG — dźwięk i napisy</summary>
+   <section style="padding:12px 0 20px">
+    <p>Małe flagi na kartach oznaczają rzeczywiste ścieżki audio i napisy. Dla filmu/odcinka z <strong>jedną</strong> ścieżką audio biblioteka kończąca się na PL albo ENG określa język dźwięku. Przy wielu ścieżkach rozstrzygają metadane Jellyfina.</p>
+    <p>MisioFlix przechowuje rozpoznane języki <strong>trwale na serwerze NAS</strong>. Przeglądanie wcześniej zapisanych kart nie uruchamia ponownego skanowania. Nowe karty indeksują się podczas pierwszego wyświetlenia. Zmiany już zapisanych pozycji są sprawdzane dopiero po kliknięciu przycisku poniżej.</p>
+    <button type="button" class="raised emby-button" id="mf-language-index-refresh">Odśwież bazę języków audio i napisów</button>
+    <p id="mf-language-index-status" role="status" aria-live="polite">Odczytuję stan indeksu…</p>
+   </section>
+  </details>
+  <hr style="margin:26px 0;border-color:#77526c" />
   <details class="mf-config-collapse"><summary>Kolekcje Jellyfina z NFO</summary>
   <section id="mf-nfo-collections-panel" aria-labelledby="mf-nfo-collections-heading" style="padding:12px 0 20px">
    <h2 id="mf-nfo-collections-heading">Kolekcje Jellyfina z plików NFO</h2>
@@ -809,8 +819,37 @@
    return {activate};
   })();
 
+  const languageIndex=(()=>{
+   const panel=view.querySelector('#mf-language-index-panel');
+   const button=view.querySelector('#mf-language-index-refresh');
+   const status=view.querySelector('#mf-language-index-status');
+   const api=path=>typeof ApiClient?.getUrl==='function'?ApiClient.getUrl(path):'/'+path;
+   function auth(){
+    const token=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
+    if(!token)throw Error('Brak autoryzacji Jellyfin.');
+    return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-language-index", Version="1", Token="'+String(token).replace(/["\r\n]/g,'')+'"'};
+   }
+   const format=data=>'Zapisanych pozycji: '+Number(data?.indexed??data?.Indexed??0)+
+     '. Ostatni zapis: '+(data?.updatedUtc??data?.UpdatedUtc?new Date(data.updatedUtc??data.UpdatedUtc).toLocaleString('pl-PL'):'brak')+'.';
+   async function query(method,path){
+    const response=await fetch(api('MisioFlix/api/language-flags/'+path),{method,headers:auth(),cache:'no-store'});
+    if(!response.ok){let reason='HTTP '+response.status;try{const body=await response.json();reason=body?.error||body?.message||reason;}catch(_){}throw Error(reason);}
+    return await response.json();
+   }
+   async function activate(){if(!panel)return;try{status.textContent=format(await query('GET','index-status'));}catch(e){status.textContent='Nie można odczytać bazy języków: '+e.message;}}
+   button?.addEventListener('click',async()=>{
+    if(button.disabled)return;
+    button.disabled=true;status.textContent='Skanuję ścieżki audio i napisy w bibliotekach Jellyfina. Poprzedni indeks pozostaje aktywny do zakończenia skanowania…';
+    try{const data=await query('POST','refresh');status.textContent='Odświeżono. '+format(data)+' Odśwież widok wtyczki, aby zobaczyć nowe flagi.';}
+    catch(e){status.textContent='Odświeżanie nie powiodło się: '+e.message+'. Zachowano poprzedni indeks.';}
+    finally{button.disabled=false;}
+   });
+   return {activate};
+  })();
+
   view.addEventListener('pageshow',async()=>{
    updates.activate();
+   void languageIndex.activate();
    void recommendations.activate();
    void nfoCollections.activate();
    try{const config=await ApiClient.getPluginConfiguration(pluginId);

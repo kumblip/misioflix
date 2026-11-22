@@ -73,10 +73,10 @@ class ProposalSets108(unittest.TestCase):
         document = _ConfigCollapseParser()
         document.feed(ADMIN)
         document.close()
-        self.assertEqual(len(document.groups), 6)
+        self.assertEqual(len(document.groups), 7)
         self.assertTrue(all(group['direct_summaries'] == 1 for group in document.groups))
         self.assertTrue(all(not group['open'] for group in document.groups))
-        names = ['mf-config-form', 'mf-simkl-config-form', 'mf-nfo-collections-panel',
+        names = ['mf-config-form', 'mf-simkl-config-form', 'mf-language-index-refresh', 'mf-nfo-collections-panel',
                  'mf-native-cover-panel', 'mf-recommendation-config', 'mf-updates-panel']
         for index, name in enumerate(names):
             self.assertEqual(document.parent_group_by_id.get(name), index, name)

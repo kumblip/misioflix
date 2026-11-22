@@ -22,8 +22,8 @@ class LanguageFlags126(unittest.TestCase):
             self.assertIn(mode,self.js)
         for stream_type in ['"Audio"','"Subtitle"']:
             self.assertIn(stream_type,self.service)
-        self.assertIn('Get(item, "MediaStreams")',self.service)
-        self.assertIn('Get(source, "MediaStreams")',self.service)
+        self.assertIn('Get(item,"MediaStreams")',self.service)
+        self.assertIn('Get(source,"MediaStreams")',self.service)
         self.assertIn('return audio && subs ? "both"',self.service)
         self.assertIn('Source',self.service)
         self.assertNotIn('AnimeRoot)',self.service.split('public async Task<List<LanguageFlagInfo>>')[1].split('private sealed class TrackAvailability')[0])
@@ -34,8 +34,8 @@ class LanguageFlags126(unittest.TestCase):
         self.assertIn('requestedSet.Contains(id)',self.service)
         self.assertIn('ParentId={id:N}&Recursive=true&IncludeItemTypes=Episode',self.service)
         self.assertIn('LanguageFlagsCache',self.service)
-        self.assertIn('userId + ":"',self.service)
-        self.assertIn('maxEpisodes = 3000',self.service)
+        self.assertIn('verified.RootElement',self.service) # permission check precedes global cached flags
+        self.assertIn('maxEpisodes = 30000',self.service)
 
     def test_independent_embedded_assets(self):
         for filename in ('language-flags.js','language-flags.css'):

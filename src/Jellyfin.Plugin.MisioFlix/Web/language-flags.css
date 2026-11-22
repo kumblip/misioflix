@@ -1,28 +1,31 @@
-/* Independent language availability ornaments. Never move poster or native controls. */
+/* MisioFlix language ornaments — compact vertical stack below type/year, LEFT. */
 html.misioflix-skin :is(.mf-home-poster,.cardScalable,.MuiCardMedia-root) > .mf-language-flags {
-  position:absolute;right:6px;bottom:clamp(46px,23%,80px);
-  z-index:7;display:flex;gap:3px;align-items:center;
-  background:rgba(25,13,30,.84);border:1px solid rgba(255,235,247,.38);
-  padding:3px 4px;border-radius:24px;
-  box-shadow:0 2px 10px rgba(0,0,0,.45);
-  pointer-events:none;line-height:0;
+  position:absolute!important;left:6px!important;right:auto!important;top:61px!important;bottom:auto!important;
+  z-index:7;display:flex;flex-direction:column;gap:2px;align-items:flex-start;
+  width:max-content;max-width:28px;padding:0;background:transparent;border:0;
+  box-shadow:none;pointer-events:none;line-height:0;
 }
-html.misioflix-skin .mf-language-flags-item {display:inline-flex;align-items:center;justify-content:center}
-html.misioflix-skin svg.mf-language-flag {display:block;width:21px;height:21px;filter:drop-shadow(0 1px 1px #0008)}
-@media (max-width:600px) {
+html.misioflix-skin .mf-language-flags-item {
+  display:inline-flex;align-items:center;justify-content:center;
+  background:rgba(23,13,31,.83);border:1px solid rgba(255,235,247,.45);
+  border-radius:5px;padding:2px;box-shadow:0 1px 4px #0009;
+}
+html.misioflix-skin svg.mf-language-flag {
+  display:block;width:16px;height:16px;filter:drop-shadow(0 1px 1px #0007);
+}
+@media(max-width:600px) {
   html.misioflix-skin :is(.mf-home-poster,.cardScalable,.MuiCardMedia-root) > .mf-language-flags {
-    right:4px;bottom:clamp(42px,24%,62px);gap:2px;padding:2px 3px;
+    top:56px!important;left:4px!important;right:auto!important;bottom:auto!important;gap:2px;
   }
-  html.misioflix-skin svg.mf-language-flag {width:17px;height:17px}
+  html.misioflix-skin .mf-language-flags-item {padding:1px;border-radius:4px}
+  html.misioflix-skin svg.mf-language-flag {width:14px;height:14px}
 }
-/* Compact native season / episode cards must keep original type, year, and paw stack. */
+/* Respect native overlays, genre chips and Jellyfin card input controls. */
 html.misioflix-skin .card[data-mf-card="1"] .mf-language-flags {max-width:calc(100% - 8px)}
-
-/* Oglądaj dalej: badges refer to the exact resume episode, not the series root. */
+/* 'Continue watching' has a horizontal cover, not a portrait poster. */
 html.misioflix-skin .mf-home-resume-card > .mf-language-flags {
-  position:absolute;left:14px;right:auto;bottom:12px;z-index:2;
-  display:flex;gap:1px;background:rgba(25,13,30,.88);
-  border:1px solid rgba(255,235,247,.35);border-radius:20px;
-  padding:1px 2px;pointer-events:none;line-height:0;
+  position:absolute!important;left:6px!important;right:auto!important;top:8px!important;bottom:auto!important;
+  z-index:2;display:flex;flex-direction:column;gap:2px;padding:0;background:transparent;
+  border:0;box-shadow:none;pointer-events:none;line-height:0;
 }
-html.misioflix-skin .mf-home-resume-card svg.mf-language-flag {width:16px;height:16px}
+html.misioflix-skin .mf-home-resume-card svg.mf-language-flag {width:14px;height:14px}
