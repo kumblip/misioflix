@@ -2,6 +2,7 @@
 import json
 import re
 import unittest
+from version_contract import CURRENT_RELEASE
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 HOME=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/home.js').read_text(encoding='utf8')
@@ -41,7 +42,7 @@ class Carousel119(unittest.TestCase):
         self.assertNotIn('display:none',rule)
         self.assertNotIn('!important',rule)
     def test_version_and_integrations_unchanged(self):
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'], '0.4.121.0')
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'], CURRENT_RELEASE)
         self.assertIn('data-mf-watch',CSS)
         self.assertIn('data-mf-simkl-watch',CSS)
         self.assertIn('function makeCard(item)',HOME)
