@@ -1,0 +1,34 @@
+MISIOFLIX — NAPRAWA CI PO AUTOMATYCZNYM WYZNACZENIU 0.4.125.0
+=====================================================================
+
+Błąd z logu GitHub Actions: 528/530 testów Python zaliczonych.
+Dwa starsze testy wymagały DOSŁOWNIE wersji 0.4.121.0,
+podczas gdy release.yml zgodnie z planem nadał 0.4.125.0.
+
+ZMIENIONE PLIKI:
+  tests/current/test_carousel_paging_119.py
+  tests/current/test_desktop_genres_121.py
+
+W obu testach oczekiwana wersja jest teraz pobierana przez
+version_contract.CURRENT_RELEASE z rzeczywistego AssemblyVersion w csproj.
+Kontrola porównuje ją z meta.json, nie zakłada stałego numeru.
+Pozostałe asercje pozostały bez zmian.
+
+WGRYWANIE TYLKO PRZEZ GITHUB.COM:
+  1. Rozpakuj ZIP na komputerze.
+  2. Otwórz repo kumblip/misioflix, gałąź main.
+  3. Wejdź do katalogu tests/current.
+  4. Add file > Upload files, wybierz te DWA pliki .py.
+  5. Zatwierdź zmianę do main.
+  6. Poczekaj na zielone testy w Actions.
+  7. Uruchom workflow publikacji (Run workflow; PUBLIKUJ),
+     o ile nie został już poprawnie opublikowany.
+
+UWAGA: Nie wysyłaj ZIP-a do repozytorium. Rozpakuj go.
+Nie trzeba zmieniać plików Web ani workflow na potrzeby samej korekty testów.
+
+WERYFIKACJA:
+  - Wszystkie 530 testów Python: PASS (źródło 0.4.121.0)
+  - Wszystkie 530 testów Python: PASS (symulowana wersja 0.4.125.0)
+  - 60 skryptów Node: PASS (źródło 0.4.121.0)
+  - Nie wykonywano kompilacji .NET ani publikacji na GitHubie.

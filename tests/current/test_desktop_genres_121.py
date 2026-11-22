@@ -3,6 +3,7 @@ import json
 import re
 import unittest
 from pathlib import Path
+from version_contract import CURRENT_RELEASE
 ROOT=Path(__file__).resolve().parents[2]
 CSS=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/theme.css').read_text(encoding='utf-8')
 class DesktopGenres121(unittest.TestCase):
@@ -26,5 +27,5 @@ class DesktopGenres121(unittest.TestCase):
     def test_mobile_unchanged_and_release_version(self):
         self.assertNotIn('max-width',self.block)
         self.assertIn('html.misioflix-skin .mf-native-genre{font-size:9px;padding:2px 5px}',CSS)
-        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'],'0.4.121.0')
+        self.assertEqual(json.loads((ROOT/'meta.json').read_text(encoding='utf8'))['version'], CURRENT_RELEASE)
 if __name__=='__main__':unittest.main()
