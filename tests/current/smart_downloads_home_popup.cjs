@@ -1,82 +1,19 @@
 'use strict';
-const assert=require('node:assert/strict');
-const fs=require('node:fs');
-const vm=require('node:vm');
-const home=fs.readFileSync('src/Jellyfin.Plugin.MisioFlix/Web/home.js','utf8');
-const css=fs.readFileSync('src/Jellyfin.Plugin.MisioFlix/Web/theme.css','utf8');
-assert(home.includes("'mf-home-folder-button mf-home-smart-downloads-button'"));
-assert(css.includes('.mf-home-smart-downloads-button{order:4}'));
-assert(css.includes('/* On Android the logo is the FIRST inline tile'));
-assert(css.includes('.mf-home-hero .mf-home-intro{display:none}'));
-assert(css.includes('.mf-home-hero .mf-home-folder-buttons::before{'));
-assert(css.includes("background:url('/MisioFlix/assets/logo.png')"));
-assert(!css.includes('.mf-home-hero{flex-direction:column;align-items:stretch;gap:8px;padding:10px}'));
-class E{
-  constructor(tag,cls,txt){this.tagName=tag;this.className=cls||'';this.textContent=txt||'';
-    this.children=[];this.events={};this.isConnected=true;this.disabled=false;this.checked=false;this.value='';}
-  setAttribute(){}
-  addEventListener(name,fn){this.events[name]=fn;}
-  appendChild(child){this.children.push(child);child.parent=this;return child;}
-  remove(){this.isConnected=false;}
-  focus(){doc.activeElement=this;}
-  querySelector(selector){if(selector==='button')return walk(this).find(n=>n.tagName==='button');return null;}
-  querySelectorAll(selector){return walk(this).filter(n=>{
-    if(n.disabled)return false;
-    if(selector==='button:not(:disabled),input:not(:disabled)')return n.tagName==='button'||n.tagName==='input';
-    return false;
-  });}
+// Regression test: MisioFlix Home no longer renders Smart Downloads UI.
+// MisioCache remains independent; these tests must not access or modify it.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const home = fs.readFileSync('src/Jellyfin.Plugin.MisioFlix/Web/home.js', 'utf8');
+const css = fs.readFileSync('src/Jellyfin.Plugin.MisioFlix/Web/theme.css', 'utf8');
+
+for (const [name, content] of [['home.js', home], ['theme.css', css]]) {
+  assert(!/Smart Downloads|smartDownloads|mf-smart-downloads|mf-home-smart-downloads-button|MisioCacheSmartDownloads/i.test(content),
+    `${name}: unexpected Smart Downloads UI remnants`);
 }
-function walk(root){return root.children.flatMap(child=>[child,...walk(child)]);}
-const doc={body:new E('body'),activeElement:null,events:{},addEventListener(n,f){this.events[n]=f;},removeEventListener(n,f){if(this.events[n]===f)delete this.events[n];}};
-const values=new Map();
-const userA='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-let currentUser=userA;
-let native=true;
-const shell={AppHost:{supports:scope=>native&&scope==='filedownload',deviceId:()=> 'phone-one'},downloadFiles(){},openDownloadManager(){}};
-const api={getCurrentUser:async()=>({Id:currentUser,Name:currentUser===userA?'A':'B'}),serverId:()=> 'server-one'};
-const bridge={
- async getSettings(){return {...(values.get(currentUser)||{enabled:false,count:2,budgetGB:5})};},
- async saveSettings(next){values.set(currentUser,{...next});return this.getSettings();}
-};
-const ctx={window:{ApiClient:api,NativeShell:shell,MisioCacheSmartDownloads:bridge,dispatchEvent:()=>{}},document:doc,
-  localStorage:{getItem:key=>values.get(key)||null,setItem:(key,val)=>values.set(key,val)},
-  location:{origin:'http://localhost'},Event:function Evt(){},console,
-  own:(tag,cls,txt)=>new E(tag,cls,txt),
-  append:(node,...children)=>{children.forEach(c=>node.appendChild(c));return node;},
-  validId:id=>/^[a-z0-9-]{36}$/i.test(id),
-  closeSearch:()=>{}};
-const start=home.indexOf('  // Smart Downloads v1:');
-const end=home.indexOf('  function createCollectionsPage(){',start);
-assert(start>0&&end>start);
-const script=home.slice(start,end)+ '\n' + 'globalThis.test={open:openSmartDownloadsDialog,close:closeSmartDownloadsDialog,get:()=>smartDownloadsDialog};';
-vm.runInNewContext(script,ctx);
-const test=ctx.test;
-const flush=()=>new Promise(resolve=>setImmediate(resolve));
-(async()=>{
-  const button=new E('button');test.open(button);await flush();
-  const modal=test.get();assert(modal,'popup opens');
-  const inputs=walk(modal.overlay).filter(el=>el.tagName==='input');
-  const [enabled,count,gb]=inputs;
-  assert.equal(enabled.checked,false,'off by default');
-  assert.equal(count.value,'2');assert.equal(gb.value,'5');
-  enabled.checked=true;enabled.events.change();count.value='12';gb.value='7,5';
-  const save=walk(modal.overlay).find(e=>e.textContent==='Zapisz ustawienia');
-  await save.events.click();
-  assert.deepEqual(values.get(userA),{enabled:true,count:12,budgetGB:7.5});
-  count.value='2.5';await save.events.click();
-  assert.equal(values.get(userA).count,12,'invalid value rejected');
-  enabled.checked=false;enabled.events.change();await save.events.click();
-  assert.equal(values.get(userA).enabled,false,'user can opt out');
-  test.close();assert.equal(test.get(),null);
-  currentUser='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-  test.open(button);await flush();
-  const inputsB=walk(test.get().overlay).filter(el=>el.tagName==='input');
-  assert.equal(inputsB[0].checked,false,'second user defaults off');
-  test.close();
-  native=false;currentUser=userA;
-  test.open(button);await flush();
-  const inputsNoNative=walk(test.get().overlay).filter(el=>el.tagName==='input');
-  assert.equal(inputsNoNative[0].disabled,true,'cannot enable on non-Android WebView');
-  test.close();
-  console.log('PASS Smart Downloads Home button, popup, user/device isolation, validation, opt-out and Android support');
-})().catch(e=>{console.error(e);process.exitCode=1;});
+assert(home.includes("'Wyszukiwarka anime'"));
+assert(home.includes("'Wyszukiwarka filmów i seriali'"));
+assert(css.includes('.mf-home-mal-button{order:2}'));
+assert(css.includes('.mf-home-simkl-button{order:3}'));
+assert(css.includes('.mf-home-folder-buttons::before{'));
+assert(css.includes("background:url('/MisioFlix/assets/logo.png')"));
+console.log('PASS no Smart Downloads button/popup; MAL, Simkl, searches, mobile logo retained');
