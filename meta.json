@@ -5,7 +5,7 @@
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.121.0",
+  "version": "0.4.122.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,
