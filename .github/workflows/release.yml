@@ -34,7 +34,12 @@ jobs:
       - name: Instalacja parsera CSS do testow
         run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund postcss@8
 
-      - name: Ustal wersję z meta.json (bez zmian w workflow)
+      - name: Automatycznie wylicz nową wersję z istniejących tagów
+        run: |
+          git fetch --force --tags origin
+          python3 tools/next_release.py
+
+      - name: Zsynchronizuj wersję metadanych i DLL
         run: python3 tools/sync_version.py
 
       - name: Testy aktywnego zestawu (bez historycznych asercji wersji)
@@ -85,15 +90,15 @@ jobs:
             --title "MisioFlix $VERSION — Jellyfin 12.4" \
             --notes "MisioFlix: natywna strona Jellyfin z wlasnymi karuzelami bibliotek, pelnymi seriami anime i prywatnym Ogladaj dalej. Restart Jellyfin wymagany."
 
-      - name: Opublikuj manifest w gałęzi main
+      - name: Zapisz numer wydania i manifest w gałęzi main
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add manifest.json
+          git add manifest.json meta.json src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj
           if git diff --cached --quiet; then
-            echo "Manifest bez zmian."
+            echo "Manifest i metadane wersji bez zmian."
           else
-            git commit -m "chore: manifest Jellyfin dla ${VERSION} [skip ci]"
+            git commit -m "chore: automatyczna wersja i manifest Jellyfin ${VERSION} [skip ci]"
             # Wypchnięcie wyłącznie fast-forward; przy zmianach równoległych
             # nie wykonujemy force-push (można uruchomić workflow ponownie po korekcie).
             git push origin HEAD:main
