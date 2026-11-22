@@ -17,11 +17,17 @@ class CompactBannerMobile113(unittest.TestCase):
         self.assertIn('.mf-home-search-launch{order:1}',CSS)
     def test_logo_and_shortcuts_same_container_without_copy(self):
         fn=HOME.split('  function hero(shortcuts){',1)[1].split('  function resumeShelf(){',1)[0]
-        self.assertIn('intro.appendChild(logo)',fn)
-        self.assertIn('append(hero,intro,shortcuts)',fn)
+        self.assertIn('hero.appendChild(shortcuts)',fn)
+        section=HOME.split('  function discoverySection(){',1)[1].split('  function coalesceRenamedLibraryViews(',1)[0]
+        self.assertIn('folderButtons.appendChild(logo)',section)
+        self.assertIn('return {section,folderButtons,logo}',section)
+        paint=HOME.split('  function paintFolderButtons(){',1)[1].split('  function createCollectionsPage(){',1)[0]
+        self.assertIn('box.replaceChildren(discoveryRefs.logo)',paint)
         self.assertNotIn('Twój świat filmów i anime',fn)
         self.assertNotIn('Własna biblioteka. Oryginalny odtwarzacz Jellyfin.',fn)
-        self.assertIn('.mf-home-hero{\n  display:flex;align-items:center;flex-direction:row',CSS)
+        self.assertIn('html.misioflix-skin .mf-home-hero .mf-home-folder-buttons > .mf-home-logo{',CSS)
+        self.assertIn('display:flex;flex-wrap:wrap;justify-content:flex-start;',CSS)
+        self.assertIn('html.misioflix-skin .mf-home-hero{\n  display:block;min-height:0;',CSS)
         self.assertIn('padding:6px 14px;min-height:36px;',CSS)
     def test_mobile_shelf_posters_same_three_across_as_anime_search(self):
         block=CSS.split('/* v0.4.113: same compact three-across density',1)[1].split('/* v0.4.94:',1)[0]

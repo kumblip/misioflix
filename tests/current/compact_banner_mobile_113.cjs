@@ -20,21 +20,24 @@ const demo=[
   {name:'Anime ENG',id:'4',category:'anime',href:'#animeeng'}
 ];
 const box=own('div','mf-home-folder-buttons');
-const ctx={own,set,append,discoveryRefs:{folderButtons:box},librariesCache:demo,
+const logo=own('img','mf-home-logo');
+const ctx={own,set,append,discoveryRefs:{folderButtons:box,logo},librariesCache:demo,
     COLLECTIONS_URL:'#/home?mfCollections=1',safeLibraryHref:href=>href,openSearch:()=>{}};
 function pick(start,end){const a=js.indexOf(start);const b=js.indexOf(end,a+1);assert(a>=0&&b>a);return js.slice(a,b);}
 vm.runInNewContext(pick('  function paintFolderButtons(){','  function createCollectionsPage(){')+'\npaintFolderButtons();',ctx);
 assert.deepEqual(box.children.map(x=>x.textContent),[
-  'Anime ENG','AnimePL','Filmy PL','Kolekcje','Seriale PL',
+  '', 'Anime ENG','AnimePL','Filmy PL','Kolekcje','Seriale PL',
   'Wyszukiwarka anime','Wyszukiwarka filmów i seriali']);
+const nav=own('nav','mf-home-discovery');nav.appendChild(box);
 const hero=vm.runInNewContext(pick('  function hero(shortcuts){','  function resumeShelf(){')+'\nhero(discoveryRefs.section);',{
-  own,append,discoveryRefs:{section:own('nav','mf-home-discovery')}
+  own,discoveryRefs:{section:nav}
 });
 assert.equal(hero.className,'mf-home-hero');
-assert.equal(hero.children.length,2);
-assert.equal(hero.children[0].children.length,1);
-assert.equal(hero.children[0].children[0].className,'mf-home-logo');
-assert.equal(hero.children[1].className,'mf-home-discovery');
+assert.equal(hero.children.length,1);
+assert.equal(hero.children[0].className,'mf-home-discovery');
+assert.equal(hero.children[0].children[0].children[0].className,'mf-home-logo');
+assert(css.includes('.mf-home-hero{\n  display:block;min-height:0;'));
+assert(css.includes('display:flex;flex-wrap:wrap;justify-content:flex-start;'));
 assert(css.includes('.mf-home-search-launch{order:1}'));
 assert(css.includes('.mf-home-mal-button{order:2}'));
 assert(css.includes('.mf-home-simkl-button{order:3}'));

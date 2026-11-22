@@ -2025,6 +2025,36 @@ html.misioflix-skin .mf-home-hero .mf-home-simkl-button{order:3}
   }
 }
 
+/* PATCH 0.4.121+: the logo is the first member of the SAME wrapping
+   shortcut row.  Earlier versions used a separate, full-height flex column,
+   which stranded empty space beneath the logo on phones.  Other controls,
+   their order, dimensions, colours and actions remain unchanged. */
+html.misioflix-skin .mf-home-hero{
+  display:block;min-height:0;
+}
+html.misioflix-skin .mf-home-hero .mf-home-discovery{
+  display:block;width:100%;min-width:0;
+}
+html.misioflix-skin .mf-home-hero .mf-home-folder-buttons{
+  display:flex;flex-wrap:wrap;justify-content:flex-start;
+  align-items:center;align-content:center;gap:8px;width:100%;min-width:0;
+}
+html.misioflix-skin .mf-home-hero .mf-home-folder-buttons > .mf-home-logo{
+  flex:0 0 auto;align-self:center;max-width:84px;max-height:54px;
+  width:auto;height:auto;object-fit:contain;margin-right:10px;
+  order:0;
+}
+@media(max-width:920px){
+  html.misioflix-skin .mf-home-hero{display:block;padding:11px 13px}
+}
+@media(max-width:560px){
+  html.misioflix-skin .mf-home-hero{display:block;padding:10px}
+  html.misioflix-skin .mf-home-hero .mf-home-folder-buttons{gap:6px}
+  html.misioflix-skin .mf-home-hero .mf-home-folder-buttons > .mf-home-logo{
+    max-width:51px;max-height:42px;margin-right:3px;
+  }
+}
+
 /* v0.4.113: same compact three-across density as the Anime search on mobile.
    Limit scope to HOME library and proposal carousels: search modal, Collections
    grid, native Jellyfin cards and desktop remain unchanged. The info modal

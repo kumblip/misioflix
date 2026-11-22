@@ -1707,9 +1707,14 @@
     const section=own('nav','mf-home-discovery');
     section.setAttribute('aria-label','Biblioteki i wyszukiwarki MisioFlix');
     const folderButtons=own('div','mf-home-folder-buttons');
+    // The logo is the FIRST item in the SAME wrapping row as library buttons.
+    // It occupies only its own flex row, never a permanent left-side column.
+    const logo=own('img','mf-home-logo');
+    logo.src='/MisioFlix/assets/logo.png';logo.alt='MisioFlix';
+    folderButtons.appendChild(logo);
     folderButtons.appendChild(own('p','mf-home-search-helper','Ładowanie bibliotek…'));
     section.appendChild(folderButtons);
-    return {section,folderButtons};
+    return {section,folderButtons,logo};
   }
   // Jellyfin's /Users/{userId}/Views can temporarily return both labels of a
   // renamed view (e.g. AnimeENG and Anime ENG). Home buttons, search library
@@ -1759,7 +1764,8 @@
   function paintFolderButtons(){
     const box=discoveryRefs?.folderButtons;
     if(!box)return;
-    box.replaceChildren();
+    // Repainting shortcuts must NEVER remove the logo from the wrapping row.
+    box.replaceChildren(discoveryRefs.logo);
     if(!librariesCache.length){
       box.appendChild(own('p','mf-home-search-helper','Brak dostępnych bibliotek.'));
     }
@@ -1873,12 +1879,9 @@
   }
   function hero(shortcuts){
     const hero=own('section','mf-home-hero');
-    const intro=own('div','mf-home-intro');
-    const logo=own('img','mf-home-logo');logo.src='/MisioFlix/assets/logo.png';logo.alt='MisioFlix';
-    // v0.4.113: one compact banner: logo + navigation, without redundant copy.
-    intro.appendChild(logo);
-    // The same hero contains the logo and library/search/account shortcuts.
-    append(hero,intro,shortcuts);
+    // Logo, libraries, both searches and MAL/Simkl now share ONE flex-wrap.
+    // No separate logo column: after the first row, buttons use full width.
+    hero.appendChild(shortcuts);
     return hero;
   }
   function resumeShelf(){

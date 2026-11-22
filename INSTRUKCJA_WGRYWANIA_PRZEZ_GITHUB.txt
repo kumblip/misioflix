@@ -1,0 +1,51 @@
+MISIOFLIX — LATKA DO DOBREJ WERSJI 0.4.121.0
+=============================================
+
+ZMIANA W BANERZE
+Logo jest pierwszym elementem tej samej siatki flex-wrap, co przyciski
+bibliotek, wyszukiwarek, MAL i Simkl. Pierwszy rzad korzysta z powierzchni
+po prawej stronie logo, a kolejne zaczynaja sie od LEWEJ KRAWEDZI banera.
+Nie ma stalej pustej kolumny ponizej logo.
+
+Nie zmieniano: nazw i wygladu przyciskow, kolejnosci bibliotek,
+wyszukiwania, MAL, Simkl, karuzel, danych, odtwarzania i kolekcji.
+
+Dodatkowo: release.yml wybiera AUTOMATYCZNIE kolejny wolny numer po
+istniejacych tagach i manifest.json, synchronizuje wersje projektu,
+a po udanym buildzie zapisuje meta.json, csproj i manifest do main
+oraz tworzy GitHub Release dla commita z ta wersja.
+Nie nadpisuje istniejacych wydań 0.4.121-0.4.124.
+
+WGRYWANIE WYŁĄCZNIE PRZEZ GITHUB.COM (BEZ GIT/TERMINALA)
+------------------------------------------------------
+UWAGA: Nie wrzucaj SAMEGO pliku ZIP do repozytorium. GitHub nie wypakuje
+ZIP-a automatycznie i nie uruchomi w ten sposob nowego kodu.
+
+1. Rozpakuj TEN ZIP na komputerze.
+2. Wejdz na https://github.com/kumblip/misioflix i wybierz galaz main.
+3. Przejdz do katalogu src/Jellyfin.Plugin.MisioFlix/Web/.
+   Uzyj Add file -> Upload files i wgraj 2 pliki z latki:
+     home.js, theme.css
+   Potwierdz commit do main (zastapienie plikow).
+4. Przejdz do katalogu .github/workflows/ i wgraj release.yml.
+5. Przejdz do katalogu tools/ i wgraj next_release_version.py.
+6. Przejdz do katalogu tests/current/ i wgraj 4 pliki testowe:
+     compact_banner_mobile_113.cjs, test_compact_banner_mobile_113.py,
+     test_layout_0418.py, test_next_release_version.py
+7. Wejdz do Actions -> MisioFlix — build dla Jellyfin 12.4.
+   Upewnij sie, ze build po commitach zakonczyl sie Success.
+8. Actions -> MisioFlix - opublikuj wydanie dla Jellyfin -> Run workflow,
+   galaz main, pole zatwierdzenia: PUBLIKUJ. Workflow wyznaczy nowa wersje
+   samodzielnie, wedlug tagow GitHub i wersji w manifeście.
+9. Po udanym wydaniu i zainstalowaniu w Jellyfin wymagany jest restart
+   serwera. Na telefonie odswiez/wymus zamkniecie aplikacji, jesli UI
+   przez cache pokazuje poprzednia wersje.
+
+WSKAZOWKA: Jezeli strona nie pozwala wybrac ukrytego folderu .github,
+wejdz bezposrednio przez GitHub w .github/workflows i wgraj tam release.yml.
+
+KONTROLA
+- 530 testow Python i 60 testow Node: PASS.
+- Rzeczywisty podglad CSS w Chromium: 390, 432, 768, 1200 px: PASS.
+- Kompilacja .NET: wymaga Actions na GitHubie (lokalnie brak SDK).
+- Odniesienie do dobrego kodu: fc5ce8013d6f91ac5afc49c98c4b302a91d716a8.

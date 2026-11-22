@@ -18,7 +18,7 @@ class Layout0418(unittest.TestCase):
         self.assertIn("classList.toggle('misioflix-skin',!playerIsVisible())",CLIENT)
     def test_shortcuts_in_hero_not_below(self):
         self.assertIn('homeRoot.appendChild(hero(discoveryRefs.section))',HOME)
-        self.assertIn('append(hero,intro,shortcuts)',HOME)
+        self.assertIn('hero.appendChild(shortcuts)',HOME)
         self.assertNotIn('homeRoot.appendChild(discoveryRefs.section)',HOME)
         self.assertIn('.mf-home-hero .mf-home-discovery',CSS)
     def test_resume_full_width_and_scrolling(self):
