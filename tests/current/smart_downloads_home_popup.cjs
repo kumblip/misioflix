@@ -6,8 +6,11 @@ const home=fs.readFileSync('src/Jellyfin.Plugin.MisioFlix/Web/home.js','utf8');
 const css=fs.readFileSync('src/Jellyfin.Plugin.MisioFlix/Web/theme.css','utf8');
 assert(home.includes("'mf-home-folder-button mf-home-smart-downloads-button'"));
 assert(css.includes('.mf-home-smart-downloads-button{order:4}'));
-assert(css.includes('@media(max-width:680px){\n  /* The logo occupies a short ROW'));
-assert(css.includes('.mf-home-hero{flex-direction:column;align-items:stretch'));
+assert(css.includes('/* On Android the logo is the FIRST inline tile'));
+assert(css.includes('.mf-home-hero .mf-home-intro{display:none}'));
+assert(css.includes('.mf-home-hero .mf-home-folder-buttons::before{'));
+assert(css.includes("background:url('/MisioFlix/assets/logo.png')"));
+assert(!css.includes('.mf-home-hero{flex-direction:column;align-items:stretch;gap:8px;padding:10px}'));
 class E{
   constructor(tag,cls,txt){this.tagName=tag;this.className=cls||'';this.textContent=txt||'';
     this.children=[];this.events={};this.isConnected=true;this.disabled=false;this.checked=false;this.value='';}

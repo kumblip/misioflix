@@ -2016,13 +2016,24 @@ html.misioflix-skin .mf-home-hero .mf-home-smart-downloads-button{order:4}
   }
 }
 @media(max-width:680px){
-  /* The logo occupies a short ROW, never a left-hand column that steals the
-     width of the library/search/account shortcuts on Android phones. */
-  html.misioflix-skin .mf-home-hero{flex-direction:column;align-items:stretch;gap:8px;padding:10px}
-  html.misioflix-skin .mf-home-hero .mf-home-intro{width:100%;justify-content:flex-start;align-items:flex-start}
-  html.misioflix-skin .mf-home-hero .mf-home-discovery{width:100%;flex:0 0 auto}
-  html.misioflix-skin .mf-home-hero .mf-home-folder-buttons{width:100%;gap:6px}
-  html.misioflix-skin .mf-home-hero .mf-home-logo{max-width:58px;max-height:42px}
+  /* On Android the logo is the FIRST inline tile of the very same wrapping
+     shortcuts container.  Never reserve a full row/column for the logo.
+     Use a decorative background sourced from the unchanged plugin asset:
+     desktop retains the original accessible <img> and its layout. */
+  html.misioflix-skin .mf-home-hero{
+    flex-direction:row;align-items:center;gap:0;padding:10px;
+    min-height:0;
+  }
+  html.misioflix-skin .mf-home-hero .mf-home-intro{display:none}
+  html.misioflix-skin .mf-home-hero .mf-home-discovery{width:100%;flex:1 1 100%;min-width:0}
+  html.misioflix-skin .mf-home-hero .mf-home-folder-buttons{
+    display:flex;width:100%;align-items:center;align-content:flex-start;
+    flex-wrap:wrap;gap:6px;
+  }
+  html.misioflix-skin .mf-home-hero .mf-home-folder-buttons::before{
+    content:"";display:block;order:-1;flex:0 0 58px;width:58px;height:42px;
+    background:url('/MisioFlix/assets/logo.png') center center/contain no-repeat;
+  }
 }
 @media(max-width:560px){
   html.misioflix-skin .mf-home-hero .mf-home-folder-buttons{gap:6px}
