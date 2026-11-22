@@ -768,6 +768,8 @@
   function resumeTile(entry,hidden=false){
     const item=entry.item;
     const card=own('article',hidden?'mf-home-resume-card mf-home-resume-card-hidden':'mf-home-resume-card');
+    // Read-only language badge must describe the exact resumable movie/episode.
+    if(validId(entry.resumeId))card.setAttribute('data-mf-language-id',compactId(entry.resumeId));
     card.setAttribute('tabindex','0');
     card.setAttribute('aria-label',`Odtwarzaj: ${item.title||''}`);
     const details=nativeDetails(item.id,item.serverId); // series root, or movie root

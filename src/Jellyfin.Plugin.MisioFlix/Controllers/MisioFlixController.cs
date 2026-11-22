@@ -52,6 +52,8 @@ public sealed class MisioFlixController : ControllerBase
             "simkl.js" => ("Web.simkl.js", "text/javascript; charset=utf-8"),
             "simkl.css" => ("Web.simkl.css", "text/css; charset=utf-8"),
             "theme.css" => ("Web.theme.css", "text/css; charset=utf-8"),
+            "language-flags.css" => ("Web.language-flags.css", "text/css; charset=utf-8"),
+            "language-flags.js" => ("Web.language-flags.js", "text/javascript; charset=utf-8"),
             "logo.png" => ("Web.assets.logo.png", "image/png"),
             "mark.png" => ("Web.assets.mark.png", "image/png"),
             "background.png" => ("Web.assets.background.png", "image/png"),
@@ -89,6 +91,21 @@ public sealed class MisioFlixController : ControllerBase
         catch (UnauthorizedAccessException) { return Unauthorized(); }
         catch (HttpRequestException) { return StatusCode(502,new {error="Błąd odczytu Jellyfin"}); }
         catch (InvalidOperationException) { return StatusCode(503,new {error="Niedostępne metadane"}); }
+    }
+
+    [HttpGet("api/language-flags")]
+    [Authorize]
+    public async Task<IActionResult> LanguageFlags([FromQuery] string? ids, CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        if (string.IsNullOrWhiteSpace(ids) || ids.Length > 500 ||
+            ids.Split(',', StringSplitOptions.RemoveEmptyEntries).Length > 12)
+            return BadRequest(new { error = "Nieprawidłowe identyfikatory kart" });
+        Response.Headers.CacheControl = "private, no-store";
+        try { return Ok(await _catalog.ReadLanguageFlagsForAuthenticatedUserAsync(Request, ids, cancel).ConfigureAwait(false)); }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (HttpRequestException) { return StatusCode(502, new { error = "Błąd odczytu ścieżek mediów" }); }
+        catch (InvalidOperationException) { return StatusCode(503, new { error = "Metadane niedostępne" }); }
     }
 
     // Original Jellyfin home only. These endpoints return small user-authorized

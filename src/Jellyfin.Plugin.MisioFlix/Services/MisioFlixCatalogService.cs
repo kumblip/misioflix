@@ -621,6 +621,170 @@ public sealed class MisioFlixCatalogService
         return output;
     }
 
+    // Language badges are read-only. Never infer audio from a library or file name.
+    // Cache is keyed by Jellyfin user + item: permission filtering is still repeated
+    // for every request, before consulting the cache. Values expire after 10 minutes.
+    private static readonly ConcurrentDictionary<string, (DateTimeOffset Until, LanguageFlagInfo Value)>
+        LanguageFlagsCache = new(StringComparer.Ordinal);
+
+    public async Task<List<LanguageFlagInfo>> ReadLanguageFlagsForAuthenticatedUserAsync(
+        HttpRequest caller, string? ids, CancellationToken cancel)
+    {
+        var requested = (ids ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => Guid.TryParse(x, out _))
+            .Select(Guid.Parse).Distinct().Take(12).ToArray();
+        if (requested.Length == 0) return new List<LanguageFlagInfo>();
+
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        // Exactly the same user-scoped Jellyfin authorization gate as /api/overlays.
+        using var verified = await GetJsonAsync(origin,
+            $"Items?UserId={Uri.EscapeDataString(userId)}" +
+            $"&Ids={Uri.EscapeDataString(string.Join(",", requested.Select(x => x.ToString("N"))))}" +
+            "&Fields=MediaSources,MediaStreams&EnableUserData=false&Limit=12",
+            auth, cancel).ConfigureAwait(false);
+        var found = Get(verified.RootElement, "Items");
+        var output = new List<LanguageFlagInfo>();
+        if (found.ValueKind != JsonValueKind.Array) return output;
+        var requestedSet = requested.ToHashSet();
+        foreach (var item in found.EnumerateArray())
+        {
+            if (!Guid.TryParse(Text(Get(item, "Id")), out var id) || !requestedSet.Contains(id)) continue;
+            var type = Text(Get(item, "Type"));
+            if (type is not ("Movie" or "Episode" or "Video" or "Series" or "Season")) continue;
+            var cacheKey = userId + ":" + id.ToString("N");
+            if (LanguageFlagsCache.TryGetValue(cacheKey, out var cached) &&
+                cached.Until > DateTimeOffset.UtcNow)
+            {
+                output.Add(cached.Value);
+                continue;
+            }
+            var availability = new TrackAvailability();
+            var partial = false;
+            if (type is "Movie" or "Episode" or "Video")
+            {
+                availability.AddItem(item);
+                // Some Jellyfin Item lists omit stream data even when requested.
+                // Use the already-authorized single-item endpoint in that case.
+                if (!availability.SawStreamInfo)
+                {
+                    try
+                    {
+                        using var detailed = await GetJsonAsync(origin,
+                            $"Items/{id:N}?UserId={Uri.EscapeDataString(userId)}" +
+                            "&Fields=MediaSources,MediaStreams", auth, cancel).ConfigureAwait(false);
+                        availability.AddItem(detailed.RootElement);
+                    }
+                    catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+                    { partial = true; }
+                }
+            }
+            else
+            {
+                // Season / Series: union of actual episode tracks, NEVER assumed
+                // from the parent title. Every page remains user-scoped.
+                const int pageSize = 250;
+                const int maxEpisodes = 3000;
+                for (var offset = 0; offset < maxEpisodes; offset += pageSize)
+                {
+                    var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
+                        $"&ParentId={id:N}&Recursive=true&IncludeItemTypes=Episode" +
+                        "&Fields=MediaSources,MediaStreams&EnableUserData=false" +
+                        $"&StartIndex={offset}&Limit={pageSize}";
+                    using var page = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
+                    var episodes = Get(page.RootElement, "Items");
+                    if (episodes.ValueKind != JsonValueKind.Array) { partial = true; break; }
+                    foreach (var episode in episodes.EnumerateArray()) availability.AddItem(episode);
+                    if (episodes.GetArrayLength() < pageSize) break;
+                    if (offset + pageSize >= maxEpisodes) partial = true;
+                }
+            }
+            // No guessed flag for unscanned or unknown-language streams.
+            var result = new LanguageFlagInfo(id.ToString("N"),
+                availability.Mode("pl"), availability.Mode("en"), partial);
+            LanguageFlagsCache[cacheKey] = (DateTimeOffset.UtcNow.AddMinutes(10), result);
+            output.Add(result);
+        }
+        return output;
+    }
+
+    private sealed class TrackAvailability
+    {
+        private bool _plAudio, _plSubs, _enAudio, _enSubs;
+        public bool SawStreamInfo { get; private set; }
+        public string? Mode(string language)
+        {
+            var audio = language == "pl" ? _plAudio : _enAudio;
+            var subs = language == "pl" ? _plSubs : _enSubs;
+            return audio && subs ? "both" : audio ? "audio" : subs ? "subtitles" : null;
+        }
+        public void AddItem(JsonElement item)
+        {
+            AddStreams(Get(item, "MediaStreams"));
+            var sources = Get(item, "MediaSources");
+            if (sources.ValueKind != JsonValueKind.Array) return;
+            foreach (var source in sources.EnumerateArray()) AddStreams(Get(source, "MediaStreams"));
+        }
+        private void AddStreams(JsonElement streams)
+        {
+            if (streams.ValueKind != JsonValueKind.Array) return;
+            SawStreamInfo = true;
+            foreach (var stream in streams.EnumerateArray())
+            {
+                var kind = Text(Get(stream, "Type"));
+                if (kind is not ("Audio" or "Subtitle")) continue;
+                var language = LanguageOf(stream);
+                if (language == "pl")
+                {
+                    if (kind == "Audio") _plAudio = true;
+                    else _plSubs = true;
+                }
+                else if (language == "en")
+                {
+                    if (kind == "Audio") _enAudio = true;
+                    else _enSubs = true;
+                }
+            }
+        }
+        private static string LanguageOf(JsonElement stream)
+        {
+            // Language is authoritative. Do not reinterpret German/French
+            // tracks whose title happens to mention English or Polish.
+            var specified = Text(Get(stream, "Language"));
+            if (!string.IsNullOrWhiteSpace(specified))
+            {
+                var resolved = NormalizeLanguage(specified);
+                if (resolved.Length != 0) return resolved;
+                // An explicit non-PL/EN language must not be overridden by a
+                // track title. Only Jellyfin's undefined-language codes may
+                // fall back to the track's displayed name.
+                if (specified.Trim().ToLowerInvariant() is not ("und" or "unk" or "unknown"))
+                    return string.Empty;
+            }
+            foreach (var key in new[] { "DisplayLanguage", "Title", "DisplayTitle" })
+            {
+                var parsed = NormalizeLanguage(Text(Get(stream, key)));
+                if (parsed.Length != 0) return parsed;
+            }
+            return string.Empty;
+        }
+        private static string NormalizeLanguage(string? raw)
+        {
+            var value = (raw ?? string.Empty).Trim().ToLowerInvariant().Replace('_', '-');
+            if (value is "pl" or "pol" or "polish" or "polski" ||
+                value.StartsWith("pl-", StringComparison.Ordinal) ||
+                value.StartsWith("pol-", StringComparison.Ordinal) ||
+                value.StartsWith("polish ", StringComparison.Ordinal) ||
+                value.StartsWith("polski ", StringComparison.Ordinal)) return "pl";
+            if (value is "en" or "eng" or "english" or "angielski" ||
+                value.StartsWith("en-", StringComparison.Ordinal) ||
+                value.StartsWith("eng-", StringComparison.Ordinal) ||
+                value.StartsWith("english ", StringComparison.Ordinal) ||
+                value.StartsWith("angielski ", StringComparison.Ordinal)) return "en";
+            return string.Empty;
+        }
+    }
+
     /// <summary>
     /// Playback items are resolved via the current Jellyfin Resume and NextUp endpoints.
     /// Text/genre metadata still comes only from the authorised catalogue / anime NFO.
@@ -1690,6 +1854,8 @@ public sealed record SeasonInfo(string id, string name, int? number, double? rat
 public sealed record EpisodeInfo(string id, string title, int? season, int? number, bool watched);
 
 /// <summary>Exactly the fields needed by decorative badges on existing Jellyfin cards.</summary>
+public sealed record LanguageFlagInfo(string id, string? pl, string? en, bool partial);
+
 public sealed class OverlayInfo
 {
     public string id { get; set; } = string.Empty;
