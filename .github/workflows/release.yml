@@ -34,7 +34,10 @@ jobs:
       - name: Instalacja parsera CSS do testow
         run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund postcss@8
 
-      - name: Ustal wersję z meta.json (bez zmian w workflow)
+      - name: Ustal automatycznie kolejny wolny numer wydania
+        run: python3 tools/next_release_version.py
+
+      - name: Synchronizuj wersję projektu z meta.json
         run: python3 tools/sync_version.py
 
       - name: Testy aktywnego zestawu (bez historycznych asercji wersji)
@@ -72,7 +75,22 @@ jobs:
             --changelog "MisioFlix $VERSION dla Jellyfin 12.4."
           python3 -m json.tool manifest.json >/dev/null
 
-      - name: Utwórz GitHub Release
+      - name: Zapisz numer i manifest w main przed utworzeniem tagu
+        env:
+          VERSION: ${{ steps.pack.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add meta.json src/Jellyfin.Plugin.MisioFlix/Jellyfin.Plugin.MisioFlix.csproj manifest.json
+          if git diff --cached --quiet; then
+            echo "Numer i manifest bez zmian."
+          else
+            git commit -m "chore: wersja i manifest Jellyfin dla ${VERSION} [skip ci]"
+            # Bez force-push: przerwij przy konkurencyjnych zmianach kodu.
+            git push origin HEAD:main
+          fi
+
+      - name: Utwórz GitHub Release z poprawnym commitem wersji
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.pack.outputs.tag }}
@@ -81,22 +99,6 @@ jobs:
         run: |
           gh release create "$TAG" \
             "$ZIP_FILE" "$ZIP_FILE.md5" "$ZIP_FILE.sha256" \
-            --target "${GITHUB_SHA}" \
+            --target "$(git rev-parse HEAD)" \
             --title "MisioFlix $VERSION — Jellyfin 12.4" \
             --notes "MisioFlix: natywna strona Jellyfin z wlasnymi karuzelami bibliotek, pelnymi seriami anime i prywatnym Ogladaj dalej. Restart Jellyfin wymagany."
-
-      - name: Opublikuj manifest w gałęzi main
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add manifest.json
-          if git diff --cached --quiet; then
-            echo "Manifest bez zmian."
-          else
-            git commit -m "chore: manifest Jellyfin dla ${VERSION} [skip ci]"
-            # Wypchnięcie wyłącznie fast-forward; przy zmianach równoległych
-            # nie wykonujemy force-push (można uruchomić workflow ponownie po korekcie).
-            git push origin HEAD:main
-          fi
-        env:
-          VERSION: ${{ steps.pack.outputs.version }}
