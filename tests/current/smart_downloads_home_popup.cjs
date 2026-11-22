@@ -34,7 +34,11 @@ let currentUser=userA;
 let native=true;
 const shell={AppHost:{supports:scope=>native&&scope==='filedownload',deviceId:()=> 'phone-one'},downloadFiles(){},openDownloadManager(){}};
 const api={getCurrentUser:async()=>({Id:currentUser,Name:currentUser===userA?'A':'B'}),serverId:()=> 'server-one'};
-const ctx={window:{ApiClient:api,NativeShell:shell,dispatchEvent:()=>{}},document:doc,
+const bridge={
+ async getSettings(){return {...(values.get(currentUser)||{enabled:false,count:2,budgetGB:5})};},
+ async saveSettings(next){values.set(currentUser,{...next});return this.getSettings();}
+};
+const ctx={window:{ApiClient:api,NativeShell:shell,MisioCacheSmartDownloads:bridge,dispatchEvent:()=>{}},document:doc,
   localStorage:{getItem:key=>values.get(key)||null,setItem:(key,val)=>values.set(key,val)},
   location:{origin:'http://localhost'},Event:function Evt(){},console,
   own:(tag,cls,txt)=>new E(tag,cls,txt),
@@ -58,12 +62,11 @@ const flush=()=>new Promise(resolve=>setImmediate(resolve));
   enabled.checked=true;enabled.events.change();count.value='12';gb.value='7,5';
   const save=walk(modal.overlay).find(e=>e.textContent==='Zapisz ustawienia');
   await save.events.click();
-  const expected='misio.cache.smart.v1:server-one:'+userA+':phone-one';
-  assert.deepEqual(JSON.parse(values.get(expected)),{enabled:true,count:12,budgetGB:7.5});
+  assert.deepEqual(values.get(userA),{enabled:true,count:12,budgetGB:7.5});
   count.value='2.5';await save.events.click();
-  assert.equal(JSON.parse(values.get(expected)).count,12,'invalid value rejected');
+  assert.equal(values.get(userA).count,12,'invalid value rejected');
   enabled.checked=false;enabled.events.change();await save.events.click();
-  assert.equal(JSON.parse(values.get(expected)).enabled,false,'user can opt out');
+  assert.equal(values.get(userA).enabled,false,'user can opt out');
   test.close();assert.equal(test.get(),null);
   currentUser='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   test.open(button);await flush();

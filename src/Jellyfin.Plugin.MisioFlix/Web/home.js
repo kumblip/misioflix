@@ -1809,11 +1809,6 @@
       typeof shell.AppHost.supports==='function'&&shell.AppHost.supports('filedownload'));}
     catch(_){return false;}
   }
-  function smartDeviceKey(){
-    try{const host=window.NativeShell?.AppHost;
-      return host&&typeof host.deviceId==='function'?String(host.deviceId()):'android-device';}
-    catch(_){return 'android-device';}
-  }
   function smartCount(value){
     const text=String(value??'').trim();
     if(!/^[1-9]\d*$/.test(text))return null;
@@ -1825,16 +1820,6 @@
     if(!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(text))return null;
     const number=Number(text);
     return Number.isFinite(number)&&number>0&&Number.isSafeInteger(Math.ceil(number*1000000000))?number:null;
-  }
-  function smartSettingsFromStorage(key){
-    try{
-      const raw=JSON.parse(localStorage.getItem(key)||'null');
-      if(!raw||typeof raw!=='object')return {enabled:false,count:2,budgetGB:5};
-      const old=raw.budgetGB===undefined&&raw.budgetGiB!==undefined?
-        Number(raw.budgetGiB)*1073741824/1000000000:null;
-      return {enabled:raw.enabled===true,count:smartCount(raw.count)??2,
-        budgetGB:smartGB(raw.budgetGB===undefined?old:raw.budgetGB)??5};
-    }catch(_){return {enabled:false,count:2,budgetGB:5};}
   }
   function openSmartDownloadsDialog(opener){
     if(smartDownloadsDialog){smartDownloadsDialog.overlay.querySelector('button')?.focus();return;}
@@ -1877,7 +1862,7 @@
     download.addEventListener('click',()=>{
       closeSmartDownloadsDialog();
       // This is a Jellyfin-registered page of the separate MisioCache plugin.
-      window.location.hash='#/configurationpage?name=MisioCacheOverview';
+      window.location.hash='#/configurationpage?name=MisioCache&pane=download';
     });
     const openDownloads=own('button','mf-home-button','Otwórz Pobrane');
     openDownloads.type='button';openDownloads.disabled=true;
@@ -1904,7 +1889,7 @@
     document.addEventListener('keydown',onKeyDown,true);
     close.focus();
     const connected=smartNativeShellSupported();
-    let preferenceKey=null,accountId=null,api=null;
+    let accountId=null,api=null;
     async function setup(){
       try{
         api=window.ApiClient||window.ConnectionManager?.getApiClient?.();
@@ -1913,16 +1898,18 @@
         if(!smartDownloadsDialog||smartDownloadsDialog.overlay!==overlay)return;
         if(!account||!validId(account.Id))throw Error('Brak identyfikatora konta.');
         accountId=String(account.Id);
-        const server=typeof api.serverId==='function'?String(api.serverId()):location.origin;
-        preferenceKey='misio.cache.smart.v1:'+server+':'+accountId+':'+smartDeviceKey();
-        const prefs=smartSettingsFromStorage(preferenceKey);
+        const bridge=window.MisioCacheSmartDownloads;
+        if(typeof bridge?.getSettings!=='function'||typeof bridge?.saveSettings!=='function')
+          throw Error('Brak połączenia z modułem MisioCache. Zaktualizuj MisioCache i zrestartuj Jellyfin.');
+        const prefs=await bridge.getSettings();
         enabled.checked=prefs.enabled&&connected;
         count.value=String(prefs.count);gb.value=String(prefs.budgetGB);
         enabled.disabled=!connected;save.disabled=!connected;openDownloads.disabled=!connected;
         count.disabled=!connected||!enabled.checked;gb.disabled=!connected||!enabled.checked;
-        user.textContent='Konto: '+String(account.Name||'Jellyfin')+' · '+
+        user.textContent='Konto: '+String(account.Name||'Jellyfin')+' · Zapis na serwerze MisioCache · '+
           (connected?'Oficjalna aplikacja Jellyfin Android wykryta.':
-           'Brak natywnego menedżera pobierania Androida — nie można włączyć pobrań na tym urządzeniu.');
+           'Brak natywnego menedżera pobierania Androida — nie można włączyć pobrań na tym urządzeniu.') +
+          (connected && !prefs.lastHookSeen ? ' · MisioCache nie potwierdził jeszcze uruchomienia modułu pobierania.' : '');
       }catch(e){user.textContent='Smart Downloads: '+String(e.message||e);}
     }
     enabled.addEventListener('change',()=>{
@@ -1931,7 +1918,7 @@
         'Zapisz ustawienia, aby wyłączyć pobieranie na tym telefonie.';
     });
     save.addEventListener('click',async()=>{
-      if(!preferenceKey||!accountId||!connected)return;
+      if(!accountId||!connected)return;
       save.disabled=true;
       try{
         // Fail closed if the user changes Jellyfin account while modal is open.
@@ -1942,13 +1929,13 @@
         const parsedGB=smartGB(gb.value);
         if(enabled.checked&&(parsedCount===null||parsedGB===null))
           throw Error('Podaj dodatnią całkowitą liczbę odcinków i dodatnią liczbę GB (np. 7,5).');
-        const previous=smartSettingsFromStorage(preferenceKey);
-        const state={enabled:enabled.checked,count:parsedCount??previous.count,budgetGB:parsedGB??previous.budgetGB};
-        localStorage.setItem(preferenceKey,JSON.stringify(state));
+        const state=await window.MisioCacheSmartDownloads.saveSettings({
+          enabled:enabled.checked,count:parsedCount,budgetGB:parsedGB
+        });
         user.textContent=state.enabled?
-          'Zapisano: Smart Downloads włączone tylko dla tego konta i telefonu.':
-          'Zapisano: Smart Downloads wyłączone dla tego konta i telefonu.';
-        window.dispatchEvent(new Event('misiocache-smart-downloads-changed'));
+          'Zapisano na serwerze MisioCache: Smart Downloads włączone dla konta i telefonu.':
+          'Zapisano na serwerze MisioCache: Smart Downloads wyłączone dla konta i telefonu.';
+        // MisioCache itself emits the change event after a confirmed server write.
       }catch(e){
         // If saving fails, never claim the new consent is active.
         user.textContent='Nie zapisano: '+String(e.message||e);
