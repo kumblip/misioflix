@@ -39,6 +39,12 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public string LibraryPathsRevision { get; set; } = string.Empty;
     public List<MisioFlixLibraryPath> LibraryPaths { get; set; } = new();
 
+    // Home carousel order is independent of Jellyfin's library order and folder names.
+    // IDs are Jellyfin library GUIDs, plus the virtual ID "collections".
+    // Absent/new libraries are appended automatically; no folder paths are trusted here.
+    public List<string> HomeCarouselOrder { get; set; } = new();
+    public List<string> HiddenHomeCarousels { get; set; } = new();
+
     // Only local loopback is allowed by CatalogService. Keep the server port here.
     public string JellyfinLoopbackUrl { get; set; } = "http://127.0.0.1:8096";
 }

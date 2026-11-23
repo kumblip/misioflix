@@ -48,7 +48,7 @@ class LibraryRoles(unittest.TestCase):
 
     def test_unmapped_not_sent_to_simkl_and_anime_nfo_unchanged(self):
         self.assertIn('return role != "simkl" && role != "other";', CATALOG)
-        self.assertIn('var local = ReadNfo(mediaPath, Text(Get(json, "Type")));', CATALOG)
+        self.assertIn('var local = ReadNfo(mediaPath, itemType);', CATALOG)
         self.assertIn('Fields=Genres,Overview,DateCreated,ChildCount,RecursiveItemCount,ParentId', CATALOG)
         self.assertIn('mal_id = local?.MalId', CATALOG)
         self.assertIn('var mapped = settings?.LibraryPathsConfigured == true',CATALOG)

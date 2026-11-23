@@ -1,67 +1,33 @@
-# MisioFlix — flagi języków po lewej i trwały indeks audio / napisów
+# MisioFlix — naprawa karuzeli Anime PL i ustawienia karuzel
 
-## Zmiany
+Wariant: Z FLAGAMI. Data projektu: 23.11.2026.
+Baza: aktualna paczka Role Anime PL/ENG/PL+ENG/Simkl.
 
-- Ikony flag PL/EN są w **pionowej kolumnie po lewej stronie** plakatu,
-  zaraz pod etykietą rodzaju i roku, bez nakładania się na oznaczenia łapek.
-- Są mniejsze: 16 px na desktopie i 14 px na telefonie.
-- Kółko = audio, romb = napisy, pięciokąt = audio + napisy.
-- Jeśli **pojedyncza wersja pliku ma dokładnie jedną ścieżkę audio**,
-  a jej realna biblioteka Jellyfina ma nazwę kończącą się `PL` albo `ENG`,
-  MisioFlix uznaje ten język za język dźwięku (także przy błędnych metadanych
-  pojedynczej ścieżki). Przy więcej niż jednej ścieżce audio odczytuje rzeczywiste
-  języki z MediaStreams. Napisy zawsze pochodzą z MediaStreams, nie z nazwy biblioteki.
-- Serial i sezon pokazują sumę języków znalezionych w odcinkach. Obecność
-  flagi nie gwarantuje jej dla **każdego** odcinka.
-- Zapis do trwałego indeksu JSON pod katalogiem danych Jellyfin:
-  `misioflix/language-flags-index.json` (na NAS-ie, nie w przeglądarce).
-  Nie są zapisywane ścieżki plików, tokeny ani dane kont.
-- Każda karta jest sprawdzana na uprawnieniach użytkownika. Pozycję nieobecną
-  w indeksie MisioFlix analizuje **raz na pierwszym wyświetleniu**. Zapisane pozycje
-  nie są ponownie skanowane automatycznie.
-- W `Kokpit → Wtyczki → MisioFlix — ustawienia` nowa rozwijana sekcja
-  `Flagi PL / ENG — dźwięk i napisy`, z przyciskiem
-  **Odśwież bazę języków audio i napisów**. Wyłącznie administrator może wymusić
-  skan całej dostępnej biblioteki. Zapis następuje atomowo po pełnym skanie.
-- Bez zmian w MAL, Simkl, NFO, odtwarzaczu, przyciskach i pozostałych karuzelach.
-- **Bez zmian `.github` i mechanizmu numerowania wydań**. Następny wolny numer
-  wybierze istniejący workflow publikacji.
+## Co zmieniono
 
-## Wgrywanie TYLKO przez stronę GitHub (bez terminala)
+1. **Pusta karuzela Anime PL**: karuzela nadal korzysta z autoryzowanego ID biblioteki Jellyfina. Jeśli zapytanie o Series/Movie nie da wyników, w bibliotece anime próbuje dodatkowo pobrać jej bezpośrednie pozycje (jak natywny widok Jellyfin). Folder typu `Folder` jest dopuszczany wyłącznie wtedy, gdy ma `tvshow.nfo` lub `movie.nfo` i jest pod skonfigurowaną ścieżką anime. Nie rozpoznaje anime po dowolnej nazwie folderu.
+2. **Wyszukiwarka anime**: dla biblioteki anime typu `mixed` dopuszczono foldery z NFO i klasyfikuje się je jako Series/Movie. Dla wyszukiwania zwykłych filmów i seriali zapytanie pozostaje bez dodatkowych folderów.
+3. **Panel karuzel**: kolejność, widoczność, podgląd identyfikatora i ścieżek, przycisk edycji ścieżek przekierowujący do istniejącej konfiguracji biblioteki. Zapis po stronie serwera jako `HomeCarouselOrder` i `HiddenHomeCarousels`. Nowe biblioteki są automatycznie dopisywane, a zmiana nazwy nie zmienia powiązania.
+4. **Kolekcje** mogą być przenoszone i ukrywane jak inne karuzele; ich odrębny widok i wyszukiwanie pozostają bez zmian.
 
-1. Rozpakuj **łatkę ZIP** na komputerze. **Nie wgrywaj ZIP-a jako pliku**.
-2. Otwórz repozytorium `kumblip/misioflix` na gałęzi `main`.
-3. Wgraj pliki ze ścieżek w ZIP-ie do **identycznych ścieżek** na GitHubie:
+## Wgranie przez samą stronę GitHub
 
-```
-src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixCatalogService.cs
-src/Jellyfin.Plugin.MisioFlix/Controllers/MisioFlixController.cs
-src/Jellyfin.Plugin.MisioFlix/Web/configPage.html
-src/Jellyfin.Plugin.MisioFlix/Web/language-flags.css
-tests/current/test_language_flags_126.py
-tests/current/test_language_flags_127.py
-tests/current/test_proposal_sets_108.py
-```
+1. Użyj tylko wariantu zgodnego z aktualną wersją (z flagami lub bez); nie mieszaj ich.
+2. Rozpakuj ZIP. Prześlij **zmienione pliki**, a nie ZIP, do odpowiadających im folderów repo `kumblip/misioflix` (Code → odpowiedni folder → Add file → Upload files → Commit changes).
+3. Pozostaw istniejący `.github/workflows` bez zmian. Nowy numer wydania wyznacza obecny workflow automatycznie.
+4. Sprawdź wynik `Actions` (testy i kompilacja .NET). Dopiero potem opublikuj wydanie przyciskiem `Run workflow` z zatwierdzeniem `PUBLIKUJ`.
+5. W Jellyfinie otwórz panel MisioFlixa → **Biblioteki Jellyfin — ścieżki i klasyfikacja**, sprawdź Anime PL: `/media/raid/anime_lektor` i rolę Anime PL; zapisz jeśli trzeba. Otwórz **Karuzele strony głównej** → ułóż kolejność, zaznacz widoczność → Zapisz, przeładuj stronę główną.
+6. Sprawdź Anime PL (strona główna), Anime ENG, wyszukiwarkę anime, MAL, Simkl, ekran sezonów i obrazy. Porównaj z biblioteką Jellyfina (u Ciebie 603 pozycje w Anime PL).
 
-4. Dla istniejącego pliku otwórz odpowiedni folder, wybierz
-   `Add file → Upload files`, prześlij plik i zatwierdź commit na `main`.
-   Nowy plik `test_language_flags_127.py` trafi do `tests/current`.
-5. Sprawdź w `Actions`, czy testy i build przeszły.
-6. Uruchom *nowe* wydanie przez `Actions → MisioFlix - opublikuj wydanie dla
-   Jellyfin → Run workflow → main → PUBLIKUJ` (nie `Re-run` starego commita).
-7. Zainstaluj nową wersję w Jellyfin, zrestartuj Jellyfin, a potem wejdź
-   w ustawienia MisioFlixa i kliknij **Odśwież bazę języków audio i napisów**.
-   Skan całej biblioteki uruchamia się **tylko na żądanie**. Gdy się powiedzie,
-   nowe kafelki korzystają już z trwałego indeksu.
+## Diagnostyka, jeśli nadal pusta
 
-**Wymaga:** istniejącego kodu poprzedniej łatki flag PL/EN, w tym
-`language-flags.js`, `ScriptInjection.cs` i metody `api/language-flags`.
-W tej poprawce tych niezmienionych plików nie trzeba wgrywać ponownie.
+- Sprawdź, czy natywna biblioteka nadal pokazuje 603 pozycje.
+- Podaj log z GitHub Actions, jeżeli kompilacja lub testy nie przejdą.
+- W narzędziach deweloperskich przeglądarki (Sieć/Network), sprawdź odpowiedź `/MisioFlix/api/home/shelf?libraryId=53e751439e5d36e699d03863df66b710&mode=latest&startIndex=0&limit=10`. Ważne są `items` i kod HTTP; nie publikuj tokenów autoryzacyjnych.
+- Jeżeli w odpowiedzi nadal będzie `items: []`, przyczyną może być rzeczywisty typ encji, niewłaściwe NFO lub mapowanie ścieżki Jellyfina; sama statyczna analiza kodu nie dowodzi, że problem już zniknął.
 
-## Weryfikacja
+## Ograniczenia i bezpieczeństwo
 
-- 539 testów Python oraz 60 skryptów Node: zaliczone w środowisku roboczym.
-- `node --check` nowych skryptów oraz JavaScriptu strony konfiguracji: zaliczone.
-- Podgląd Chromium: ikony na lewej krawędzi, pionowo, z szerokością SVG 16 px.
-- **Nie przeprowadzono** kompilacji .NET 10 ani testu integracyjnego na Twoim NAS.
-  Ostateczna weryfikacja nastąpi w GitHub Actions po wgraniu kodu.
+Nie zmieniono plików mediów, NFO, obrazów, nazw bibliotek ani uprawnień Jellyfina. Nie wykonano testu na NAS użytkownika ani kompilacji .NET (środowisko nie zawiera dotnet). Wykonane testy automatyczne Python/Node nie zastępują testu integracyjnego Jellyfin.
+
+Zgodność: bazowa wtyczka Jellyfin 12.4, funkcje MAL/Simkl pozostają w kodzie, automatyczna numeracja wydań bez zmian.

@@ -23,7 +23,7 @@ class RenameLibrariesAndTen112(unittest.TestCase):
         self.assertIn('row.hasMore',HOME)
     def test_source_of_live_names_is_jellyfin_not_14_day_search_cache(self):
         self.assertIn('Users/{Uri.EscapeDataString(userId)}/Views',CONTROLLER)
-        self.assertIn("await request('/home/libraries')",HOME)
+        self.assertIn("request('/home/libraries')",HOME)
         self.assertNotIn('localStorage.setItem(\'libraries',HOME)
     def test_versioning(self):
         meta=json.loads((ROOT/'meta.json').read_text(encoding='utf-8'))

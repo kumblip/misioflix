@@ -2262,7 +2262,11 @@
     const container=homeRoot?.querySelector('.mf-home-rows');
     if(!container)return;
     try{
-      const libs=await request('/home/libraries');
+      // The layout is optional for backwards compatibility with older servers.
+      const [libs,carouselLayout]=await Promise.all([
+        request('/home/libraries'),
+        request('/home/carousel-layout').catch(()=>null)
+      ]);
       if(!isCurrent(serial))return;
       container.replaceChildren();rows.clear();
       // Every successful admin map save changes the safe revision in this response.
@@ -2285,8 +2289,22 @@
       const collectionsShelf={id:'collections',name:'Kolekcje',category:'collections',href:''};
       const animeViews=valid.filter(lib=>lib.category==='anime');
       const otherViews=valid.filter(lib=>lib.category!=='anime');
-      const ordered=[...animeViews,collectionsShelf,...otherViews];
-      for(const lib of ordered){
+      const defaultOrder=[...animeViews,collectionsShelf,...otherViews];
+      // Persist order by stable library ID. Unknown/new libraries appear automatically
+      // after known entries, without hardcoded folder paths or names.
+      const byId=new Map(defaultOrder.map(lib=>[String(lib.id).toLowerCase(),lib]));
+      const pinned=Array.isArray(carouselLayout?.order)?carouselLayout.order:[];
+      const hidden=new Set((Array.isArray(carouselLayout?.hidden)?carouselLayout.hidden:[]).map(v=>String(v).toLowerCase()));
+      const ordered=[];const used=new Set();
+      for(const id of pinned){
+        const key=String(id).toLowerCase(),lib=byId.get(key);
+        if(lib&&!used.has(key)){ordered.push(lib);used.add(key);}
+      }
+      for(const lib of defaultOrder){
+        const key=String(lib.id).toLowerCase();
+        if(!used.has(key)){ordered.push(lib);used.add(key);}
+      }
+      for(const lib of ordered.filter(lib=>!hidden.has(String(lib.id).toLowerCase()))){
         const row=shelfShell(lib);
         rows.set(lib.id,row);
         container.appendChild(row.section);

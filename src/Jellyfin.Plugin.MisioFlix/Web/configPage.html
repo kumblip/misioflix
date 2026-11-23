@@ -30,6 +30,13 @@
 #misioflixConfigPage .mf-lib-entry select,#misioflixConfigPage .mf-lib-entry textarea{width:100%;max-width:100%;box-sizing:border-box}
 #misioflixConfigPage .mf-lib-entry textarea{min-height:60px;resize:vertical;font-family:monospace}
 #misioflixConfigPage .mf-lib-path-label{display:block;margin:8px 0}
+#misioflixConfigPage .mf-carousel-entry{display:flex;gap:10px;align-items:center;border:1px solid rgba(255,190,222,.23);border-radius:9px;padding:9px;margin:7px 0;flex-wrap:wrap}
+#misioflixConfigPage .mf-carousel-entry .mf-carousel-main{flex:1;min-width:190px}
+#misioflixConfigPage .mf-carousel-entry .mf-carousel-main strong{display:block}
+#misioflixConfigPage .mf-carousel-entry .mf-carousel-main small{display:block;opacity:.8;overflow-wrap:anywhere}
+#misioflixConfigPage .mf-carousel-entry .mf-carousel-actions{display:flex;gap:6px}
+#misioflixConfigPage .mf-carousel-entry .mf-carousel-actions button{min-width:34px;min-height:34px}
+
 @media(max-width:620px){#misioflixConfigPage .mf-lib-fields{grid-template-columns:1fr}}
  #misioflixConfigPage .mf-plugin-overview-return{display:inline-flex;align-items:center;gap:7px;margin:20px 0 30px;padding:12px 16px;border:1px solid rgba(245,167,207,.6);border-radius:11px;text-decoration:none!important;background:#43243e;color:#ffe9f6!important;font-weight:650}
  #misioflixConfigPage .mf-plugin-overview-return:hover{background:#5f3151}
@@ -70,6 +77,18 @@
     <div id="mf-library-list" aria-label="Wykryte biblioteki"></div>
     <button type="button" class="raised button-submit emby-button" id="mf-library-save">Zapisz ścieżki i role w MisioFlixie</button>
     <p id="mf-library-status" role="status" aria-live="polite">Odczytywanie bibliotek…</p>
+   </section>
+  </details>
+  <hr style="margin:26px 0;border-color:#77526c" />
+  <details class="mf-config-collapse" id="mf-carousel-layout-panel">
+   <summary>Karuzele strony głównej — kolejność, widoczność i źródła</summary>
+   <section style="padding:8px 0 20px">
+    <p>Wybierz kolejność karuzel przyciskami ↑ i ↓ oraz zdecyduj, które są widoczne. Nowe biblioteki pojawią się automatycznie po odświeżeniu listy.</p>
+    <p>Źródłem każdej karuzeli jest <strong>identyfikator biblioteki Jellyfina</strong>, a nie nazwa wpisana w kodzie. Aktualne ścieżki są pokazane poniżej. Aby je zmienić, użyj sekcji „Biblioteki Jellyfin — ścieżki i klasyfikacja” powyżej. Nie zmienia to rzeczywistych katalogów Jellyfina.</p>
+    <button type="button" class="raised emby-button" id="mf-carousel-reload">Odśwież listę karuzel</button>
+    <div id="mf-carousel-list" aria-label="Kolejność karuzel strony głównej"></div>
+    <button type="button" class="raised button-submit emby-button" id="mf-carousel-save">Zapisz kolejność i widoczność karuzel</button>
+    <p id="mf-carousel-status" role="status" aria-live="polite">Odczytywanie karuzel…</p>
    </section>
   </details>
   <hr style="margin:26px 0;border-color:#77526c" />
@@ -872,6 +891,105 @@
   
   // Jellyfin admin page: physical paths are discovered from /Library/VirtualFolders.
   // We only save MisioFlix classification; NEVER POST changes to Jellyfin libraries.
+  // One carousel = one verified Jellyfin library ID (or global Collections).
+  // No media/NFO scans and no server-side filesystem edits occur here.
+  const homeCarousels=(()=>{
+   const panel=view.querySelector('#mf-carousel-layout-panel');
+   if(!panel || typeof panel.querySelector!=='function')return {activate(){}};
+   const list=panel.querySelector('#mf-carousel-list');
+   const status=panel.querySelector('#mf-carousel-status');
+   const reload=panel.querySelector('#mf-carousel-reload');
+   const save=panel.querySelector('#mf-carousel-save');
+   const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
+   const normalizedId=v=>String(v||'').trim().replace(/-/g,'').toLowerCase();
+   const auth=()=>{
+     const raw=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
+     if(!raw)throw Error('Brak autoryzacji Jellyfina.');
+     return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-carousel-admin", Version="1", Token="'+String(raw).replace(/["\r\n]/g,'')+'"'};
+   };
+   let rows=[],busy=false,loaded=false;
+   function render(){
+     list.replaceChildren();
+     rows.forEach((row,index)=>{
+       const item=el('div');item.className='mf-carousel-entry';
+       const enabled=el('input');enabled.type='checkbox';enabled.checked=row.visible;
+       enabled.setAttribute('aria-label','Pokaż karuzelę '+row.name);
+       enabled.addEventListener('change',()=>{row.visible=enabled.checked;});
+       item.append(enabled);
+       const main=el('div');main.className='mf-carousel-main';
+       main.append(el('strong',(index+1)+'. '+row.name));
+       main.append(el('small','ID: '+row.id+' | Ścieżki: '+(row.paths.length?row.paths.join(' | '):'kolekcje globalne / brak ścieżki')));
+       item.append(main);
+       if(row.id!=='collections'){
+         const edit=el('button','Edytuj ścieżki');edit.type='button';edit.className='raised emby-button';
+         edit.setAttribute('aria-label','Przejdź do ścieżek biblioteki '+row.name);
+         edit.addEventListener('click',()=>{
+           const sourcePanel=view.querySelector('#mf-library-paths-panel');
+           if(!sourcePanel)return;
+           sourcePanel.open=true;
+           const source=sourcePanel.querySelector?.('[data-mf-library-id="'+row.id+'"]');
+           if(source){source.scrollIntoView?.({block:'center',behavior:'smooth'});source.querySelector?.('textarea')?.focus?.();}
+           else sourcePanel.scrollIntoView?.({block:'start',behavior:'smooth'});
+         });
+         item.append(edit);
+       }
+       const actions=el('div');actions.className='mf-carousel-actions';
+       for(const [caption,delta] of [['↑',-1],['↓',1]]){
+         const button=el('button',caption);button.type='button';button.className='raised emby-button';
+         button.disabled=index+delta<0||index+delta>=rows.length;
+         button.setAttribute('aria-label',(delta<0?'Przesuń w górę: ':'Przesuń w dół: ')+row.name);
+         button.addEventListener('click',()=>{
+           const other=index+delta;[rows[index],rows[other]]=[rows[other],rows[index]];render();
+         });
+         actions.append(button);
+       }
+       item.append(actions);list.append(item);
+     });
+   }
+   async function load(){
+     if(busy)return;busy=true;reload.disabled=true;save.disabled=true;
+     status.textContent='Pobieranie bibliotek Jellyfina i układu karuzel…';
+     try{
+       const url=typeof ApiClient?.getUrl==='function'?ApiClient.getUrl('Library/VirtualFolders'):'/Library/VirtualFolders';
+       const [response,config]=await Promise.all([fetch(url,{headers:auth(),cache:'no-store'}),ApiClient.getPluginConfiguration(pluginId)]);
+       if(!response.ok)throw Error('Nie można odczytać bibliotek: HTTP '+response.status);
+       const libraries=await response.json();if(!Array.isArray(libraries))throw Error('Nieprawidłowa lista bibliotek.');
+       const mapping=new Map((config.LibraryPaths||[]).map(x=>[normalizedId(x.LibraryId),x]));
+       const classified=libraries.filter(x=>normalizedId(x.ItemId)&&['mixed','movies','tvshows'].includes(String(x.CollectionType||'').toLowerCase())).map(x=>{
+         const id=normalizedId(x.ItemId),entry=mapping.get(id);
+         const paths=Array.isArray(entry?.Paths)&&entry.Paths.length?entry.Paths:Array.isArray(x.Locations)?x.Locations:[];
+         return {id,name:String(x.Name||id),paths:paths.map(String),role:String(entry?.Role||''),visible:true};
+       });
+       const anime=classified.filter(x=>x.role.startsWith('anime_')||(!config.LibraryPathsConfigured&&x.name.toLowerCase().includes('anime')));
+       const others=classified.filter(x=>!anime.includes(x));
+       const fresh=[...anime,{id:'collections',name:'Kolekcje',paths:[],visible:true},...others];
+       const savedOrder=(config.HomeCarouselOrder||[]).map(normalizedId);
+       const hidden=new Set((config.HiddenHomeCarousels||[]).map(normalizedId));
+       const rank=new Map(savedOrder.map((id,index)=>[id,index]));
+       // Place old, recognized choices first; newly added libraries always appear.
+       rows=fresh.map((r,index)=>({...r,visible:!hidden.has(r.id),defaultIndex:index}));
+       if(savedOrder.length)rows.sort((a,b)=>(rank.get(a.id)??(savedOrder.length+a.defaultIndex))-(rank.get(b.id)??(savedOrder.length+b.defaultIndex)));
+       loaded=true;render();status.textContent='Wczytano '+rows.length+' karuzel. Zmiany działają po zapisaniu i odświeżeniu strony głównej.';
+     }catch(e){loaded=false;list.replaceChildren();status.textContent='Błąd: '+e.message;}
+     finally{busy=false;reload.disabled=false;save.disabled=!loaded;}
+   }
+   async function store(){
+     if(!loaded||busy)return;busy=true;reload.disabled=true;save.disabled=true;
+     status.textContent='Zapisywanie układu karuzel…';
+     try{
+       const config=await ApiClient.getPluginConfiguration(pluginId);
+       config.HomeCarouselOrder=rows.map(row=>row.id);
+       config.HiddenHomeCarousels=rows.filter(row=>!row.visible).map(row=>row.id);
+       await ApiClient.updatePluginConfiguration(pluginId,config);
+       status.textContent='Zapisano kolejność i widoczność. Odśwież stronę główną MisioFlixa.';
+     }catch(e){status.textContent='Błąd zapisu: '+e.message;}
+     finally{busy=false;reload.disabled=false;save.disabled=false;}
+   }
+   reload.addEventListener('click',()=>{void load();});
+   save.addEventListener('click',()=>{void store();});
+   return {activate(){void load();}};
+  })();
+
   const libraryPaths=(()=>{
    const panel=view.querySelector('#mf-library-paths-panel');
    if(!panel||typeof panel.querySelector!=='function')return {activate(){}};
@@ -912,6 +1030,7 @@
     if(!rows.length){list.append(el('p','Nie znaleziono bibliotek.'));return;}
     for(const row of rows){
      const box=el('div');box.className='mf-lib-entry';
+     box.setAttribute('data-mf-library-id',row.id);
      const title=el('h3',row.name);box.append(title);
      const meta=el('div','ID: '+row.id+' | Typ Jellyfin: '+row.kind);
      meta.className='mf-lib-meta';box.append(meta);
@@ -1009,6 +1128,7 @@
    updates.activate();
    void languageIndex.activate();
    void recommendations.activate();
+   void homeCarousels.activate();
    void nfoCollections.activate();
    try{const config=await ApiClient.getPluginConfiguration(pluginId);
     view.querySelector('#mf-mal-client').value=config.MalClientId||'';

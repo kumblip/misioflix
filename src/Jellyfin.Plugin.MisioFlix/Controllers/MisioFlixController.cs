@@ -142,6 +142,22 @@ public sealed class MisioFlixController : ControllerBase
         catch (HttpRequestException) { return StatusCode(502, new { error="Biblioteki Jellyfin są niedostępne" }); }
     }
 
+    // Safe layout only: no credentials or private admin configuration are exposed.
+    [HttpGet("api/home/carousel-layout")]
+    [Authorize]
+    public IActionResult HomeCarouselLayout()
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        var config = Plugin.Instance.Configuration;
+        static bool Allowed(string? id) => id == "collections" || Guid.TryParse(id, out _);
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(new
+        {
+            order = (config.HomeCarouselOrder ?? new List<string>()).Where(Allowed).Distinct(StringComparer.OrdinalIgnoreCase).Take(100).ToArray(),
+            hidden = (config.HiddenHomeCarousels ?? new List<string>()).Where(Allowed).Distinct(StringComparer.OrdinalIgnoreCase).Take(100).ToArray()
+        });
+    }
+
     [HttpGet("api/home/shelf")]
     [Authorize]
     public async Task<IActionResult> HomeShelf([FromQuery] Guid libraryId,

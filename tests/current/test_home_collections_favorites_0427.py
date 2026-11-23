@@ -33,7 +33,7 @@ class Home0427(unittest.TestCase):
 
     def test_collections_row_without_jellyfin_user_view(self):
         self.assertIn("const collectionsShelf={id:'collections'", HOME)
-        self.assertIn('const ordered=[...animeViews,collectionsShelf,...otherViews]', HOME)
+        self.assertIn('const defaultOrder=[...animeViews,collectionsShelf,...otherViews]', HOME)
         self.assertIn("row.lib.category==='collections'", HOME)
         self.assertIn("'/home/collections?'", HOME)
         self.assertIn("collectionButton.setAttribute('aria-label','Otwórz listę wszystkich kolekcji')", HOME)

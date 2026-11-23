@@ -46,7 +46,7 @@ class CollectionsDirectory0428(unittest.TestCase):
         self.assertIn("return tab===null || tab==='0'",HOME)
         self.assertIn("if(!homeRoute())unmountHome()",HOME)
         self.assertIn("if(!LIBRARY_ROUTE.test(href||''))return href",HOME)
-        self.assertIn("const ordered=[...animeViews,collectionsShelf,...otherViews]",HOME)
+        self.assertIn("const defaultOrder=[...animeViews,collectionsShelf,...otherViews]",HOME)
 
     def test_global_grouping_stays_off(self):
         self.assertIn('&CollapseBoxSetItems=false',CS)

@@ -6,7 +6,7 @@ SERVICE=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixCatalogService.cs
 HOME=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/home.js').read_text(encoding='utf8')
 class AnimeSearch072(unittest.TestCase):
  def test_seasons_are_not_series_with_nested_seasons(self):
-  self.assertIn('season_count = Text(Get(json, "Type")) == "Series"',SERVICE)
+  self.assertIn('season_count = itemType == "Series"',SERVICE)
   self.assertIn('episode_count = PositiveInt(Get(json, "RecursiveItemCount"))',SERVICE)
   self.assertIn("if(state.kind==='anime'&&item.type==='Season')",HOME)
   self.assertIn('result.seasons=null;',HOME)

@@ -73,5 +73,5 @@ assert.deepEqual(stack.children.map(e=>e.children[1].style.color),['#f7b449','#6
 // Source-to-client plumbing: NFO value, no invented title heuristics.
 const service=fs.readFileSync(path.join(base,'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixCatalogService.cs'),'utf8');
 assert(service.includes('int.TryParse(V("seasonnumber")'));
-assert(service.includes('season_number = Text(Get(json, "Type")) == "Season" ? local?.SeasonNumber : null'));
+assert(service.includes('season_number = itemType == "Season" ? local?.SeasonNumber : null'));
 console.log('PASS v0.4.74: NFO 01–05, suggestions, red paw above blue, parent gold, missing NFO index');

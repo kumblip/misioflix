@@ -53,7 +53,7 @@ class TestSearch0415(unittest.TestCase):
     def test_seasons_anime_only_and_metadata_policy(self):
         self.assertIn('IncludeItemTypes=Movie,Series,Season',SERVICE)
         self.assertIn('if (type == "Season") continue;',SERVICE)
-        self.assertIn('var local = ReadNfo(mediaPath, Text(Get(json, "Type")))',SERVICE)
+        self.assertIn('var local = ReadNfo(mediaPath, itemType)',SERVICE)
         self.assertIn("if(kind==='anime')typeOptions.push({id:'seasons'",HOME)
         self.assertIn("makeFilterGroup('Typy produkcji'",HOME)
         self.assertIn('GetHomeLibrariesAsync(origin, auth, userId, cancel)',SERVICE)
