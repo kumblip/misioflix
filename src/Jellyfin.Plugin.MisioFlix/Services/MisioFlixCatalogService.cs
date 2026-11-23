@@ -216,7 +216,16 @@ public sealed class MisioFlixCatalogService
             if (!Guid.TryParse(id, out var guid)) continue;
             var name = Text(Get(view, "Name"));
             var collection = Text(Get(view, "CollectionType")).ToLowerInvariant();
-            var isAnime = name.Contains("anime", StringComparison.OrdinalIgnoreCase);
+            // Prefer the explicit admin library-ID classification. Renames do not change IDs.
+            // Libraries not yet registered keep the prior naming heuristic until saved.
+            var settings = Plugin.Instance?.Configuration;
+            var mapped = settings?.LibraryPathsConfigured == true
+                ? settings.LibraryPaths?.FirstOrDefault(x =>
+                    Guid.TryParse(x.LibraryId, out var mappedId) && mappedId == guid)
+                : null;
+            var isAnime = mapped is null
+                ? name.Contains("anime", StringComparison.OrdinalIgnoreCase)
+                : mapped.Role is "anime_pl" or "anime_eng";
             // No arbitrary view types, no top-level global search, no special collections.
             var category = isAnime ? "anime" : collection switch
             {
@@ -235,7 +244,8 @@ public sealed class MisioFlixCatalogService
             };
             var href = $"#/" + kind + $"?topParentId={guid:N}&collectionType={Uri.EscapeDataString(collection)}";
             // The user's home page should be library-specific, not alphabetically mixed.
-            result.Add(new HomeLibrary(guid.ToString("N"), name, category, href));
+            var revision = Plugin.Instance?.Configuration?.LibraryPathsRevision ?? string.Empty;
+            result.Add(new HomeLibrary(guid.ToString("N"), name, category, href, revision));
         }
         return result;
     }
@@ -730,21 +740,14 @@ public sealed class MisioFlixCatalogService
             var type = Text(Get(item, "Type"));
             if (type is not ("Movie" or "Episode" or "Video" or "Series" or "Season")) continue;
             var key = id.ToString("N");
-            if (LanguageFlagsCache.TryGetValue(key, out var cached)) { output.Add(cached); continue; }
-            await LanguageFlagsGate.WaitAsync(cancel).ConfigureAwait(false);
-            try
-            {
-                if (!LanguageFlagsCache.TryGetValue(key, out cached))
-                {
-                    cached = await CalculateLanguageFlagsAsync(origin, auth, userId, id, type, cancel)
-                        .ConfigureAwait(false);
-                    LanguageFlagsCache[key] = cached;
-                    _languageFlagsUpdatedUtc = DateTimeOffset.UtcNow;
-                    await SaveLanguageIndexUnderGateAsync(cancel).ConfigureAwait(false);
-                }
-                output.Add(cached);
-            }
-            finally { LanguageFlagsGate.Release(); }
+            // v128: the card endpoint is STRICTLY READ ONLY. It must never start
+            // a media/episode scan or rewrite the whole JSON index while posters
+            // are loading. Index changes are made ONLY by the admin refresh.
+            // An unknown item returns an empty availability object, so the web
+            // client can memoize it instead of polling repeatedly on navigation.
+            // Authorization was validated above, even for cached objects.
+            if (LanguageFlagsCache.TryGetValue(key, out var cached)) output.Add(cached);
+            else output.Add(new LanguageFlagInfo(key, null, null, true));
         }
         return output;
     }
@@ -813,7 +816,23 @@ public sealed class MisioFlixCatalogService
         if (item is null) return string.Empty;
         try
         {
-            var hints = _library.GetCollectionFolders(item)
+            var settings = Plugin.Instance?.Configuration;
+            var folders = _library.GetCollectionFolders(item).ToArray();
+            // Explicit mapping survives library renames and distinguishes single-track audio
+            // without relying on an outdated display name.
+            if (settings?.LibraryPathsConfigured == true)
+            {
+                var mapped = folders.Select(folder => (settings.LibraryPaths ?? new())
+                    .FirstOrDefault(mapping => Guid.TryParse(mapping.LibraryId, out var libId)
+                        && libId == folder.Id))
+                    .Where(mapping => mapping is not null)
+                    .Select(mapping => mapping!.AudioLanguage is "pl" or "en"
+                        ? mapping.AudioLanguage : string.Empty)
+                    .Where(language => language.Length != 0).Distinct().Take(2).ToArray();
+                if (mapped.Length == 1) return mapped[0];
+                if (mapped.Length > 1) return string.Empty;
+            }
+            var hints = folders
                 .Select(folder=>folder.Name?.Trim() ?? string.Empty)
                 .Select(name=>name.EndsWith("PL",StringComparison.OrdinalIgnoreCase) ? "pl" :
                     name.EndsWith("ENG",StringComparison.OrdinalIgnoreCase) ? "en" : "")
@@ -1806,6 +1825,28 @@ public sealed class MisioFlixCatalogService
     private static string AnimeSource(string? mediaPath)
     {
         var config = Plugin.Instance?.Configuration;
+        // Once an administrator saves the complete map, it is authoritative:
+        // never use the outdated legacy AnimeRoot after a folder has been renamed.
+        if (config?.LibraryPathsConfigured == true)
+        {
+            foreach (var entry in config.LibraryPaths ?? new())
+            {
+                var source = entry.Role switch
+                {
+                    "anime_pl" => "lektor",
+                    "anime_eng" => "original",
+                    _ => string.Empty
+                };
+                if (source.Length == 0) continue;
+                foreach (var path in entry.Paths ?? new())
+                {
+                    if (string.IsNullOrWhiteSpace(path)) continue;
+                    try { if (IsBelowRoot(mediaPath, Path.GetFullPath(path))) return source; }
+                    catch (ArgumentException) { /* Ignore a broken admin path; do not read arbitrary media. */ }
+                }
+            }
+            return string.Empty;
+        }
         if (!string.IsNullOrWhiteSpace(config?.AnimeRoot) &&
             IsBelowRoot(mediaPath, Path.GetFullPath(config.AnimeRoot))) return "lektor";
         if (!string.IsNullOrWhiteSpace(config?.AnimeOriginalRoot) &&
@@ -2091,7 +2132,7 @@ public sealed class OverlayInfo
 }
 
 // Personal home rows; every instance is derived from an allowed user-scoped Jellyfin item.
-public sealed record HomeLibrary(string id, string name, string category, string href);
+public sealed record HomeLibrary(string id, string name, string category, string href, string catalogRevision = "");
 public sealed record HomeShelfResponse(string libraryId, string libraryName, string mode,
     int startIndex, bool hasMore, List<HomeTile> items);
 public sealed class HomeTile

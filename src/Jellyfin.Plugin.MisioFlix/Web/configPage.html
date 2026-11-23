@@ -22,6 +22,15 @@
  #misioflixConfigPage .mf-proposal-drag-handle:focus-visible{outline:2px solid #f4a5ce;outline-offset:2px}
  #misioflixConfigPage .mf-proposal.mf-proposal-being-dragged{opacity:.48}
  #misioflixConfigPage .mf-proposal.mf-proposal-drop-target{border-color:#f4a5ce;box-shadow:0 0 0 2px rgba(244,165,206,.35)}
+
+#misioflixConfigPage .mf-lib-entry{border:1px solid rgba(255,190,222,.24);border-radius:10px;padding:12px;margin:12px 0}
+#misioflixConfigPage .mf-lib-entry h3{font-size:16px;margin:0 0 6px}
+#misioflixConfigPage .mf-lib-meta{font-size:12px;opacity:.82;overflow-wrap:anywhere;margin-bottom:10px}
+#misioflixConfigPage .mf-lib-fields{display:grid;grid-template-columns:minmax(170px,1fr) minmax(170px,1fr);gap:14px;margin:10px 0}
+#misioflixConfigPage .mf-lib-entry select,#misioflixConfigPage .mf-lib-entry textarea{width:100%;max-width:100%;box-sizing:border-box}
+#misioflixConfigPage .mf-lib-entry textarea{min-height:60px;resize:vertical;font-family:monospace}
+#misioflixConfigPage .mf-lib-path-label{display:block;margin:8px 0}
+@media(max-width:620px){#misioflixConfigPage .mf-lib-fields{grid-template-columns:1fr}}
  #misioflixConfigPage .mf-plugin-overview-return{display:inline-flex;align-items:center;gap:7px;margin:20px 0 30px;padding:12px 16px;border:1px solid rgba(245,167,207,.6);border-radius:11px;text-decoration:none!important;background:#43243e;color:#ffe9f6!important;font-weight:650}
  #misioflixConfigPage .mf-plugin-overview-return:hover{background:#5f3151}
  </style>
@@ -49,6 +58,19 @@
    <button type="submit" class="raised button-submit emby-button">Zapisz ustawienia MAL</button>
    <p id="mf-config-status" aria-live="polite"></p>
   </form>
+  </details>
+  <hr style="margin:26px 0;border-color:#77526c" />
+  <details class="mf-config-collapse" id="mf-library-paths-panel">
+   <summary>Biblioteki Jellyfin — ścieżki i klasyfikacja</summary>
+   <section style="padding:8px 0 20px">
+    <p>Lista obejmuje <strong>wszystkie biblioteki Jellyfina</strong>, w tym dodane później. Ładowana jest na żywo z Jellyfina, a konfiguracja MisioFlixa jest przypisana do identyfikatorów bibliotek — zmiana nazwy nie zeruje przypisania.</p>
+    <p>Ścieżki podawaj <strong>w formie widocznej z kontenera Jellyfin</strong> (np. <code>/media/raid/anime_lektor</code>), po jednej w wierszu. <strong>Zapis zmienia wyłącznie rozpoznawanie pozycji w MisioFlixie; nie przenosi folderów ani nie edytuje bibliotek Jellyfina.</strong></p>
+    <p>Wybierz „Anime PL (NFO + MAL)” dla biblioteki z polskim anime oraz „Anime ENG (NFO + MAL)” dla biblioteki anime w oryginale. Pozostałym przypisz „Zwykła biblioteka”.</p>
+    <button type="button" class="raised emby-button" id="mf-library-reload">Odśwież listę bibliotek z Jellyfina</button>
+    <div id="mf-library-list" aria-label="Wykryte biblioteki"></div>
+    <button type="button" class="raised button-submit emby-button" id="mf-library-save">Zapisz ścieżki i role w MisioFlixie</button>
+    <p id="mf-library-status" role="status" aria-live="polite">Odczytywanie bibliotek…</p>
+   </section>
   </details>
   <hr style="margin:26px 0;border-color:#77526c" />
   <details class="mf-config-collapse">
@@ -845,6 +867,137 @@
     finally{button.disabled=false;}
    });
    return {activate};
+  })();
+
+  
+  // Jellyfin admin page: physical paths are discovered from /Library/VirtualFolders.
+  // We only save MisioFlix classification; NEVER POST changes to Jellyfin libraries.
+  const libraryPaths=(()=>{
+   const panel=view.querySelector('#mf-library-paths-panel');
+   if(!panel||typeof panel.querySelector!=='function')return {activate(){}};
+   const list=panel.querySelector('#mf-library-list');
+   const status=panel.querySelector('#mf-library-status');
+   const reload=panel.querySelector('#mf-library-reload');
+   const save=panel.querySelector('#mf-library-save');
+   const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
+   const equalPaths=(a,b)=>JSON.stringify(a||[])===JSON.stringify(b||[]);
+   const cleanPaths=value=>String(value||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+   let rows=[];
+   let loaded=false;
+   let busy=false;
+   const guessRole=name=>/^anime(?:\s|_|-)*(?:pl|polski|lektor)/i.test(name)?'anime_pl':
+     /^anime(?:\s|_|-)*(?:eng|en|english)/i.test(name)?'anime_eng':'other';
+   const guessAudio=name=>/(?:\s|_|-)*eng$/i.test(name)?'en':/(?:\s|_|-)*pl$/i.test(name)?'pl':'auto';
+   const normalizedId=value=>String(value||'').replace(/-/g,'').trim().toLowerCase();
+   const validRoot=p=>p.startsWith('/')&&p.length<=1024&&!p.includes('\u0000')&&p.split('/').every(segment=>segment!=='..');
+   const auth=()=>{
+    const raw=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
+    if(!raw)throw Error('Brak tokenu administratora Jellyfin.');
+    return {Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-library-admin", Version="1", Token="'+String(raw).replace(/["\r\n]/g,'')+'"'};
+   };
+   async function discover(){
+    const url=typeof ApiClient?.getUrl==='function'?ApiClient.getUrl('Library/VirtualFolders'):'/Library/VirtualFolders';
+    const response=await fetch(url,{headers:auth(),cache:'no-store'});
+    if(!response.ok)throw Error('Odczyt bibliotek Jellyfina: HTTP '+response.status);
+    const data=await response.json();
+    if(!Array.isArray(data))throw Error('Jellyfin zwrócił nieprawidłową listę bibliotek.');
+    return data;
+   }
+   function render(){
+    list.replaceChildren();
+    if(!rows.length){list.append(el('p','Nie znaleziono bibliotek.'));return;}
+    for(const row of rows){
+     const box=el('div');box.className='mf-lib-entry';
+     const title=el('h3',row.name);box.append(title);
+     const meta=el('div','ID: '+row.id+' | Typ Jellyfin: '+row.kind);
+     meta.className='mf-lib-meta';box.append(meta);
+     const fields=el('div');fields.className='mf-lib-fields';
+     const roleLabel=el('label','Typ w MisioFlix');
+     const role=el('select');role.className='emby-select';
+     for(const [value,caption] of [['other','Zwykła biblioteka'],['anime_pl','Anime PL — NFO + MAL'],['anime_eng','Anime ENG — NFO + MAL']]){
+      const option=el('option',caption);option.value=value;role.append(option);
+     }
+     role.value=row.role;role.addEventListener('change',()=>{row.role=role.value;});
+     roleLabel.append(role);fields.append(roleLabel);
+     const audioLabel=el('label','Jedna ścieżka bez języka — domyślnie');
+     const audio=el('select');audio.className='emby-select';
+     for(const [value,caption] of [['auto','Wykryj z nazwy biblioteki'],['pl','Polski'],['en','Angielski']]){
+      const option=el('option',caption);option.value=value;audio.append(option);
+     }
+     audio.value=row.audio;audio.addEventListener('change',()=>{row.audio=audio.value;});
+     audioLabel.append(audio);fields.append(audioLabel);box.append(fields);
+     const pathLabel=el('label','Ścieżki używane przez MisioFlix (po jednej w wierszu)');
+     pathLabel.className='mf-lib-path-label';
+     const input=el('textarea');input.className='emby-input';input.value=row.paths.join('\n');
+     input.addEventListener('input',()=>{row.paths=cleanPaths(input.value);});
+     pathLabel.append(input);box.append(pathLabel);
+     const expected=el('div','Aktualne ścieżki Jellyfina: '+(row.livePaths.length?row.livePaths.join(' | '):'brak'));
+     expected.className='mf-lib-meta';box.append(expected);
+     const restore=el('button','Użyj ścieżek Jellyfina');restore.type='button';restore.className='emby-button raised';
+     restore.addEventListener('click',()=>{row.paths=[...row.livePaths];input.value=row.paths.join('\n');});
+     box.append(restore);list.append(box);
+    }
+   }
+   async function load(){
+    if(busy)return;
+    busy=true;reload.disabled=true;save.disabled=true;
+    status.textContent='Odczytywanie wszystkich bibliotek Jellyfina…';
+    try{
+     const [config,libraries]=await Promise.all([ApiClient.getPluginConfiguration(pluginId),discover()]);
+     // Save an explicitly customized path until the admin uses "Użyj ścieżek Jellyfina".
+     // Unmodified paths follow physical folder renames automatically on reload.
+     const prior=new Map((config.LibraryPaths||[]).map(r=>[normalizedId(r.LibraryId),r]));
+     rows=libraries.filter(lib=>normalizedId(lib.ItemId)).map(lib=>{
+      const id=normalizedId(lib.ItemId),saved=prior.get(id);
+      const livePaths=Array.isArray(lib.Locations)?lib.Locations.map(String).filter(Boolean):[];
+      const savedPaths=Array.isArray(saved?.Paths)?saved.Paths:[];
+      const oldLivePaths=Array.isArray(saved?.JellyfinPaths)?saved.JellyfinPaths:[];
+      const paths=saved&&savedPaths.length&&!equalPaths(savedPaths,oldLivePaths)?savedPaths:livePaths;
+      const name=String(lib.Name||id);
+      return {id,name,kind:String(lib.CollectionType||'mixed'),livePaths,
+        paths:[...paths],role:String(saved?.Role||guessRole(name)),
+        audio:String(saved?.AudioLanguage||guessAudio(name))};
+     }).sort((a,b)=>a.name.localeCompare(b.name,'pl'));
+     loaded=true;render();
+     status.textContent='Odczytano '+rows.length+' bibliotek. Po zmianach kliknij „Zapisz ścieżki i role”.';
+    }catch(e){loaded=false;status.textContent='Błąd: '+e.message+'. Nic nie zapisano.';}
+    finally{busy=false;reload.disabled=false;save.disabled=!loaded;}
+   }
+   async function store(){
+    if(!loaded||busy)return;
+    const problems=[];const assigned=new Map();
+    for(const row of rows){
+     if(row.paths.length>16)problems.push(row.name+': maks. 16 ścieżek');
+     if(row.paths.some(p=>!validRoot(p)))problems.push(row.name+': nieprawidłowa ścieżka kontenera');
+     if(row.role!=='other'&&!row.paths.length)problems.push(row.name+': anime wymaga ścieżki');
+     if(row.role!=='other')for(const path of row.paths){
+      if(assigned.has(path)&&assigned.get(path)!==row.role)problems.push('Niejednoznaczna ścieżka '+path);
+      assigned.set(path,row.role);
+     }
+    }
+    if(problems.length){status.textContent='Nie zapisano: '+problems.join('; ');return;}
+    busy=true;save.disabled=true;reload.disabled=true;
+    status.textContent='Zapisywanie ustawień MisioFlixa…';
+    try{
+     const config=await ApiClient.getPluginConfiguration(pluginId);
+     // Do not overwrite independent MAL, Simkl, update or recommendation settings.
+     config.LibraryPaths=rows.map(row=>({LibraryId:row.id,Name:row.name,
+      Role:row.role,AudioLanguage:row.audio,Paths:row.paths,JellyfinPaths:row.livePaths}));
+     config.LibraryPathsConfigured=true;
+         config.LibraryPathsRevision=String(Date.now());
+     const pl=rows.find(r=>r.role==='anime_pl'&&r.paths.length);
+     const en=rows.find(r=>r.role==='anime_eng'&&r.paths.length);
+     // Compatibility for modules/older versions that only inspect two legacy roots.
+     config.AnimeRoot=pl?pl.paths[0]:'';
+     config.AnimeOriginalRoot=en?en.paths[0]:'';
+     await ApiClient.updatePluginConfiguration(pluginId,config);
+     status.textContent='Zapisano '+rows.length+' bibliotek. Przeładuj MisioFlix, a w wyszukiwarce anime użyj „Odśwież dane”, aby odnowić zapisany indeks.';
+    }catch(e){status.textContent='Błąd zapisu: '+e.message;}
+    finally{busy=false;save.disabled=false;reload.disabled=false;}
+   }
+   reload.addEventListener('click',()=>{void load();});
+   save.addEventListener('click',()=>{void store();});
+   return {activate(){void load();}};
   })();
 
   view.addEventListener('pageshow',async()=>{

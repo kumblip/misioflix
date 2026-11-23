@@ -37,13 +37,14 @@
   const SEARCH_CATALOG_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
   const SEARCH_CATALOG_DB = 'misioflix-search-catalog-v1';
   let catalogDatabasePromise = null;
-  const catalogSchemaVersion = 'v2'; // Catalog now identifies physical anime source; older snapshots cannot supply it.
+  const catalogSchemaVersion = 'v3-library-paths'; // Old snapshots predate the library map.
+  let libraryPathsRevision = ''; // Reported by the authenticated server on /home/libraries.
   function catalogScope(){
     const client = window.ApiClient || window.ConnectionManager?.getApiClient?.();
     const userId = client?.getCurrentUserId?.();
     const serverId = typeof client?.serverId === 'function' ? client.serverId() : client?.serverId;
     return currentToken() && validId(userId) && validId(serverId)
-      ? compactId(serverId) + ':' + compactId(userId) + ':' + catalogSchemaVersion : '';
+      ? compactId(serverId) + ':' + compactId(userId) + ':' + catalogSchemaVersion + ':' + libraryPathsRevision : '';
   }
   function catalogFullKey(libraryId){
     const scope = catalogScope();
@@ -2257,6 +2258,13 @@
       const libs=await request('/home/libraries');
       if(!isCurrent(serial))return;
       container.replaceChildren();rows.clear();
+      // Every successful admin map save changes the safe revision in this response.
+      // A fresh cache namespace prevents 14-day-old search snapshots from hiding
+      // titles after a folder rename, on ALL user devices (not just the admin's).
+      const revision=String(Array.isArray(libs)&&libs.length?libs[0].catalogRevision||'':'');
+      if(revision!==libraryPathsRevision){
+        libraryPathsRevision=revision;catalogCache.clear();catalogFetchedAt.clear();
+      }
       // Do not cache stale library *names*; resolve each fresh /Views response.
       librariesCache = coalesceRenamedLibraryViews(libs);
       paintFolderButtons();

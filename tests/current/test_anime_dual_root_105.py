@@ -29,7 +29,7 @@ class DualAnimeSource105(unittest.TestCase):
         self.assertIn("state.lektor?.checked===false?'original':'lektor'",home)
         self.assertIn("lektor.checked=true",home)
         self.assertIn('displaySearchCatalog(state,data,force && state.pool.length>0)',home)
-        self.assertIn("const catalogSchemaVersion = 'v2'",home)
+        self.assertIn("const catalogSchemaVersion = 'v3-library-paths'",home)
         self.assertIn('const previousScroll=preserveFilters?state.scroller.scrollTop:0',home)
         self.assertIn('state.genreStates.set(genre,mode)',home)
 

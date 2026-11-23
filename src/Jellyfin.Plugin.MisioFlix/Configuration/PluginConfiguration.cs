@@ -31,6 +31,14 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     // Not an AnimeEN directory; keep AnimeRoot unchanged for all existing installations.
     public string AnimeOriginalRoot { get; set; } = "/media/raid/anime";
 
+
+    // Administration panel: real Jellyfin libraries, keyed by stable ItemId.
+    // Empty/unconfigured retains legacy anime roots; never writes media files.
+    public bool LibraryPathsConfigured { get; set; } = false;
+    // Cache revision changes when paths/roles change, not on every media request.
+    public string LibraryPathsRevision { get; set; } = string.Empty;
+    public List<MisioFlixLibraryPath> LibraryPaths { get; set; } = new();
+
     // Only local loopback is allowed by CatalogService. Keep the server port here.
     public string JellyfinLoopbackUrl { get; set; } = "http://127.0.0.1:8096";
 }
@@ -41,4 +49,19 @@ public sealed class MisioFlixRecommendationSet
 {
     public List<string> Genres { get; set; } = new();
     public bool MatchAll { get; set; } = false;
+}
+
+
+/// <summary>Library-specific root selection saved from the administrator's Jellyfin libraries.</summary>
+public sealed class MisioFlixLibraryPath
+{
+    public string LibraryId { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    // anime_pl, anime_eng, other. Both anime roles use NFO/MAL handling.
+    public string Role { get; set; } = "other";
+    // pl, en, auto. Optional audio fallback ONLY for single, unlabeled tracks.
+    public string AudioLanguage { get; set; } = "auto";
+    public List<string> Paths { get; set; } = new();
+    // Jellyfin's last observed roots: distinguishes custom override from following a rename.
+    public List<string> JellyfinPaths { get; set; } = new();
 }
