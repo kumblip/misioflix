@@ -26,7 +26,9 @@ class NfoCollections096(unittest.TestCase):
         self.assertIn('ledger.CreatedBoxSetIds.Remove',SERVICE)
         self.assertNotIn('Directory.Delete(',SERVICE)
     def test_never_prune_when_scan_is_unsafe(self):
-        self.assertIn('items.Length >= MaxMediaItems',SERVICE)
+        self.assertIn('candidates.Length > MaxMediaItems',SERVICE)
+        self.assertIn('seasons.Count > MaxMediaItems',SERVICE)
+        self.assertIn('folders.Count > MaxFolderCandidates',SERVICE)
         self.assertIn('movies.Count > MaxMediaItems',SERVICE)
         self.assertIn('series.Count > MaxMediaItems',SERVICE)
         self.assertIn('canRemove = false;',SERVICE)

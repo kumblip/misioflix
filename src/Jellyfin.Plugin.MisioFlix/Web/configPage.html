@@ -165,7 +165,7 @@
   <details class="mf-config-collapse"><summary>Kolekcje Jellyfina z NFO</summary>
   <section id="mf-nfo-collections-panel" aria-labelledby="mf-nfo-collections-heading" style="padding:12px 0 20px">
    <h2 id="mf-nfo-collections-heading">Kolekcje Jellyfina z plików NFO</h2>
-   <p>MisioFlix odczytuje powtarzające się tagi <code>&lt;set&gt;</code> z <code>movie.nfo</code> i <code>tvshow.nfo</code>.
+   <p>MisioFlix odczytuje powtarzające się tagi <code>&lt;set&gt;</code> z <code>movie.nfo</code>, <code>tvshow.nfo</code> i <code>season.nfo</code>. Każdy sezon anime może należeć do osobnej kolekcji, niezależnie od całego serialu.
       Tworzy rzeczywiste kolekcje Jellyfina, dodaje brakujące filmy i seriale oraz usuwa nieaktualne powiązania po usunięciu tagu.
       Puste kolekcje utworzone przez MisioFlix są usuwane. Ręcznie utworzone kolekcje i powiązania spoza NFO pozostają nienaruszone.
       Przy uszkodzonym NFO lub niedostępnym dysku usuwanie jest blokowane. MisioFlix nie zmienia NFO ani filmów.</p>
@@ -174,7 +174,7 @@
     <span>Automatyczna synchronizacja po uruchomieniu Jellyfina i co 30 minut</span>
    </label>
    <button type="button" class="raised emby-button" id="mf-nfo-collections-sync">Synchronizuj kolekcje z NFO teraz</button>
-   <button type="button" class="raised emby-button" id="mf-nfo-collections-report">Pokaż raport filmów i seriali</button>
+   <button type="button" class="raised emby-button" id="mf-nfo-collections-report">Pokaż raport bibliotek, filmów, seriali i sezonów</button>
    <p id="mf-nfo-collections-status" role="status" aria-live="polite">Stan synchronizacji jest odczytywany z serwera.</p>
    <pre id="mf-nfo-collections-report-text" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:440px;overflow-y:auto;background:rgba(0,0,0,.25);padding:12px;border-radius:8px" hidden></pre>
    <small>Jeśli liczba tagów &lt;set&gt; i &lt;sorttitle&gt; jest taka sama, odpowiadają sobie kolejnością wpisów. MisioFlix ustawia kolejność pozycji we własnych BoxSetach, bez nadpisywania globalnego SortName. Przy niepełnym mapowaniu nie zmienia kolejności.</small>
@@ -202,6 +202,7 @@
     <button type="button" class="emby-button raised" id="mf-recommendation-add">+ Dodaj propozycję</button>
     <button type="button" class="raised button-submit emby-button" id="mf-recommendation-save">Zapisz propozycje</button>
    </div>
+   <p><small>Każda propozycja domyślnie obejmuje wszystkie biblioteki Jellyfina. Możesz niezależnie ograniczyć ją do wybranych bibliotek. Nazwy bibliotek nie są używane jako identyfikatory.</small></p>
    <p><small>Lista gatunków pochodzi z NFO anime oraz gatunków Jellyfina dla filmów, seriali i innych animacji.
     Wybór „Uwzględnij anime” na stronie głównej działa niezależnie od definicji zestawów.</small></p>
    <p id="mf-recommendation-status" role="status" aria-live="polite"></p>
@@ -505,20 +506,46 @@
      if(!info){reportText.textContent='Brak zakończonej synchronizacji. Najpierw użyj przycisku synchronizacji.';return;}
      const field=(o,lower,upper)=>o?.[lower]??o?.[upper]??0;
      const groups=field(info,'collections','Collections');
+     const complete=field(info,'completeScan','CompleteScan')===true;
      const lines=[
-      'Odczytano filmów: '+field(info,'moviesScanned','MoviesScanned')+', seriali: '+field(info,'seriesScanned','SeriesScanned'),
+      'Kompletność skanu: '+(complete?'potwierdzona':'NIEPOTWIERDZONA — usuwanie powiązań i pustych kolekcji zablokowane'),
+      'Pozycje znalezione w Jellyfinie: '+field(info,'totalJellyfinItems','TotalJellyfinItems')+
+       ', odczytane NFO: '+field(info,'totalNfoRead','TotalNfoRead')+
+       ', pozycje z <set>: '+field(info,'totalItemsWithSet','TotalItemsWithSet'),
+      'Filmy Jellyfina: '+field(info,'moviesScanned','MoviesScanned')+
+       ', seriale: '+field(info,'seriesScanned','SeriesScanned')+
+       ', sezony: '+field(info,'seasonsScanned','SeasonsScanned')+
+       ', foldery z rozpoznanym NFO: '+field(info,'foldersWithNfo','FoldersWithNfo'),
       'Filmy z NFO: '+field(info,'moviesWithNfo','MoviesWithNfo')+
-      ', filmy z <set>: '+field(info,'moviesWithSet','MoviesWithSet')+
-      ', seriale z <set>: '+field(info,'seriesWithSet','SeriesWithSet'),
-      '', 'Kolekcje z brakującymi powiązaniami:'
+       ', seriale z NFO: '+field(info,'seriesWithNfo','SeriesWithNfo')+
+       ', sezony z NFO: '+field(info,'seasonsWithNfo','SeasonsWithNfo'),
+      'Pozycje z <set>: filmy '+field(info,'moviesWithSet','MoviesWithSet')+
+       ', seriale '+field(info,'seriesWithSet','SeriesWithSet')+
+       ', sezony '+field(info,'seasonsWithSet','SeasonsWithSet'),
+      '', 'Biblioteki Jellyfina (znalezione / NFO / z <set> / brak NFO / błędne NFO):'
      ];
-     const missing=(Array.isArray(groups)?groups:[]).filter(c=>field(c,'missingMovieCount','MissingMovieCount')+field(c,'missingSeriesCount','MissingSeriesCount')>0);
+     const libraries=field(info,'libraries','Libraries');
+     if(Array.isArray(libraries)&&libraries.length){
+      for(const lib of libraries){
+       lines.push('• '+field(lib,'name','Name')+': '+
+         field(lib,'jellyfinItems','JellyfinItems')+' / '+field(lib,'readNfo','ReadNfo')+' / '+
+         field(lib,'withSet','WithSet')+' / '+field(lib,'missingNfo','MissingNfo')+' / '+
+         field(lib,'invalidNfo','InvalidNfo')+
+         (field(lib,'complete','Complete')===false?' [NIEKOMPLETNA]':''));
+      }
+     }else lines.push('Brak pozycji w raporcie bibliotek — sprawdź skan i konfigurację.');
+     lines.push('', 'Kolekcje z brakującymi powiązaniami:');
+     const missing=(Array.isArray(groups)?groups:[]).filter(c=>field(c,'missingMovieCount','MissingMovieCount')+
+      field(c,'missingSeriesCount','MissingSeriesCount')+field(c,'missingSeasonCount','MissingSeasonCount')>0);
      if(!missing.length)lines.push('Brak brakujących powiązań wśród NFO rozpoznanych przez skaner.');
      for(const c of missing.slice(0,60)){
       lines.push(String(field(c,'name','Name'))+': oczekiwane filmy/seriale '+
        field(c,'expectedMovies','ExpectedMovies')+'/'+field(c,'expectedSeries','ExpectedSeries')+
+       ', sezony '+field(c,'expectedSeasons','ExpectedSeasons')+
        ', w Jellyfinie '+field(c,'actualMovies','ActualMovies')+'/'+field(c,'actualSeries','ActualSeries')+
-       ', brak filmów '+field(c,'missingMovieCount','MissingMovieCount'));
+       ' (sezony '+field(c,'actualSeasons','ActualSeasons')+')'+
+       ', brak filmów '+field(c,'missingMovieCount','MissingMovieCount')+
+       ', brak sezonów '+field(c,'missingSeasonCount','MissingSeasonCount'));
       const names=field(c,'missingMovieNames','MissingMovieNames');
       if(Array.isArray(names)&&names.length)lines.push('  Brakujące: '+names.join(', '));
      }
@@ -731,6 +758,7 @@
    const clean=x=>String(x||'').trim().slice(0,100);
    const key=x=>clean(x).toLocaleLowerCase('pl');
    let names=[];
+   let libraries=[];
    let proposals=[];
    let busy=false;
    const el=(tag,cls,caption)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(caption!==undefined)node.textContent=caption;return node;};
@@ -824,6 +852,41 @@
       radio.addEventListener('change',()=>{if(radio.checked)preset.matchAll=value==='all';});
       wrapper.append(radio,document.createTextNode(' '+label));modes.append(wrapper);
      }
+     // Opt-out selector: unchecked library IDs are stored, new IDs default to ON.
+     const libraryPanel=el('details','mf-proposal-genre-toggle');
+     const excludedList=()=>new Set((preset.excludedLibraryIds||[]).map(x=>String(x).replace(/-/g,'').toLowerCase()));
+     const librarySummary=el('summary','','Biblioteki: wszystkie');
+     const libraryGrid=el('div','mf-proposal-genre-list');
+     libraryGrid.setAttribute('aria-label','Biblioteki propozycji '+(index+1));
+     const allLabel=el('label'),allInput=el('input');allInput.type='checkbox';
+     const allName=el('span','','Zaznacz wszystkie obecne biblioteki');
+     allLabel.append(allInput,allName);
+     const hint=el('p','','Nowe biblioteki zawsze otrzymują TAK. Zapamiętywane są tylko ręczne wykluczenia (NIE).');
+     const entries=el('div','mf-proposal-genre-list');
+     function paintLibraries(){
+       const excluded=excludedList();
+       allInput.checked=excluded.size===0;
+       librarySummary.textContent='Biblioteki: '+(excluded.size?'wyłączone ('+excluded.size+')':'wszystkie (także przyszłe)');
+       entries.replaceChildren();
+       if(!libraries.length){entries.append(el('p','','Nie wczytano listy bibliotek — zapisane wykluczenia pozostają bez zmian.'));return;}
+       for(const library of libraries){
+         const label=el('label'),check=el('input');check.type='checkbox';
+         check.checked=!excluded.has(library.id);
+         check.addEventListener('change',()=>{
+           const next=excludedList();
+           if(check.checked)next.delete(library.id);else next.add(library.id);
+           preset.excludedLibraryIds=[...next];paintLibraries();
+         });
+         label.append(check,el('span','',library.name));entries.append(label);
+       }
+     }
+     allInput.addEventListener('change',()=>{
+       if(allInput.checked)preset.excludedLibraryIds=[];
+       else preset.excludedLibraryIds=[...new Set([...(preset.excludedLibraryIds||[]),...libraries.map(x=>x.id)])];
+       paintLibraries();
+     });
+     libraryGrid.append(allLabel,hint);libraryPanel.append(librarySummary,libraryGrid,entries);
+     libraryPanel.addEventListener('toggle',()=>{if(libraryPanel.open)paintLibraries();});
      const choices=el('details','mf-proposal-genre-toggle');
      const toggle=el('summary','','Pokaż gatunki');
      const search=el('input','emby-input');search.type='search';search.placeholder='Znajdź gatunek…';
@@ -856,7 +919,7 @@
      choices.append(toggle,search,grid);
      const remove=el('button','emby-button','Usuń propozycję');remove.type='button';
      remove.addEventListener('click',()=>{proposals.splice(index,1);render();status.textContent='Zmiana oczekuje na zapis.';});
-     outer.append(summary,info,modes,choices,remove);list.append(outer);
+     outer.append(summary,info,modes,choices,libraryPanel,remove);list.append(outer);
     });
    }
    async function activate(){
@@ -865,11 +928,32 @@
      const cfg=await ApiClient.getPluginConfiguration(pluginId);
      const stored=Array.isArray(cfg.RecommendationSets)?cfg.RecommendationSets:[];
      if(stored.length){
-      proposals=stored.slice(0,48).map(x=>({genres:(Array.isArray(x.Genres)?x.Genres:[]).map(clean).filter(Boolean).slice(0,52),matchAll:x.MatchAll===true}));
+      proposals=stored.slice(0,48).map(x=>({genres:(Array.isArray(x.Genres)?x.Genres:[]).map(clean).filter(Boolean).slice(0,52),matchAll:x.MatchAll===true,
+       excludedLibraryIds:(Array.isArray(x.ExcludedLibraryIds)?x.ExcludedLibraryIds:[]).map(id=>String(id).replace(/-/g,'').toLowerCase()).filter(id=>/^[a-f0-9]{32}$/.test(id)),
+       legacyLibraryIds:x.AllLibraries===false?(Array.isArray(x.LibraryIds)?x.LibraryIds:[]).map(id=>String(id).replace(/-/g,'').toLowerCase()).filter(id=>/^[a-f0-9]{32}$/.test(id)):null}));
      }else if(Array.isArray(cfg.RecommendationGenres)&&cfg.RecommendationGenres.length){
-      proposals=cfg.RecommendationGenres.slice(0,48).map(g=>({genres:[clean(g)].filter(Boolean),matchAll:false}));
-     }else proposals=[{genres:[],matchAll:false},{genres:[],matchAll:false}];
-     names=[...new Set(proposals.flatMap(x=>x.genres))];render();
+      proposals=cfg.RecommendationGenres.slice(0,48).map(g=>({genres:[clean(g)].filter(Boolean),matchAll:false,excludedLibraryIds:[]}));
+     }else proposals=[{genres:[],matchAll:false,excludedLibraryIds:[]},{genres:[],matchAll:false,excludedLibraryIds:[]}];
+     names=[...new Set(proposals.flatMap(x=>x.genres))];
+     try {
+       const raw=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
+       const url=typeof ApiClient?.getUrl==='function'?ApiClient.getUrl('Library/VirtualFolders'):'/Library/VirtualFolders';
+       const response=await fetch(url,{cache:'no-store',headers:{Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-proposals-libraries", Version="1", Token="'+String(raw||'').replace(/["\r\n]/g,'')+'"'}});
+       if(!response.ok)throw Error('HTTP '+response.status);
+       const rows=await response.json();if(!Array.isArray(rows))throw Error('Niepoprawna lista');
+       libraries=rows.map(x=>({id:String(x.ItemId||'').replace(/-/g,'').toLowerCase(),name:String(x.Name||x.ItemId||'')}))
+         .filter(x=>/^[a-f0-9]{32}$/.test(x.id)).sort((a,b)=>a.name.localeCompare(b.name,'pl'));
+     }catch(_){libraries=[];} // Never discard stored library IDs on a temporary API error.
+     // Convert old allowlists into a blacklist of currently known libraries.
+     // Future IDs are absent from this blacklist and thus automatically enabled.
+     for(const preset of proposals){
+       if(!Array.isArray(preset.legacyLibraryIds))continue;
+       if(!libraries.length)continue; // A failed discovery must not erase legacy choices.
+       const allowed=new Set(preset.legacyLibraryIds);
+       preset.excludedLibraryIds=[...new Set([...(preset.excludedLibraryIds||[]),...libraries.filter(x=>!allowed.has(x.id)).map(x=>x.id)])];
+       preset.legacyLibraryIds=null;
+     }
+     render();
      const token=typeof ApiClient?.accessToken==='function'?ApiClient.accessToken():ApiClient?.accessToken;
      if(typeof token!=='string'||!token)throw Error('Brak autoryzacji Jellyfin.');
      const path=typeof ApiClient.getUrl==='function'?ApiClient.getUrl('MisioFlix/api/home/recommendation-options'):'/MisioFlix/api/home/recommendation-options';
@@ -887,7 +971,7 @@
    }
    add.addEventListener('click',()=>{
     if(proposals.length>=48){status.textContent='Maksymalnie 48 zestawów propozycji.';return;}
-    proposals.push({genres:[],matchAll:false});render();
+    proposals.push({genres:[],matchAll:false,excludedLibraryIds:[]});render();
     const newPanel=list.lastElementChild;if(newPanel?.tagName==='DETAILS')newPanel.open=true;
     status.textContent='Nowa propozycja oczekuje na zapis.';
    });
@@ -895,7 +979,9 @@
     if(busy)return;busy=true;save.disabled=true;
     try{
      const cfg=await ApiClient.getPluginConfiguration(pluginId);
-     cfg.RecommendationSets=proposals.map(p=>({Genres:[...new Map(p.genres.filter(Boolean).map(g=>[key(g),clean(g)])).values()].slice(0,52),MatchAll:!!p.matchAll}));
+     if(proposals.some(p=>Array.isArray(p.legacyLibraryIds)))throw Error('Odśwież listę bibliotek przed zapisaniem — nie można bezpiecznie przenieść starszych wyborów.');
+     cfg.RecommendationSets=proposals.map(p=>({Genres:[...new Map(p.genres.filter(Boolean).map(g=>[key(g),clean(g)])).values()].slice(0,52),MatchAll:!!p.matchAll,
+      AllLibraries:true,LibraryIds:[],ExcludedLibraryIds:[...new Set((p.excludedLibraryIds||[]).filter(x=>/^[a-f0-9]{32}$/.test(x)))]}));
      cfg.RecommendationGenres=[]; // No duplicate legacy rails after saving.
      await ApiClient.updatePluginConfiguration(pluginId,cfg);
      status.textContent='Zapisano '+proposals.filter(p=>p.genres.length).length+' aktywnych propozycji.';

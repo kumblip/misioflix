@@ -29,6 +29,7 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
     private const int MaxMediaItems = 20000;
     private const int MaxCollectionNames = 500;
     private const int MaxSetsPerItem = 32;
+    private const int MaxFolderCandidates = 20000;
     private readonly ILibraryManager _library;
     private readonly ICollectionManager _collections;
     private readonly ILogger<MisioFlixNfoCollectionsService> _logger;
@@ -114,6 +115,7 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
                 DateTimeOffset.UtcNow - ledger.LastFullParseUtc.Value >= TimeSpan.FromHours(24);
             var scanned = 0;
             var nfoFound = 0;
+            var parsedNfo = 0;
             var invalidNfo = 0;
             var created = 0;
             var added = 0;
@@ -125,8 +127,17 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
             var sortTitles = new Dictionary<string, Dictionary<Guid, string>>(StringComparer.OrdinalIgnoreCase);
             var scannedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var movieIds = new HashSet<Guid>();
+            var seasonIds = new HashSet<Guid>();
+            var seriesIds = new HashSet<Guid>();
+            var perLibrary = new Dictionary<string, NfoCollectionLibraryCounter>(StringComparer.OrdinalIgnoreCase);
+            var genericFolderCount = 0;
+            var missingConfiguredLibraries = new List<string>();
             var namesById = new Dictionary<Guid, string>();
             var movieWithNfo = 0;
+            var seasonWithNfo = 0;
+            var seasonWithSets = 0;
+            var seriesWithNfo = 0;
+            var folderWithNfo = 0;
             var movieWithSets = 0;
             var seriesWithSets = 0;
             var movieWithoutNfo = new List<string>();
@@ -148,39 +159,125 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
                 IncludeItemTypes = new[] { BaseItemKind.Series },
                 Recursive = true, Limit = MaxMediaItems + 1, EnableTotalRecordCount = false
             });
-            var items = movies.Concat(series).DistinctBy(item => item.Id).ToArray();
+            // Seasons are independent media objects: an anime season may belong
+            // to a different BoxSet than the parent series. A folder with its own
+            // media NFO can also represent a show in a Jellyfin 'mixed' library.
+            var seasons = _library.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Season },
+                Recursive = true, Limit = MaxMediaItems + 1, EnableTotalRecordCount = false
+            });
+            var folders = _library.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Folder },
+                Recursive = true, Limit = MaxFolderCandidates + 1, EnableTotalRecordCount = false
+            });
+            var items = movies.Concat(series).Concat(seasons).Concat(folders)
+                .DistinctBy(item => item.Id).ToArray();
+            // A folder is a media candidate only if its OWN directory contains
+            // tvshow.nfo / movie.nfo / season.nfo. Nested grouping folders with
+            // no NFO do not become synthetic movies or shows.
+            var candidates = items.Select(item => (item, nfo: CandidateNfoPath(item.Path, item.GetBaseItemKind())))
+                .Where(pair => pair.nfo.Kind is not null || pair.item.GetBaseItemKind() != BaseItemKind.Folder)
+                // A Jellyfin mixed library may expose the SAME physical title as
+                // both Series and Folder. Prefer the typed item; never add BOTH.
+                .DistinctBy(pair => pair.nfo.Path is null
+                    ? pair.item.Id.ToString("N")
+                    : Path.GetFullPath(pair.nfo.Path),
+                    OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
+                .ToArray();
+            genericFolderCount = folders.Count - candidates.Count(pair => pair.item.GetBaseItemKind() == BaseItemKind.Folder);
+            // Distinguish physical source libraries by stable Jellyfin GUID.
+            // Missing roots are a safety failure: NEVER remove BoxSet links.
+            var configured = Plugin.Instance?.Configuration;
+            if (configured?.LibraryPathsConfigured == true)
+            {
+                foreach (var lib in configured.LibraryPaths ?? new())
+                {
+                    if (!Guid.TryParse(lib.LibraryId, out var parsedId)) continue;
+                    var idText = parsedId.ToString("N");
+                    if (!perLibrary.ContainsKey(idText)) perLibrary[idText] = new NfoCollectionLibraryCounter(idText, lib.Name);
+                    foreach (var root in lib.Paths ?? new())
+                    {
+                        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+                        {
+                            canRemove = false;
+                            missingConfiguredLibraries.Add(lib.Name);
+                            perLibrary[idText].Complete = false;
+                        }
+                    }
+                }
+            }
             // NEVER infer deleted memberships from a truncated library query.
-            if (movies.Count > MaxMediaItems || series.Count > MaxMediaItems || items.Length >= MaxMediaItems)
+            if (movies.Count > MaxMediaItems || series.Count > MaxMediaItems || seasons.Count > MaxMediaItems ||
+                folders.Count > MaxFolderCandidates || candidates.Length > MaxMediaItems)
                 throw new InvalidOperationException("Za duża lub niepełna biblioteka; przerwano bez usuwania kolekcji.");
             // An unexpectedly empty film query must not empty existing film
             // memberships. Could mean a library has not finished mounting.
             if (movies.Count == 0 && managedItemIds.Count > 0)
                 canRemove = false;
 
-            foreach (var item in items)
+            foreach (var candidate in candidates)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var item = candidate.item;
                 scanned++;
                 var id = item.Id.ToString("N");
                 scannedIds.Add(id);
-                var isMovie = item.GetBaseItemKind() == BaseItemKind.Movie;
+                var kind = candidate.nfo.Kind ?? (item.GetBaseItemKind() switch
+                {
+                    BaseItemKind.Movie => "movie", BaseItemKind.Series => "series",
+                    BaseItemKind.Season => "season", _ => "folder"
+                });
+                var isMovie = kind == "movie";
+                var isSeason = kind == "season";
                 if (isMovie) movieIds.Add(item.Id);
+                else if (isSeason) seasonIds.Add(item.Id);
+                else seriesIds.Add(item.Id);
                 namesById[item.Id] = item.Name ?? id;
-                var nfo = NfoPath(item.Path, !isMovie);
+                // An NFO of each kind belongs to its own Jellyfin item ID.
+                // NEVER substitute a parent Series ID for a Season ID.
+                var nfo = candidate.nfo.Path;
+                var itemLibraries = new List<NfoCollectionLibraryCounter>();
+                try
+                {
+                    foreach (var root in _library.GetCollectionFolders(item))
+                    {
+                        var libraryId = root.Id.ToString("N");
+                        if (!perLibrary.TryGetValue(libraryId, out var counter))
+                            perLibrary[libraryId] = counter = new NfoCollectionLibraryCounter(libraryId, root.Name ?? libraryId);
+                        itemLibraries.Add(counter);
+                        counter.FoundItems++;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    canRemove = false;
+                    _logger.LogWarning(ex, "Cannot resolve media {Id} to a Jellyfin library", item.Id);
+                }
+                if (itemLibraries.Count == 0) canRemove = false;
                 if (nfo is null)
                 {
                     // Never interpret a missing/unresolved NFO as evidence
                     // that a previously registered <set> has been deleted.
                     // A modified, valid NFO with no <set> IS evidence instead.
                     var mediaFolder = MediaDirectory(item.Path);
-                    if (mediaFolder is null || !Directory.Exists(mediaFolder) ||
+                    // All typed movies, series and seasons are expected to have
+                    // their NFO. A missing file means scan completeness is not
+                    // proven and must NEVER authorize pruning old memberships.
+                    if (item.GetBaseItemKind() != BaseItemKind.Folder ||
+                        mediaFolder is null || !Directory.Exists(mediaFolder) ||
                         ledger.NfoCache.ContainsKey(id) || managedItemIds.Contains(id)) canRemove = false;
+                    foreach (var lib in itemLibraries) lib.MissingNfo++;
                     if (isMovie && movieWithoutNfo.Count < 20)
                         movieWithoutNfo.Add(item.Name ?? id);
                     continue;
                 }
                 nfoFound++;
                 if (isMovie) movieWithNfo++;
+                else if (isSeason) seasonWithNfo++;
+                else seriesWithNfo++;
+                if (item.GetBaseItemKind() == BaseItemKind.Folder) folderWithNfo++;
                 NfoSnapshot info;
                 try
                 {
@@ -203,16 +300,27 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
                 {
                     invalidNfo++;
                     canRemove = false;
+                    foreach (var lib in itemLibraries) { lib.InvalidNfo++; lib.Complete = false; }
                     _logger.LogWarning("MisioFlix skipped invalid/unavailable NFO for {ItemId}: {ErrorType}",
                         item.Id, ex.GetType().Name);
                     if (isMovie && invalidMovieNfo.Count < 20)
                         invalidMovieNfo.Add(item.Name ?? id);
                     continue;
                 }
+                parsedNfo++;
+                foreach (var lib in itemLibraries)
+                {
+                    lib.NfoRead++;
+                    if (info.Sets.Count > 0) lib.WithSet++;
+                }
                 if (isMovie)
                 {
                     if (info.Sets.Count > 0) movieWithSets++;
                     else if (movieWithoutSets.Count < 20) movieWithoutSets.Add(item.Name ?? id);
+                }
+                else if (isSeason)
+                {
+                    if (info.Sets.Count > 0) seasonWithSets++;
                 }
                 else if (info.Sets.Count > 0) seriesWithSets++;
                 foreach (var name in info.Sets)
@@ -228,6 +336,11 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
                 if (desired.Count > MaxCollectionNames)
                     throw new InvalidOperationException("Zbyt wiele kolekcji NFO; przerwano synchronizację.");
             }
+
+            // A missing previously-managed item is not proof of removal: a media
+            // volume may be absent or Jellyfin may still be rescanning it.
+            if (managedItemIds.Any(id => !scannedIds.Contains(id))) canRemove = false;
+            if (perLibrary.Values.Any(lib => !lib.Complete)) canRemove = false;
 
             var existing = _library.GetItemList(new InternalItemsQuery
             {
@@ -437,21 +550,25 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
             {
                 if (!existing.TryGetValue(entry.Key, out var box)) continue;
                 var expectedMovies = entry.Value.Count(movieIds.Contains);
-                var expectedSeries = entry.Value.Count - expectedMovies;
+                var expectedSeasons = entry.Value.Count(seasonIds.Contains);
+                var expectedSeries = entry.Value.Count - expectedMovies - expectedSeasons;
                 try
                 {
                     var currentBox = _library.GetItemById(box.Id) as BoxSet ?? box;
                     var resolved = currentBox.GetLinkedChildren();
                     var resolvedIds = resolved.Select(item => item.Id).ToHashSet();
-                    var linkedMovies = resolved.Count(item => item.GetBaseItemKind() == BaseItemKind.Movie);
-                    var linkedSeries = resolved.Count(item => item.GetBaseItemKind() == BaseItemKind.Series);
+                    var linkedMovies = resolved.Count(item => movieIds.Contains(item.Id));
+                    var linkedSeries = resolved.Count(item => seriesIds.Contains(item.Id));
+                    var linkedSeasons = resolved.Count(item => seasonIds.Contains(item.Id));
                     var missing = entry.Value.Where(id => !resolvedIds.Contains(id)).ToArray();
                     var missingMovies = missing.Where(movieIds.Contains)
                         .Select(id => namesById.TryGetValue(id, out var name) ? name : id.ToString("N"))
                         .Take(16).ToArray();
-                    var missingSeries = missing.Count(id => !movieIds.Contains(id));
+                    var missingSeasons = missing.Count(seasonIds.Contains);
+                    var missingSeries = missing.Count(id => seriesIds.Contains(id));
                     groups.Add(new NfoCollectionGroupDiagnostic(entry.Key, expectedMovies, expectedSeries,
-                        linkedMovies, linkedSeries, missing.Count(movieIds.Contains), missingSeries, missingMovies));
+                        linkedMovies, linkedSeries, missing.Count(movieIds.Contains), missingSeries, missingMovies,
+                        expectedSeasons, linkedSeasons, missingSeasons));
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -460,16 +577,24 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
                     groups.Add(new NfoCollectionGroupDiagnostic(entry.Key, expectedMovies, expectedSeries,
                         0, 0, expectedMovies, expectedSeries, entry.Value.Where(movieIds.Contains)
                             .Select(id => namesById.TryGetValue(id, out var name) ? name : id.ToString("N"))
-                            .Take(16).ToArray()));
+                            .Take(16).ToArray(), expectedSeasons, 0, expectedSeasons));
                 }
             }
             var diagnostic = new NfoCollectionSyncDiagnostic(DateTimeOffset.UtcNow, movies.Count, series.Count,
                 movieWithNfo, movieWithSets, seriesWithSets, movieWithoutNfo.ToArray(),
-                movieWithoutSets.ToArray(), invalidMovieNfo.ToArray(), groups);
+                movieWithoutSets.ToArray(), invalidMovieNfo.ToArray(), groups,
+                seasons.Count, seasonWithNfo, seasonWithSets, folderWithNfo, genericFolderCount,
+                scanned, parsedNfo, movieWithSets + seriesWithSets + seasonWithSets,
+                canRemove && missingConfiguredLibraries.Count == 0,
+                perLibrary.Values.OrderBy(lib => lib.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(lib => lib.ToReport()).ToArray(), seriesWithNfo);
             lock (_statusLock) _lastDiagnostic = diagnostic;
 
-            foreach (var id in ledger.NfoCache.Keys.Where(id => !scannedIds.Contains(id)).ToArray())
-                ledger.NfoCache.Remove(id);
+            // An incomplete scan may be a temporarily detached volume. Preserve
+            // old cached snapshots as evidence; do not erase them on that run.
+            if (canRemove)
+                foreach (var id in ledger.NfoCache.Keys.Where(id => !scannedIds.Contains(id)).ToArray())
+                    ledger.NfoCache.Remove(id);
             if (fullParse && canRemove) ledger.LastFullParseUtc = DateTimeOffset.UtcNow;
             await SaveLedgerAsync(ledger, cancellationToken).ConfigureAwait(false);
             var error = !canRemove ? "Niepełny/niepoprawny odczyt — bez usuwania powiązań ani kolekcji."
@@ -558,6 +683,32 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException) { return null; }
     }
 
+    // Only explicit NFO files identify a generic Folder as media. This avoids
+    // guessing from folder names, NFO tags, or Jellyfin display metadata.
+    private static (string? Path, string? Kind) CandidateNfoPath(string? mediaPath, BaseItemKind type)
+    {
+        var directory = MediaDirectory(mediaPath);
+        if (string.IsNullOrWhiteSpace(directory)) return (null, null);
+        try
+        {
+            if (type == BaseItemKind.Season) return (FindNfoIgnoringCase(directory, "season.nfo"), "season");
+            if (type == BaseItemKind.Series) return (NfoPath(mediaPath, true), "series");
+            if (type == BaseItemKind.Movie) return (NfoPath(mediaPath, false), "movie");
+            if (type != BaseItemKind.Folder) return (null, null);
+            var tv = FindNfoIgnoringCase(directory, "tvshow.nfo");
+            if (tv is not null) return (tv, "series");
+            var film = FindNfoIgnoringCase(directory, "movie.nfo");
+            if (film is not null) return (film, "movie");
+            var season = FindNfoIgnoringCase(directory, "season.nfo");
+            if (season is not null) return (season, "season");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // Missing source path is NOT evidence that an old BoxSet link should be removed.
+        }
+        return (null, null);
+    }
+
     private static string? NfoPath(string? mediaPath, bool series)
     {
         var directory = MediaDirectory(mediaPath);
@@ -605,8 +756,9 @@ public sealed class MisioFlixNfoCollectionsService : BackgroundService
         using var reader = XmlReader.Create(path, settings);
         var root = XDocument.Load(reader).Root;
         if (root is null || !(root.Name.LocalName.Equals("movie", StringComparison.OrdinalIgnoreCase) ||
-                              root.Name.LocalName.Equals("tvshow", StringComparison.OrdinalIgnoreCase)))
-            throw new XmlException("NFO must have a movie/tvshow root");
+                              root.Name.LocalName.Equals("tvshow", StringComparison.OrdinalIgnoreCase) ||
+                              root.Name.LocalName.Equals("season", StringComparison.OrdinalIgnoreCase)))
+            throw new XmlException("NFO must have a movie/tvshow/season root");
         var sets = root.Elements().Where(e => e.Name.LocalName.Equals("set", StringComparison.OrdinalIgnoreCase))
             .Select(e => NormalizeName(e.Value)).ToArray();
         if (sets.Length > MaxSetsPerItem) throw new InvalidDataException("Too many <set> tags");
@@ -645,9 +797,35 @@ public sealed record NfoCollectionSyncDiagnostic(
     IReadOnlyList<string> MoviesWithoutNfoExamples,
     IReadOnlyList<string> MoviesWithoutSetExamples,
     IReadOnlyList<string> InvalidMovieNfoExamples,
-    IReadOnlyList<NfoCollectionGroupDiagnostic> Collections);
+    IReadOnlyList<NfoCollectionGroupDiagnostic> Collections,
+    int SeasonsScanned = 0, int SeasonsWithNfo = 0, int SeasonsWithSet = 0,
+    int FoldersWithNfo = 0, int SkippedGenericFolders = 0,
+    int TotalJellyfinItems = 0, int TotalNfoRead = 0, int TotalItemsWithSet = 0,
+    bool CompleteScan = false, IReadOnlyList<NfoCollectionLibraryDiagnostic>? Libraries = null,
+    int SeriesWithNfo = 0);
+
+public sealed record NfoCollectionLibraryDiagnostic(
+    string LibraryId, string Name, int JellyfinItems, int ReadNfo,
+    int WithSet, int MissingNfo, int InvalidNfo, bool Complete);
+
+// Internal counter never appears in a user API response until it becomes a report.
+internal sealed class NfoCollectionLibraryCounter
+{
+    public NfoCollectionLibraryCounter(string id, string name) { Id = id; Name = name; }
+    public string Id { get; }
+    public string Name { get; }
+    public int FoundItems { get; set; }
+    public int NfoRead { get; set; }
+    public int WithSet { get; set; }
+    public int MissingNfo { get; set; }
+    public int InvalidNfo { get; set; }
+    public bool Complete { get; set; } = true;
+    public NfoCollectionLibraryDiagnostic ToReport() =>
+        new(Id, Name, FoundItems, NfoRead, WithSet, MissingNfo, InvalidNfo, Complete);
+}
 
 public sealed record NfoCollectionGroupDiagnostic(
     string Name, int ExpectedMovies, int ExpectedSeries,
     int ActualMovies, int ActualSeries, int MissingMovieCount,
-    int MissingSeriesCount, IReadOnlyList<string> MissingMovieNames);
+    int MissingSeriesCount, IReadOnlyList<string> MissingMovieNames,
+    int ExpectedSeasons = 0, int ActualSeasons = 0, int MissingSeasonCount = 0);

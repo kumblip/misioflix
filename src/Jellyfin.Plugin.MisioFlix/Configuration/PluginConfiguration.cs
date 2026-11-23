@@ -55,6 +55,13 @@ public sealed class MisioFlixRecommendationSet
 {
     public List<string> Genres { get; set; } = new();
     public bool MatchAll { get; set; } = false;
+    // Empty LibraryIds together with AllLibraries=true means EVERY current and future library.
+    // Older saved presets deserialize as AllLibraries=true: no migration or accidental filtering.
+    public bool AllLibraries { get; set; } = true;
+    public List<string> LibraryIds { get; set; } = new();
+    // Opt-out selection: a new Jellyfin library is included automatically.
+    // Persist ONLY manually excluded stable library IDs per proposal.
+    public List<string> ExcludedLibraryIds { get; set; } = new();
 }
 
 

@@ -12,7 +12,8 @@ class NfoMovies097(unittest.TestCase):
     def test_independent_movie_and_series_query(self):
         self.assertIn('IncludeItemTypes = new[] { BaseItemKind.Movie }', SERVICE)
         self.assertIn('IncludeItemTypes = new[] { BaseItemKind.Series }', SERVICE)
-        self.assertIn('movies.Concat(series).DistinctBy(item => item.Id)', SERVICE)
+        self.assertIn('movies.Concat(series).Concat(seasons).Concat(folders)', SERVICE)
+        self.assertIn('.DistinctBy(item => item.Id)', SERVICE)
         self.assertIn('movies.Count > MaxMediaItems', SERVICE)
         self.assertIn('series.Count > MaxMediaItems', SERVICE)
     def test_windows_case_nfo_names_work_on_linux_and_no_unrelated_file(self):
@@ -29,7 +30,8 @@ class NfoMovies097(unittest.TestCase):
         self.assertNotIn('File.Delete(nfo)', SERVICE)
     def test_admin_report_measures_actual_boxset_not_just_metadata(self):
         self.assertIn('var resolved = currentBox.GetLinkedChildren();', SERVICE)
-        self.assertIn('var linkedMovies = resolved.Count(item => item.GetBaseItemKind() == BaseItemKind.Movie);', SERVICE)
+        self.assertIn('var linkedMovies = resolved.Count(item => movieIds.Contains(item.Id));', SERVICE)
+        self.assertIn('var linkedSeasons = resolved.Count(item => seasonIds.Contains(item.Id));', SERVICE)
         self.assertIn('NfoCollectionGroupDiagnostic', SERVICE)
         self.assertIn('MoviesWithoutNfoExamples', SERVICE)
         self.assertIn('MoviesWithoutSetExamples', SERVICE)

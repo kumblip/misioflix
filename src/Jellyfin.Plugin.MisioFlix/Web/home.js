@@ -2172,6 +2172,16 @@
       if(!selected.length)continue;
       const matching=recommendationCandidates.filter(item=>{
         if(!recommendationIncludeAnime&&item.anime)return false;
+        // Opt-out only: every current/future library is included unless
+        // ALL known memberships of this item are manually excluded.
+        // Preserve legacy allowlists until an admin opens and saves the new selector.
+        if(preset.allLibraries===false){
+          const allowed=new Set((preset.libraryIds||[]).map(compactId));
+          if(!Array.isArray(item.library_ids)||!item.library_ids.some(id=>allowed.has(compactId(id))))return false;
+        }else if(preset.excludedLibraryIds?.length&&Array.isArray(item.library_ids)&&item.library_ids.length){
+          const excluded=new Set(preset.excludedLibraryIds.map(compactId));
+          if(item.library_ids.every(id=>excluded.has(compactId(id))))return false;
+        }
         const genres=new Set([...(Array.isArray(item.genres)?item.genres:[]),
           ...(item.anime&&item.type==='Series'?(recommendationSeasonGenres.get(compactId(item.id))||[]):[])].map(normalized));
         return preset.matchAll?selected.every(g=>genres.has(g)):selected.some(g=>genres.has(g));
@@ -2214,7 +2224,10 @@
         (Array.isArray(config?.genres)?config.genres.map(g=>({genres:[g],matchAll:false})):[]);
       recommendationPresets=proposed.slice(0,48).map(p=>({
         genres:(Array.isArray(p?.genres)?p.genres:[]).filter(g=>typeof g==='string'&&g.trim()).slice(0,52),
-        matchAll:p?.matchAll===true
+        matchAll:p?.matchAll===true,
+        allLibraries:p?.allLibraries!==false,
+        libraryIds:(Array.isArray(p?.libraryIds)?p.libraryIds:[]).filter(validId).map(compactId),
+        excludedLibraryIds:(Array.isArray(p?.excludedLibraryIds)?p.excludedLibraryIds:[]).filter(validId).map(compactId)
       }));
       if(!recommendationPresets.some(p=>p.genres.length)){
         area.replaceChildren(); // Empty configuration should not leave an empty Home section.

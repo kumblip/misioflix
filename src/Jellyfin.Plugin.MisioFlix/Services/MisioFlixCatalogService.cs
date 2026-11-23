@@ -115,6 +115,11 @@ public sealed class MisioFlixCatalogService
                 // The GUID originates from the already-authorized /Items result.
                 var originalItem = _library.GetItemById(guid);
                 if (originalItem is null) continue;
+                // Resolve membership through Jellyfin's own physical library mapping, never
+                // the display name or a guessed path. These IDs also scope genre proposals.
+                var libraryIds = _library.GetCollectionFolders(originalItem)
+                    .Select(folder => folder.Id.ToString("N"))
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 var mediaPath = originalItem.Path;
                 var animeSource = AnimeSource(mediaPath);
                 var isAnime = animeSource.Length != 0;
@@ -135,6 +140,7 @@ public sealed class MisioFlixCatalogService
                     result.Add(new CatalogItem
                     {
                         id = itemId,
+                        library_ids = libraryIds,
                         anime = true,
                         anime_source = animeSource,
                         type = itemType,
@@ -181,6 +187,7 @@ public sealed class MisioFlixCatalogService
                     result.Add(new CatalogItem
                     {
                         id = itemId,
+                        library_ids = libraryIds,
                         anime = false,
                         type = type,
                         title = Text(Get(json, "Name")),
@@ -2188,6 +2195,8 @@ public sealed record CatalogResponse(List<CatalogItem> items, GenreSets genres);
 public sealed class CatalogItem
 {
     public string id { get; set; } = string.Empty;
+    // Same stable CollectionFolder GUIDs as /Library/VirtualFolders and User /Views.
+    public List<string> library_ids { get; set; } = new();
     public bool anime { get; set; }
     // "lektor" = animelektor (PL); "original" = anime (original audio / EN subs).
     public string anime_source { get; set; } = string.Empty;

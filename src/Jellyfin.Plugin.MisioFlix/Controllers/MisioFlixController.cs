@@ -189,7 +189,12 @@ public sealed class MisioFlixController : ControllerBase
             .Select(x => new {
                 genres = (x?.Genres ?? new List<string>()).Where(g => !string.IsNullOrWhiteSpace(g) && g.Length <= 100)
                     .Distinct(StringComparer.OrdinalIgnoreCase).Take(52).ToArray(),
-                matchAll = x?.MatchAll == true
+                matchAll = x?.MatchAll == true,
+                allLibraries = x?.AllLibraries != false,
+                libraryIds = (x?.LibraryIds ?? new List<string>()).Where(id => Guid.TryParse(id, out _))
+                    .Select(id => Guid.Parse(id).ToString("N")).Distinct(StringComparer.OrdinalIgnoreCase).Take(100).ToArray(),
+                excludedLibraryIds = (x?.ExcludedLibraryIds ?? new List<string>()).Where(id => Guid.TryParse(id, out _))
+                    .Select(id => Guid.Parse(id).ToString("N")).Distinct(StringComparer.OrdinalIgnoreCase).Take(100).ToArray()
             })
             .Where(x => x.genres.Length != 0).ToArray();
         // Existing installations keep their selected rails until the administrator saves
@@ -199,7 +204,7 @@ public sealed class MisioFlixController : ControllerBase
             sets = (config.RecommendationGenres ?? new List<string>())
                 .Where(x => !string.IsNullOrWhiteSpace(x) && x.Length <= 100)
                 .Distinct(StringComparer.OrdinalIgnoreCase).Take(48)
-                .Select(x => new { genres = new[] { x }, matchAll = false }).ToArray();
+                .Select(x => new { genres = new[] { x }, matchAll = false, allLibraries = true, libraryIds = Array.Empty<string>(), excludedLibraryIds = Array.Empty<string>() }).ToArray();
         }
         return Ok(new { proposals = sets });
     }
