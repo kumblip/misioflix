@@ -49,8 +49,19 @@ assert.equal(shared.color,'var(--mf-home-switch-ink)');
 const track=lastRule('html.misioflix-skin .mf-home-switches .mf-home-libraries-toggle .mf-home-libraries-track');
 assert.equal(track.background,'var(--mf-home-switch-track)');
 assert.equal(track['border-color'],'var(--mf-home-switch-track)');
-assert.equal(lastRule('html.misioflix-skin .mf-home-switches')['justify-content'],'safe flex-end');
-assert.equal(lastRule('html.misioflix-skin .mf-home-switches','(max-width:880px)')['justify-content'],'flex-start');
+// v0.4.139: the entire button row stays LEFT on desktop and mobile.
+assert.equal(lastRule('html.misioflix-skin .mf-home-switches')['justify-content'],'flex-start');
+const alignmentValues=[];
+css.walkRules(rule=>{
+  if(rule.selectors.includes('html.misioflix-skin .mf-home-switches')){
+    for(const decl of rule.nodes){
+      if(decl.type==='decl' && decl.prop==='justify-content')alignmentValues.push(decl.value);
+    }
+  }
+});
+assert.ok(alignmentValues.length>0);
+assert.ok(alignmentValues.every(v=>v==='flex-start'),`unexpected alignment: ${alignmentValues}`);
+
 const knob=(state,media='')=>lastRule('html.misioflix-skin .mf-home-switches .mf-home-subtitles-toggle[data-mf-subtitles-mode="'+state+'"] .mf-home-libraries-track::after',media);
 assert.equal(knob('all').transform,'translateX(28px)');
 assert.equal(knob('en').transform,'translateX(0)');
@@ -61,4 +72,4 @@ assert.match(home,/let recommendationSubtitlesMode = 'all'/);
 assert.match(home,/recommendationIncludeAnime=true; \/\/ ON by default/);
 assert.match(home,/recommendationAudioMode='pl'; \/\/ First mode/);
 assert.match(home,/recommendationSubtitlesMode='all'; \/\/ Subtitles/);
-console.log('PASS v0.4.138: default green/right, alternatives blue, third states orange, desktop right/mobile safe');
+console.log('PASS v0.4.139: default green thumbs RIGHT, full button row LEFT, palette unchanged');

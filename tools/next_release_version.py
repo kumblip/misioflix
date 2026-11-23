@@ -23,7 +23,10 @@ def next_version(meta: dict, tags: list[str], manifest: list[dict]) -> str:
     major, minor, patch, build = map(int, match.groups())
     if build != 0:
         raise ValueError('Expected four-component MisioFlix version ending in .0')
-    highest = patch
+    # Existing published versions are authoritative. An explicit, higher
+    # meta.json version (e.g. 0.4.139.0) is publishable as-is when unused.
+    # Otherwise the next available patch number is chosen automatically.
+    highest_published = -1
     # Keep the 0.4 line and only increase its patch number; never roll back.
     for source in list(tags) + [str(v.get('version','')) for entry in manifest for v in entry.get('versions',[])]:
         found = VERSION.fullmatch(source.strip())
@@ -31,8 +34,9 @@ def next_version(meta: dict, tags: list[str], manifest: list[dict]) -> str:
             continue
         a,b,c,d = map(int,found.groups())
         if a==major and b==minor:
-            highest=max(highest,c)
-    return f'{major}.{minor}.{highest+1}.0'
+            highest_published=max(highest_published,c)
+    candidate=max(patch,highest_published+1)
+    return f'{major}.{minor}.{candidate}.0'
 
 
 def main() -> None:

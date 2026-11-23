@@ -2635,18 +2635,12 @@ html.misioflix-skin .mf-home-content-mode-icon{
  html.misioflix-skin .mf-home-content-mode-toggle[data-mf-home-mode="recommendations"] .mf-home-libraries-track::after{transform:translateX(12px)}
 }
 
-/* v0.4.138: one visual language for the four Home recommendation switches.
-   Default = GREEN (thumb on the right); second state = BLUE; third = ORANGE.
-   This is presentation-only: no changes to library, MAL/Simkl or language filters. */
+/* v0.4.138 palette / v0.4.139 alignment: consistent Home switches.
+   Default GREEN thumbs are on the right; second = BLUE; third = ORANGE.
+   The whole ROW of buttons starts at the left on all viewport widths.
+   Presentation-only: no changes to MAL, SIMKL, libraries or language filtering. */
 html.misioflix-skin .mf-home-switches{
-  /* On desktop align the full group right; `safe` avoids clipping on overflow. */
-  justify-content:safe flex-end;
-}
-@media(max-width:880px){
-  html.misioflix-skin .mf-home-switches{
-    /* Preserve access to the first switch when the single row overflows. */
-    justify-content:flex-start;
-  }
+  justify-content:flex-start;
 }
 
 /* GREEN: Propozycje, anime ON, Audio PL, Napisy Wszystkie. */

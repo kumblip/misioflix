@@ -18,6 +18,12 @@ class NextReleaseVersion(unittest.TestCase):
     def test_unrelated_tags_ignored_and_next_release_increments(self):
         self.assertEqual(mod.next_version({'version':'0.4.125.0'},
           ['v0.5.999.0','v0.4.125.0','release-120'],[]),'0.4.126.0')
+    def test_explicit_139_target_is_not_incremented_to_140(self):
+        self.assertEqual(mod.next_version({'version':'0.4.139.0'},
+          ['v0.4.137.0','v0.4.138.0'],[]),'0.4.139.0')
+    def test_next_release_after_139_is_140(self):
+        self.assertEqual(mod.next_version({'version':'0.4.139.0'},
+          ['v0.4.139.0'],[]),'0.4.140.0')
     def test_not_automatically_bumping_build_workflow(self):
         build=(ROOT/'.github/workflows/build.yml').read_text()
         release=(ROOT/'.github/workflows/release.yml').read_text()
