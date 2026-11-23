@@ -103,7 +103,7 @@ class ProposalSets108(unittest.TestCase):
         self.assertIn("mode==='latest'",shelf)
         self.assertIn("row.mode==='random'",HOME.replace("row.shuffle.classList.toggle('mf-home-view-active',mode==='random')","row.mode==='random'"))
         self.assertIn('preset.matchAll?selected.every(g=>genres.has(g)):selected.some(g=>genres.has(g))',HOME)
-        self.assertIn('if(!recommendationIncludeAnime&&item.anime)return false',HOME)
+        self.assertIn('if(!recommendationIncludeAnime&&isAnime(item))return false',HOME)
         self.assertIn('SHELF_LIMIT',HOME.split('async function loadRecommendationPage(',1)[1].split('function paintRecommendationSets(',1)[0])
         self.assertIn("card.querySelector('.mf-home-card-desc')?.remove()",HOME)
 
