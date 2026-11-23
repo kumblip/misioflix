@@ -24,7 +24,7 @@ class TestHome0412(unittest.TestCase):
     self.assertNotIn('ReadForAuthenticatedUserAsync',method)
   def test_anime_solely_from_nfo(self):
     method=SERV.split('private HomeTile? MakeHomeTile',1)[1].split('public async Task<HomeResumeResponse>',1)[0]
-    for x in ['nfo?.OriginalTitle','nfo?.Plot','nfo?.Kind','nfo?.Genres','AnimeSource(local.Path).Length == 0','type != "Series" && type != "Movie"']:
+    for x in ['nfo?.OriginalTitle','nfo?.Plot','nfo?.Kind','nfo?.Genres','type != "Series" && type != "Movie"']:
       self.assertIn(x,method)
     self.assertIn('userRating = PersonalRating(item)',method)
   def test_resume_private_no_catalog_scan(self):

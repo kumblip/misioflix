@@ -26,7 +26,7 @@ class Collections0426(unittest.TestCase):
         self.assertIn('collection ? type != "BoxSet"',C)
         self.assertIn('ParentId={libraryId:N}&Recursive=false',C)
         # BoxSet type not passed alongside ParentId, avoids a known Jellyfin bug.
-        self.assertIn('var itemScope = collections',C)
+        self.assertIn('var collections = view.category == "collections";',C)
         self.assertIn('ParentId={libraryId:N}&Recursive=false',C)
     def test_collection_row_right_after_anime(self):
         self.assertIn("const collectionsShelf={id:'collections'",H)

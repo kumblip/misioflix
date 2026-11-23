@@ -1,6 +1,6 @@
 const fs=require('fs'),path=require('path'),assert=require('node:assert/strict');
 const text=fs.readFileSync(path.resolve(__dirname,'../../src/Jellyfin.Plugin.MisioFlix/Web/configPage.html'),'utf8');
-const start=text.indexOf('const classified=libraries.filter(x=>{');
+const start=text.indexOf('const classified=libraries.filter(x=>normalizedId(x.ItemId)).map(x=>{');
 const end=text.indexOf('const anime=classified.filter(',start);
 assert(start>0 && end>start,'carousel classification expression missing');
 const section=text.slice(start,end);
@@ -17,7 +17,7 @@ const mapping=new Map([
   ['bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',{Role:'anime_eng',Paths:['/media/raid/anime']}]
 ]);
 const result=classify(libraries,mapping,norm);
-assert.deepEqual(result.map(x=>x.name),['Anime PL','Anime ENG','Filmy PL']);
+assert.deepEqual(result.map(x=>x.name),['Anime PL','Anime ENG','Filmy PL','Music']);
 assert.equal(result[0].paths[0],'/media/raid/anime_lektor');
 assert.equal(result[1].role,'anime_eng');
 process.stdout.write('Carousel library detection: OK\n');

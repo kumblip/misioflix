@@ -248,9 +248,11 @@ public sealed class MisioFlixCatalogService
                 // A Simkl-assigned Jellyfin mixed library can contain both movies and series.
                 "mixed" when mapped?.Role is "simkl" or "other" => "mixed",
                 "boxsets" => "collections",
-                _ => ""
+                // Every user-visible Jellyfin library gets a Home shelf, even when
+                // Jellyfin omits CollectionType (as with Anime PL/ENG after a rename).
+                // The admin role changes enrichment/integrations, not discovery.
+                _ => "mixed"
             };
-            if (string.IsNullOrEmpty(category)) continue;
             var kind = collection switch
             {
                 "movies" => "movies",
@@ -353,68 +355,56 @@ public sealed class MisioFlixCatalogService
             "series" => "Series",
             _ => "Series,Movie"
         };
-        // Keep individual movies/series in the home rows even if Jellyfin's
-        // per-user collection grouping preference is switched on temporarily.
-        // The Collections shelf is INDEPENDENT of that preference.
-        // Jellyfin's BoxSet-under-collection query has had a known item type
-        // filter bug: do not add IncludeItemTypes=BoxSet with ParentId here;
-        // instead filter the returned items to Type=BoxSet below.
-        var itemScope = collections
-            ? $"&ParentId={libraryId:N}&Recursive=false"
-            : $"&ParentId={libraryId:N}&Recursive=true&IncludeItemTypes={types}&CollapseBoxSetItems=false";
-        var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
-                   itemScope +
-                   $"&SortBy={(random ? "Random" : "DateCreated")}" +
-                   "&SortOrder=Descending&EnableUserData=true" +
-                   "&EnableTotalRecordCount=false" +
-                   "&Fields=Genres,Overview,DateCreated,ChildCount,RecursiveItemCount" +
-                   // Draw more candidates so an anime with missing/invalid NFO does
-                   // not reduce a five-title random draw when valid items exist.
-                   $"&StartIndex={(random ? 0 : startIndex)}&Limit={(random ? 60 : limit + 1)}";
-        using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
+        // One common, library-ID-based discovery route for ALL shelves.
+        // Match the direct user-visible library contents in native Jellyfin,
+        // regardless of whether its role is anime, Simkl or not yet configured.
+        // No library-wide scan and no tag inspection are needed to find cards.
+        var directScope = $"Items?UserId={Uri.EscapeDataString(userId)}" +
+            $"&ParentId={libraryId:N}&Recursive=false&CollapseBoxSetItems=false" +
+            $"&SortBy={(random ? "Random" : "DateCreated")}&SortOrder=Descending" +
+            "&EnableUserData=true&EnableTotalRecordCount=false" +
+            "&Fields=Genres,Overview,DateCreated,ChildCount,RecursiveItemCount" +
+            $"&StartIndex={(random ? 0 : startIndex)}&Limit={(random ? 60 : limit + 1)}";
+        using var doc = await GetJsonAsync(origin, directScope, auth, cancel).ConfigureAwait(false);
         var items = Get(doc.RootElement, "Items");
         var list = new List<HomeTile>();
-        if (items.ValueKind == JsonValueKind.Array)
+        // An authorized Folder can represent a media title in mixed libraries.
+        // An actual local tvshow.nfo/movie.nfo is needed only to identify this
+        // Folder's media kind; it is NOT a gate for discovering the library.
+        var examined = 0;
+        void Collect(JsonElement entries)
         {
-            foreach (var item in items.EnumerateArray())
+            examined = 0;
+            if (entries.ValueKind != JsonValueKind.Array) return;
+            foreach (var item in entries.EnumerateArray())
             {
                 if (list.Count >= resultLimit) break;
-                var tile = MakeHomeTile(item, view.category);
+                examined++;
+                var tile = MakeHomeTile(item, view.category)
+                    ?? MakeLibraryFolderTile(item, view.category);
                 if (tile is not null) list.Add(tile);
             }
         }
-        // A Jellyfin 'mixed' library may display hundreds of Folder entries
-        // in the native browser while IncludeItemTypes=Series,Movie returns none.
-        // Query ONLY the caller-authorized library's immediate items as fallback.
-        // A Folder becomes an anime tile ONLY if tvshow.nfo or movie.nfo exists.
-        var fallbackCount = -1;
-        if (!collections && view.category == "anime" && list.Count == 0)
+        Collect(items);
+        var pageCount = items.ValueKind == JsonValueKind.Array ? items.GetArrayLength() : 0;
+        // Some libraries expose actual Series/Movie items only recursively.
+        // Use the SAME fallback for every library, not an anime-only branch.
+        if (!collections && list.Count == 0)
         {
-            var nativeScope = $"Items?UserId={Uri.EscapeDataString(userId)}" +
-                $"&ParentId={libraryId:N}&Recursive=false&CollapseBoxSetItems=false" +
+            var recursiveScope = $"Items?UserId={Uri.EscapeDataString(userId)}" +
+                $"&ParentId={libraryId:N}&Recursive=true&IncludeItemTypes={types}&CollapseBoxSetItems=false" +
                 $"&SortBy={(random ? "Random" : "DateCreated")}&SortOrder=Descending" +
-                "&EnableUserData=true&Fields=Genres,Overview,DateCreated,ChildCount,RecursiveItemCount" +
+                "&EnableUserData=true&EnableTotalRecordCount=false" +
+                "&Fields=Genres,Overview,DateCreated,ChildCount,RecursiveItemCount" +
                 $"&StartIndex={(random ? 0 : startIndex)}&Limit={(random ? 60 : limit + 1)}";
-            using var nativePage = await GetJsonAsync(origin, nativeScope, auth, cancel).ConfigureAwait(false);
-            var nativeItems = Get(nativePage.RootElement, "Items");
-            if (nativeItems.ValueKind == JsonValueKind.Array)
-            {
-                fallbackCount = nativeItems.GetArrayLength();
-                foreach (var item in nativeItems.EnumerateArray())
-                {
-                    if (list.Count >= resultLimit) break;
-                    var tile = MakeHomeTile(item, "anime") ?? MakeAnimeFolderTile(item);
-                    if (tile is not null) list.Add(tile);
-                }
-            }
+            using var recursivePage = await GetJsonAsync(origin, recursiveScope, auth, cancel).ConfigureAwait(false);
+            var recursiveItems = Get(recursivePage.RootElement, "Items");
+            Collect(recursiveItems);
+            pageCount = recursiveItems.ValueKind == JsonValueKind.Array ? recursiveItems.GetArrayLength() : 0;
         }
-        // Some Jellyfin 12 mixed libraries expose their direct Folder children
-        // through the same legacy user-scoped route as Jellyfin Web, while a
-        // filtered /Items query returns no usable Series/Movie entries. Only
-        // try this alternate read for an empty authenticated anime shelf.
-        // Never query global /Items or infer media from folder names: each
-        // accepted Folder still requires a real NFO under the configured root.
-        if (!collections && view.category == "anime" && list.Count == 0)
+        // Jellyfin's legacy user-scoped route can expose mixed-folder media
+        // that /Items omits. Still restricted to the authenticated user's view.
+        if (!collections && list.Count == 0)
         {
             var userFolderScope = $"Users/{Uri.EscapeDataString(userId)}/Items?" +
                 $"ParentId={libraryId:N}&Recursive=false&CollapseBoxSetItems=false" +
@@ -425,21 +415,12 @@ public sealed class MisioFlixCatalogService
             {
                 using var userPage = await GetJsonAsync(origin, userFolderScope, auth, cancel).ConfigureAwait(false);
                 var userItems = Get(userPage.RootElement, "Items");
-                if (userItems.ValueKind == JsonValueKind.Array)
-                {
-                    fallbackCount = userItems.GetArrayLength();
-                    foreach (var item in userItems.EnumerateArray())
-                    {
-                        if (list.Count >= resultLimit) break;
-                        var tile = MakeHomeTile(item, "anime") ?? MakeAnimeFolderTile(item);
-                        if (tile is not null) list.Add(tile);
-                    }
-                }
+                Collect(userItems);
+                pageCount = userItems.ValueKind == JsonValueKind.Array ? userItems.GetArrayLength() : 0;
             }
             catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
             {
-                // Older/stricter servers may not expose this compatibility route.
-                // The original authorized /Items result remains authoritative.
+                // Unsupported on some versions; the first routes stay valid.
             }
         }
         if (!collections)
@@ -450,10 +431,12 @@ public sealed class MisioFlixCatalogService
                 if (Guid.TryParse(tile.id, out var id) && membership.TryGetValue(id, out var details))
                 { tile.memberCollectionCount = details.Count; tile.memberCollectionName = details.Name; }
         }
-        var hasMore = !random && (fallbackCount >= 0
-            ? fallbackCount > limit
-            : items.ValueKind == JsonValueKind.Array && items.GetArrayLength() > limit);
-        return new HomeShelfResponse(view.id, view.name, random ? "random" : "latest", startIndex, hasMore, list);
+        // A mixed library can contain non-media folders. Use the actual number
+        // of examined Jellyfin items, not the number of emitted cards, to avoid
+        // repeating or skipping entries on the next carousel page.
+        var hasMore = !random && (pageCount > examined || pageCount >= limit + 1);
+        return new HomeShelfResponse(view.id, view.name, random ? "random" : "latest", startIndex, hasMore, list,
+            random ? null : startIndex + examined);
     }
 
     // Collections do not need a separate "BoxSets" user-view/library. Jellyfin
@@ -502,8 +485,9 @@ public sealed class MisioFlixCatalogService
         if (isAnime)
         {
             var local = _library.GetItemById(guid);
-            if (local is null || AnimeSource(local.Path).Length == 0) return null;
-            nfo = ReadNfo(local.Path, type);
+            // The authenticated library ID already determines anime membership.
+            // A renamed media root must not hide an otherwise valid Jellyfin card.
+            if (local is not null) nfo = ReadNfo(local.Path, type);
         }
         var title = isAnime
             ? (!string.IsNullOrWhiteSpace(nfo?.OriginalTitle) ? nfo.OriginalTitle : "Brak tytułu w NFO")
@@ -544,34 +528,37 @@ public sealed class MisioFlixCatalogService
         return string.Empty;
     }
 
-    private HomeTile? MakeAnimeFolderTile(JsonElement item)
+    private HomeTile? MakeLibraryFolderTile(JsonElement item, string category)
     {
         if (Text(Get(item, "Type")) != "Folder") return null;
         if (!Guid.TryParse(Text(Get(item, "Id")), out var id)) return null;
         var local = _library.GetItemById(id);
-        if (local is null || AnimeSource(local.Path).Length == 0) return null;
+        if (local is null) return null;
         var type = AnimeFolderMediaType(local.Path);
-        if (type.Length == 0) return null;
-        var nfo = ReadNfo(local.Path, type);
-        if (nfo is null) return null;
+        if (type.Length == 0) return null; // Never invent a media kind for an arbitrary folder.
+        var anime = category == "anime";
+        var nfo = anime ? ReadNfo(local.Path, type) : null;
+        // The NFO is metadata, not a prerequisite for displaying this folder.
         return new HomeTile
         {
             id = id.ToString("N"),
             serverId = Text(Get(item, "ServerId")),
             type = type,
-            anime = true,
-            title = string.IsNullOrWhiteSpace(nfo.OriginalTitle) ? nfo.DisplayTitle : nfo.OriginalTitle,
-            year = nfo.Year,
-            format = nfo.Kind,
-            description = nfo.Plot,
-            genres = nfo.Genres.ToList(),
+            anime = anime,
+            title = anime ? (!string.IsNullOrWhiteSpace(nfo?.OriginalTitle)
+                ? nfo.OriginalTitle : nfo?.DisplayTitle ?? "Brak tytułu w NFO")
+                : Text(Get(item, "Name")),
+            year = anime ? nfo?.Year ?? "" : Text(Get(item, "ProductionYear")),
+            format = anime ? nfo?.Kind ?? "" : "",
+            description = anime ? nfo?.Plot ?? "" : Text(Get(item, "Overview")),
+            genres = (anime ? nfo?.Genres ?? new List<string>() : Strings(Get(item, "Genres"))).ToList(),
             hasPrimary = HasPrimaryImage(item),
             seasons = type == "Series" ? PositiveInt(Get(item, "ChildCount")) : null,
             episodes = type == "Series" ? PositiveInt(Get(item, "RecursiveItemCount")) : null,
             userRating = PersonalRating(item),
             watchStatus = WatchStatus(item),
-            simklExcluded = true,
-            malId = nfo.MalId ?? FirstSeasonMalId(local.Path)
+            simklExcluded = anime || IsSimklAnime(local, type, item),
+            malId = anime ? nfo?.MalId ?? FirstSeasonMalId(local.Path) : null
         };
     }
 
@@ -2276,7 +2263,7 @@ public sealed class OverlayInfo
 // Personal home rows; every instance is derived from an allowed user-scoped Jellyfin item.
 public sealed record HomeLibrary(string id, string name, string category, string href, string catalogRevision = "");
 public sealed record HomeShelfResponse(string libraryId, string libraryName, string mode,
-    int startIndex, bool hasMore, List<HomeTile> items);
+    int startIndex, bool hasMore, List<HomeTile> items, int? nextStartIndex = null);
 public sealed class HomeTile
 {
     public string id { get; set; } = string.Empty;

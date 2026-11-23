@@ -617,7 +617,8 @@
       if(reset)row.scroll.replaceChildren();
       const list=Array.isArray(data.items)?data.items:[];
       list.forEach(item=>row.scroll.appendChild(makeCard(item)));
-      row.offset=start+list.length;
+      row.offset=Number.isInteger(data.nextStartIndex)&&data.nextStartIndex>start
+        ?data.nextStartIndex:start+list.length;
       row.hasMore=Boolean(data.hasMore)&&list.length>0;
       row.mode=mode;
       // Both actions stay available: another click on Losuj draws five NEW choices.

@@ -30,16 +30,19 @@ class CarouselLibrarySettings(unittest.TestCase):
     self.assertIn('mf-carousel-list',ADMIN)
     self.assertIn('Ścieżki:',ADMIN)
     self.assertIn("delta<0?'Przesuń w górę",ADMIN)
-  def test_folder_fallback_is_anime_only_and_user_scoped(self):
+  def test_common_library_scoped_shelf_and_folder_safety(self):
     home=SERVICE.split('public async Task<HomeShelfResponse> ReadHomeShelfAsync(',1)[1].split('private HomeTile? MakeHomeTile',1)[0]
     self.assertIn('GetHomeLibrariesAsync(origin, auth, userId, cancel)',home)
-    self.assertIn('view.category == "anime" && list.Count == 0',home)
+    self.assertIn('if (view is null) throw new UnauthorizedAccessException',home)
     self.assertIn('ParentId={libraryId:N}&Recursive=false',home)
-    self.assertIn('MakeHomeTile(item, "anime") ?? MakeAnimeFolderTile(item)',home)
-    folder=SERVICE.split('private HomeTile? MakeAnimeFolderTile(',1)[1].split('Only returns item IDs',1)[0]
-    self.assertIn('AnimeSource(local.Path).Length == 0',folder)
-    self.assertIn('nfo is null',folder)
-    self.assertIn('simklExcluded = true',folder)
+    self.assertIn('MakeHomeTile(item, view.category)',home)
+    self.assertIn('MakeLibraryFolderTile(item, view.category)',home)
+    self.assertNotIn('view.category == "anime" && list.Count == 0',home)
+    self.assertIn('Users/{Uri.EscapeDataString(userId)}/Items?',home)
+    folder=SERVICE.split('private HomeTile? MakeLibraryFolderTile(',1)[1].split('Only returns item IDs',1)[0]
+    self.assertIn('AnimeFolderMediaType(local.Path)',folder)
+    self.assertIn('if (type.Length == 0) return null',folder)
+    self.assertNotIn('AnimeSource(local.Path).Length == 0',folder)
     self.assertIn('tvshow.nfo',SERVICE)
     self.assertIn('movie.nfo',SERVICE)
   def test_generic_catalog_does_not_pull_all_folders(self):

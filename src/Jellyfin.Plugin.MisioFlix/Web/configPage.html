@@ -961,12 +961,10 @@
        // exactly the same, or Anime PL/ENG disappear from administration.
        // Explicitly configured anime roles are also accepted even if Jellyfin
        // reports an unexpected collection type after a rename or rescan.
-       const classified=libraries.filter(x=>{
-         const id=normalizedId(x.ItemId);
-         const kind=String(x.CollectionType||'mixed').toLowerCase();
-         const role=String(mapping.get(id)?.Role||'');
-         return id && (['mixed','movies','tvshows'].includes(kind)||role.startsWith('anime_'));
-       }).map(x=>{
+       // Every valid Jellyfin library belongs in the carousel settings,
+       // including mixed/untyped and any future media library. Role only
+       // controls metadata/integrations, never shelf eligibility.
+       const classified=libraries.filter(x=>normalizedId(x.ItemId)).map(x=>{
          const id=normalizedId(x.ItemId),entry=mapping.get(id);
          const paths=Array.isArray(entry?.Paths)&&entry.Paths.length?entry.Paths:Array.isArray(x.Locations)?x.Locations:[];
          return {id,name:String(x.Name||id),paths:paths.map(String),role:String(entry?.Role||''),visible:true};
