@@ -74,7 +74,7 @@ assert.equal(overlay.isConnected,false);
 assert.equal(info.focused,true);
 assert(src.includes('genreArea.hidden=false'));
 assert(src.includes('void initializeRecommendations(serial)'));
-assert(src.includes("const label=own('span','mf-home-libraries-label','Ukryj propozycje')"));
+assert(src.includes("label.textContent=showProposals?'Propozycje':'Biblioteki'"));
 assert(css.includes('.mf-home-card-info-button'));
 assert(css.includes('.mf-home-card-info-dialog'));
 console.log('PASS 0.4.111: complete read-only info popup, five genres, close/open, focus and visible-by-default proposals');

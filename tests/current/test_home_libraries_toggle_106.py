@@ -10,8 +10,8 @@ CSS=(ROOT/'src/Jellyfin.Plugin.MisioFlix/Web/theme.css').read_text(encoding='utf
 class LibrariesVisibility106(unittest.TestCase):
     def test_only_home_shelves_hidden(self):
         mount=HOME.split('  function mount(host){',1)[1].split('  function unmountHome(){',1)[0]
-        self.assertLess(mount.index('homeRoot.appendChild(resumeShelf())'),mount.index('libraryShelvesToggle()'))
-        self.assertLess(mount.index('libraryShelvesToggle()'),mount.index('homeRoot.appendChild(rowsArea)'))
+        self.assertLess(mount.index('homeRoot.appendChild(resumeShelf())'),mount.index('homeContentModeToggle()'))
+        self.assertLess(mount.index('homeContentModeToggle()'),mount.index('homeRoot.appendChild(rowsArea)'))
         self.assertIn("rowsArea.hidden=true",mount)
         self.assertIn("homeRoot.appendChild(hero(discoveryRefs.section))",mount)
         self.assertIn('homeRoot.appendChild(collectionsPage.section)',mount)
@@ -19,13 +19,15 @@ class LibrariesVisibility106(unittest.TestCase):
         self.assertIn('void loadResume(serial)',mount)
 
     def test_switch_is_button_with_default_off_state(self):
-        toggle=HOME.split('  function libraryShelvesToggle(){',1)[1].split('  async function loadLibraries(serial){',1)[0]
+        toggle=HOME.split('  function homeContentModeToggle(){',1)[1].split('  // v0.4.108: this filter',1)[0]
         self.assertIn("button.setAttribute('role','switch')",toggle)
-        self.assertIn("button.setAttribute('aria-checked','false')",toggle)
-        self.assertIn("button.setAttribute('aria-expanded','false')",toggle)
-        self.assertIn("button.setAttribute('aria-controls','mf-home-rows')",toggle)
-        self.assertIn("const show=area.hidden",toggle)
-        self.assertIn('area.hidden=!show',toggle)
+        self.assertIn("button.setAttribute('aria-checked','true')",toggle)
+        self.assertIn("button.dataset.mfHomeMode='recommendations'",toggle)
+        self.assertIn("button.setAttribute('aria-controls','mf-home-recommendations mf-home-rows')",toggle)
+        self.assertIn("const showProposals=mode==='recommendations'",toggle)
+        self.assertIn('recommendations.hidden=!showProposals',toggle)
+        self.assertIn('libraries.hidden=showProposals',toggle)
+        self.assertIn("button.addEventListener('click'",toggle)
         self.assertNotIn('sessionStorage',toggle)
         self.assertNotIn('localStorage',toggle)
 

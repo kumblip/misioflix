@@ -1936,26 +1936,48 @@
   // are always sourced from the CURRENT user's authenticated catalog. A small
   // authorized item-ID batch hydrates real HomeTile posters/paws/frames.
   // Never load this full catalog on initial Home or when the switch is OFF.
-  function recommendationToggle(){
-    const control=own('div','mf-home-libraries-control mf-home-recommendation-control');
-    const button=own('button','mf-home-libraries-toggle mf-home-recommendation-toggle');
+  // Mutually exclusive Home sections. Green proposals are the default; blue
+  // libraries are the alternative. One control replaces two independent switches.
+  // No permanent preference or library/recommendation configuration is modified.
+  function homeContentModeToggle(){
+    const control=own('div','mf-home-libraries-control mf-home-content-mode-control');
+    const button=own('button','mf-home-libraries-toggle mf-home-content-mode-toggle');
     button.type='button';button.setAttribute('role','switch');
-    button.setAttribute('aria-checked','true');button.setAttribute('aria-expanded','true');
-    button.setAttribute('aria-controls','mf-home-recommendations');
+    button.setAttribute('aria-controls','mf-home-recommendations mf-home-rows');
     const track=own('span','mf-home-libraries-track');track.setAttribute('aria-hidden','true');
-    const label=own('span','mf-home-libraries-label','Ukryj propozycje');
-    append(button,track,label);
+    const icon=own('span','mf-home-content-mode-icon');icon.setAttribute('aria-hidden','true');
+    const label=own('span','mf-home-libraries-label');
+    append(button,track,icon,label);
+    function setMode(mode){
+      const recommendations=homeRoot?.querySelector('#mf-home-recommendations');
+      const libraries=homeRoot?.querySelector('#mf-home-rows');
+      if(!recommendations||!libraries)return;
+      const showProposals=mode==='recommendations';
+      // Apply both in one synchronous event; never allow both kinds of shelves.
+      recommendations.hidden=!showProposals;
+      libraries.hidden=showProposals;
+      button.dataset.mfHomeMode=showProposals?'recommendations':'libraries';
+      button.setAttribute('aria-checked',String(showProposals));
+      button.setAttribute('aria-label',showProposals?
+        'Propozycje. Kliknij, aby pokazać biblioteki.':
+        'Biblioteki. Kliknij, aby pokazać propozycje.');
+      button.title=showProposals?'Pokaż biblioteki':'Pokaż propozycje';
+      icon.textContent=showProposals?'💡':'📚';
+      label.textContent=showProposals?'Propozycje':'Biblioteki';
+      if(showProposals&&!recommendationInitialized)void initializeRecommendations(epoch);
+    }
+    // Initial visual state agrees with the Home mount's visible sections.
+    button.dataset.mfHomeMode='recommendations';
+    button.setAttribute('aria-checked','true');
+    button.setAttribute('aria-label','Propozycje. Kliknij, aby pokazać biblioteki.');
+    button.title='Pokaż biblioteki';
+    icon.textContent='💡';label.textContent='Propozycje';
     button.addEventListener('click',()=>{
-      const area=homeRoot?.querySelector('#mf-home-recommendations');
-      if(!area)return;
-      const show=area.hidden;
-      area.hidden=!show;
-      button.setAttribute('aria-checked',String(show));
-      button.setAttribute('aria-expanded',String(show));
-      label.textContent=show?'Ukryj propozycje':'Pokaż propozycje';
-      if(show&&!recommendationInitialized)void initializeRecommendations(epoch);
+      if(!homeRoot?.isConnected)return;
+      setMode(button.dataset.mfHomeMode==='recommendations'?'libraries':'recommendations');
     });
-    control.appendChild(button);return control;
+    control.appendChild(button);
+    return control;
   }
   // v0.4.108: this filter is personal and presentation-only, never affects MAL,
   // Simkl or administrator-defined genre rules. Default ON on each Home mount.
@@ -2355,33 +2377,6 @@
     }
   }
 
-  // The library shelves are optional on Home. This is presentation-only:
-  // leave the hero shortcuts, searches, Continue Watching and native links intact.
-  // Default OFF on each new home mount, with no user/account storage writes.
-  function libraryShelvesToggle(){
-    const control=own('div','mf-home-libraries-control');
-    const button=own('button','mf-home-libraries-toggle');
-    button.type='button';
-    button.setAttribute('role','switch');
-    button.setAttribute('aria-checked','false');
-    button.setAttribute('aria-expanded','false');
-    button.setAttribute('aria-controls','mf-home-rows');
-    const track=own('span','mf-home-libraries-track');
-    track.setAttribute('aria-hidden','true');
-    const label=own('span','mf-home-libraries-label','Pokaż biblioteki');
-    append(button,track,label);
-    button.addEventListener('click',()=>{
-      const area=homeRoot?.querySelector('.mf-home-rows');
-      if(!area)return;
-      const show=area.hidden;
-      area.hidden=!show;
-      button.setAttribute('aria-checked',String(show));
-      button.setAttribute('aria-expanded',String(show));
-      label.textContent=show?'Ukryj biblioteki':'Pokaż biblioteki';
-    });
-    control.appendChild(button);
-    return control;
-  }
   async function loadLibraries(serial){
     const container=homeRoot?.querySelector('.mf-home-rows');
     if(!container)return;
@@ -2469,7 +2464,7 @@
       recommendationAudioMode='pl'; // First mode: only confirmed Polish audio.
       recommendationSubtitlesMode='all'; // Subtitles are unfiltered by default.
       const switches=own('div','mf-home-switches');
-      append(switches,libraryShelvesToggle(),recommendationToggle(),recommendationAnimeToggle());
+      append(switches,homeContentModeToggle(),recommendationAnimeToggle());
       switches.appendChild(recommendationAudioToggle());
       switches.appendChild(recommendationSubtitlesToggle());
       homeRoot.appendChild(switches);
@@ -2478,11 +2473,11 @@
       homeRoot.appendChild(collectionsPage.section);
       const rowsArea=own('div','mf-home-rows');
       rowsArea.id='mf-home-rows';
-      rowsArea.hidden=true; // OFF by default; JS never unhides until user requests it.
+      rowsArea.hidden=true; // Hidden whenever the proposals view is active.
       rowsArea.appendChild(own('p','mf-home-empty','Ładowanie bibliotek…'));
       homeRoot.appendChild(rowsArea);
       const genreArea=own('div','mf-home-rows mf-home-recommendations');
-      genreArea.id='mf-home-recommendations';genreArea.hidden=false; // Proposals default ON; library shelves stay OFF.
+      genreArea.id='mf-home-recommendations';genreArea.hidden=false; // Default green proposals mode.
       homeRoot.appendChild(genreArea);
       recommendationInitialized=false;recommendationRows.clear();
       host.prepend(homeRoot);

@@ -12,14 +12,15 @@ SERVICE = (ROOT / 'src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixCatalogServic
 class CardInfoAndVisibleProposals111(unittest.TestCase):
     def test_default_proposals_on_libraries_off(self):
         mount = HOME.split('function mount(host){',1)[1].split('function unmountHome(){',1)[0]
-        toggle=HOME.split('function recommendationToggle(){',1)[1].split('function recommendationAnimeToggle(){',1)[0]
+        toggle=HOME.split('function homeContentModeToggle(){',1)[1].split('function recommendationAnimeToggle(){',1)[0]
         self.assertIn("rowsArea.hidden=true",mount)
         self.assertIn("genreArea.hidden=false",mount)
         self.assertIn("button.setAttribute('aria-checked','true')",toggle)
-        self.assertIn("const label=own('span','mf-home-libraries-label','Ukryj propozycje')",toggle)
+        self.assertIn("label.textContent=showProposals?'Propozycje':'Biblioteki'",toggle)
         self.assertIn("void initializeRecommendations(serial)",mount)
-        self.assertIn("area.hidden=!show",toggle)
-        self.assertIn("if(show&&!recommendationInitialized)void initializeRecommendations(epoch)",toggle)
+        self.assertIn('recommendations.hidden=!showProposals',toggle)
+        self.assertIn('libraries.hidden=showProposals',toggle)
+        self.assertIn('if(showProposals&&!recommendationInitialized)void initializeRecommendations(epoch)',toggle)
 
     def test_all_home_cards_use_one_info_dialog(self):
         card=HOME.split('function makeCard(item){',1)[1].split('function enableShelfDrag(',1)[0]

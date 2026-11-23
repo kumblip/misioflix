@@ -44,12 +44,12 @@ class GenreRecommendations107(unittest.TestCase):
 
     def test_home_both_switches_and_existing_modes(self):
         mount=HOME.split('  function mount(host){',1)[1].split('  function unmountHome(){',1)[0]
-        self.assertLess(mount.index('homeRoot.appendChild(resumeShelf())'),mount.index('recommendationToggle()'))
-        self.assertLess(mount.index('libraryShelvesToggle()'),mount.index('recommendationToggle()'))
+        self.assertLess(mount.index('homeRoot.appendChild(resumeShelf())'),mount.index('homeContentModeToggle()'))
+        self.assertLess(mount.index('homeContentModeToggle()'),mount.index('recommendationAnimeToggle()'))
         self.assertIn("genreArea.hidden=false",mount)
         self.assertIn("genreArea.id='mf-home-recommendations'",mount)
         self.assertIn('librariesReadyPromise=loadLibraries(serial)',mount)
-        self.assertIn("button.setAttribute('aria-checked','true')",HOME.split('function recommendationToggle(){',1)[1].split('function randomizeRecommendations(',1)[0])
+        self.assertIn("button.setAttribute('aria-checked','true')",HOME.split('function homeContentModeToggle(){',1)[1].split('function randomizeRecommendations(',1)[0])
         self.assertIn("row.isGenre || row.mode==='latest'",HOME)
         self.assertIn('randomizeRecommendations(row.base)',HOME)
         self.assertIn('SHELF_LIMIT',HOME.split('async function loadRecommendationPage(',1)[1].split('function paintRecommendationSets(',1)[0])

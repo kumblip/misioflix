@@ -1,45 +1,56 @@
-# MisioFlix — jedna aktualizacja, nowe biblioteki domyślnie TAK
+# MisioFlix — dwustanowy wybór: Propozycje / Biblioteki
 
-Data: 23 listopada 2026 r.
+## Instalacja
 
-## Baza
+To jest **skumulowana paczka względem ostatniej poprawki CI i audio anime** w tej samej wersji źródłowej. Obejmuje zmianę przełącznika i wszystkie pliki poprzedniej paczki. Dla repozytorium starszego niż ta paczka dołączono osobno pełne źródła projektu; sama łatka nie musi zawierać każdej zmiany z dużo wcześniejszych aktualizacji.
 
-Użyto dokładnie poprzedniej pełnej paczki z flagami:
-`MISIOFLIX_NFO_SEZONY_RAPORT_BIBLIOTEKI_PROPOZYCJE_Z_FLAGAMI_PELNE_ZRODLA.zip`.
+1. Rozpakuj `MISIOFLIX_PROPOZYCJE_BIBLIOTEKI_PRZELACZNIK_2_STANY_JEDNA_LATKA_GITHUB.zip` na komputerze.
+2. Przez interfejs WWW repozytorium GitHub `kumblip/misioflix` prześlij pliki do identycznych katalogów (zachowaj ścieżki i nadpisz wcześniejsze wersje tych plików). Nie wrzucaj samego ZIP-a jako jednego pliku repozytorium.
+3. Po zapisaniu zmian sprawdź GitHub Actions. Pliki workflow i numer wersji nie są zmieniane.
+4. Po instalacji odśwież stronę główną Jellyfina (w razie potrzeby twarde odświeżenie przeglądarki).
 
-Ten ZIP zawiera **całą poprzednią poprawkę** (kolekcje `movie.nfo`, `tvshow.nfo`, `season.nfo`, raport per biblioteka, wybór bibliotek dla propozycji, zabezpieczenia niepełnego skanu) oraz nową zasadę domyślnego wyboru bibliotek. Nie musisz wcześniej instalować poprzedniej paczki.
+## Nowe zachowanie
 
-## Nowy wybór bibliotek w propozycjach
+- Na stronie głównej działa tylko **jeden** przełącznik widoku zamiast `Pokaż biblioteki` i `Pokaż/Ukryj propozycje`.
+- **Zielony `💡 Propozycje`** to stan domyślny przy otwarciu strony: widoczne tylko karuzele propozycji, a biblioteki ukryte.
+- Po kliknięciu włącza się **niebieski `📚 Biblioteki`**: karuzele bibliotek są widoczne, a propozycje ukryte.
+- Kolejny klik przywraca stan zielony, zawsze widoczna jest dokładnie jedna grupa karuzel.
+- Nie ma pamięci ustawienia między wejściami na stronę główną: stan domyślny zawsze Propozycje (zgodnie z zamówieniem).
+- Pozostają osobne filtry `Uwzględnij anime`, `Audio PL / Audio nie-PL / Wszystkie`, `Wszystkie / Napisy PL / Napisy EN` z ikoną CC. Ich ustawienia i logika nie zostały zmienione.
+- Nie zmieniono zawartości żadnego katalogu, NFO, MAL, Simkl, flag, panelu administracyjnego, integracji Jellyfin, automatycznego numerowania wydań ani workflow GitHub.
+- Emoji w tej wersji: 💡 / 📚. Pozostałe propozycje do ewentualnej podmiany: ✨ / 🗂️, 🎯 / 📚.
 
-- W każdej propozycji każda istniejąca biblioteka jest domyślnie włączona.
-- Gdy odznaczysz np. `Filmy ENG`, zapisywane jest **wyłącznie jej ID** na liście wykluczeń tej konkretnej propozycji.
-- Później dodane biblioteki mają domyślnie **TAK**, nawet jeśli inne biblioteki są odznaczone.
-- Zmiana nazwy lub ścieżki przy zachowanym identyfikatorze nie zmienia stanu TAK/NIE.
-- Jeśli biblioteka zostanie usunięta i utworzona od nowa z nowym ID, zostanie potraktowana jak nowa i domyślnie włączona.
-- Pole „Zaznacz wszystkie obecne biblioteki” umożliwia wyczyszczenie wykluczeń. Odznaczenie tego pola wyklucza wszystkie biblioteki **aktualnie znane**; biblioteki dodane w przyszłości będą mimo to domyślnie włączone.
-- Odczytanie zawartości propozycji nadal używa istniejącego katalogu i cache; nie sprawdza tagu Anime w całej bibliotece na każde wejście.
-- Przy odczycie pozycji występującej w kilku bibliotekach będzie ona uwzględniona, jeśli co najmniej jedna z jej bibliotek nie jest wykluczona.
+## Zmodyfikowane pliki
 
-## Kompatybilność
+- `src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixCatalogService.cs`
+- `src/Jellyfin.Plugin.MisioFlix/Web/home.js`
+- `src/Jellyfin.Plugin.MisioFlix/Web/theme.css`
+- `tests/current/card_info_default_111.cjs`
+- `tests/current/genre_recommendations_107.cjs`
+- `tests/current/home_libraries_toggle_106.cjs`
+- `tests/current/proposal_anime_library_id_audio_repair.cjs`
+- `tests/current/proposal_audio_tristate.cjs`
+- `tests/current/proposal_empty_rows_109.cjs`
+- `tests/current/proposal_sets_108.cjs`
+- `tests/current/proposal_subtitles_tristate.cjs`
+- `tests/current/test_anime_dual_root_105.py`
+- `tests/current/test_anime_library_audio_repair.py`
+- `tests/current/test_card_info_default_111.py`
+- `tests/current/test_genre_recommendations_107.py`
+- `tests/current/test_home_libraries_toggle_106.py`
+- `tests/current/test_library_paths_dynamic.py`
+- `tests/current/test_proposal_audio_tristate.py`
+- `tests/current/test_proposal_sets_108.py`
+- `tests/current/test_proposal_subtitles_tristate.py`
 
-W zachowanej konfiguracji starszego typu `AllLibraries=false` + `LibraryIds` (lista zaznaczonych) panel konwertuje aktualnie znane biblioteki na listę wykluczeń po odświeżeniu. Należy otworzyć ustawienia i kliknąć „Zapisz propozycje”, aby trwale przejść na nowe zachowanie. Jeśli lista bibliotek Jellyfina jest niedostępna, nie wykonuje się niebezpiecznej migracji i zapis zostanie zablokowany do czasu poprawnego odczytu.
+## Weryfikacja
 
-## Wgranie wyłącznie przez stronę github.com
+- `node --check src/Jellyfin.Plugin.MisioFlix/Web/home.js`: OK.
+- `node --check src/Jellyfin.Plugin.MisioFlix/Web/client.js`: OK.
+- `python3 tools/run_tests.py`: 587/587 testów Python i 65/65 skryptów Node — OK.
+- Zaktualizowano istniejące testy starego dwukontrolkowego interfejsu, sprawdzając teraz realny, nowy dwustanowy przycisk oraz wzajemne wykluczenie obu rodzajów karuzel.
+- Nie wykonano kompilacji .NET 10 ani testów uruchomieniowych na Twoim NAS-ie.
 
-1. Zabezpiecz bieżącą gałąź, a następnie rozpakuj **`MISIOFLIX_PROPONOWANE_GATUNKI_DOMYSLNIE_TAK_KOMPLETNA_LATKA_GITHUB.zip`**.
-2. W repozytorium `kumblip/misioflix` wgraj/zmień pliki **z paczki** w tych samych folderach (GitHub → dany folder → Add file → Upload files). Nie wgrywaj samego ZIP-a.
-3. Zatwierdź nowe pliki. Sprawdź **Actions**. Dopiero po pomyślnym buildzie uruchom workflow publikacji zgodnie z dotychczasową procedurą.
-4. Po aktualizacji otwórz ustawienia „Propozycje według gatunków”, rozwiń propozycję → „Biblioteki”, ewentualnie odznacz wybrane biblioteki i użyj „Zapisz propozycje”.
-5. Jeśli dodasz bibliotekę w Jellyfinie później, odśwież stronę ustawień; pojawi się zaznaczona. Odśwież dane katalogu, jeżeli jej nowe pozycje nie pokazują się od razu.
+### Uwaga
 
-## Co pozostawiono bez zmian
-
-- `.github/workflows` i automatyczne numerowanie buildów.
-- Wszystkie mechanizmy MAL, Simkl, flag PL/ENG, karuzel, NFO i uprawnień.
-- Nie wykonuje się operacji na multimediach, NFO ani plakatach.
-
-## Testy
-
-`python tools/run_tests.py`: **574/574 testy Python, 62/62 testy Node** pomyślnie. Test Node obejmuje ręczne wyłączenie, później dodaną bibliotekę, zmianę nazwy, migrację starego wyboru i „zaznacz wszystkie”.
-
-Nie wykonano kompilacji .NET ani testu na działającym serwerze Jellyfin. Po aktualizacji konieczny jest build w GitHub Actions i test działania.
+Ta łatka jest **skumulowana** z bezpośrednio poprzednią poprawką audio/anime/CI. Obejmuje zarówno 9 plików zmienionych w tej iteracji, jak i pozostałe pliki ostatniej paczki. Jeśli repozytorium nie ma jeszcze zmian ze starszych etapów prac, zamiast zakładać kompletność małej łatki, porównaj je z udostępnionym ZIP-em pełnego źródła (zawartość katalogu `misioflix-main/` odpowiada katalogowi głównemu repozytorium).

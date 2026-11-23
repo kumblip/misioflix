@@ -91,7 +91,7 @@ class ProposalSets108(unittest.TestCase):
     def test_home_three_switches_in_one_row_and_random_by_default(self):
         mount=HOME.split('  function mount(host){',1)[1].split('  function unmountHome(){',1)[0]
         self.assertIn("const switches=own('div','mf-home-switches')",mount)
-        self.assertIn('append(switches,libraryShelvesToggle(),recommendationToggle(),recommendationAnimeToggle())',mount)
+        self.assertIn('append(switches,homeContentModeToggle(),recommendationAnimeToggle())',mount)
         self.assertIn('recommendationIncludeAnime=true',mount)
         self.assertIn('display:flex;flex-flow:row nowrap',CSS)
         self.assertIn('overflow-x:auto',CSS)
