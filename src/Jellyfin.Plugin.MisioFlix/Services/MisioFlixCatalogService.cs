@@ -408,6 +408,40 @@ public sealed class MisioFlixCatalogService
                 }
             }
         }
+        // Some Jellyfin 12 mixed libraries expose their direct Folder children
+        // through the same legacy user-scoped route as Jellyfin Web, while a
+        // filtered /Items query returns no usable Series/Movie entries. Only
+        // try this alternate read for an empty authenticated anime shelf.
+        // Never query global /Items or infer media from folder names: each
+        // accepted Folder still requires a real NFO under the configured root.
+        if (!collections && view.category == "anime" && list.Count == 0)
+        {
+            var userFolderScope = $"Users/{Uri.EscapeDataString(userId)}/Items?" +
+                $"ParentId={libraryId:N}&Recursive=false&CollapseBoxSetItems=false" +
+                $"&SortBy={(random ? "Random" : "DateCreated")}&SortOrder=Descending" +
+                "&EnableUserData=true&Fields=Genres,Overview,DateCreated,ChildCount,RecursiveItemCount" +
+                $"&StartIndex={(random ? 0 : startIndex)}&Limit={(random ? 60 : limit + 1)}";
+            try
+            {
+                using var userPage = await GetJsonAsync(origin, userFolderScope, auth, cancel).ConfigureAwait(false);
+                var userItems = Get(userPage.RootElement, "Items");
+                if (userItems.ValueKind == JsonValueKind.Array)
+                {
+                    fallbackCount = userItems.GetArrayLength();
+                    foreach (var item in userItems.EnumerateArray())
+                    {
+                        if (list.Count >= resultLimit) break;
+                        var tile = MakeHomeTile(item, "anime") ?? MakeAnimeFolderTile(item);
+                        if (tile is not null) list.Add(tile);
+                    }
+                }
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
+            {
+                // Older/stricter servers may not expose this compatibility route.
+                // The original authorized /Items result remains authoritative.
+            }
+        }
         if (!collections)
         {
             var membership = await ReadCollectionMembershipAsync(origin, auth, userId,

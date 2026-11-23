@@ -1,33 +1,68 @@
-# MisioFlix — naprawa karuzeli Anime PL i ustawienia karuzel
+# MisioFlix — karuzele Anime PL/ENG i widoczność w ustawieniach
 
-Wariant: Z FLAGAMI. Data projektu: 23.11.2026.
-Baza: aktualna paczka Role Anime PL/ENG/PL+ENG/Simkl.
+Data: 2026-11-23. Baza: źródła ostatniej paczki „KARUZELE_ANIME_PL_NAPRAWA” (dwa osobne warianty).
 
-## Co zmieniono
+## Co pokazują zrzuty i co wykazała analiza kodu
 
-1. **Pusta karuzela Anime PL**: karuzela nadal korzysta z autoryzowanego ID biblioteki Jellyfina. Jeśli zapytanie o Series/Movie nie da wyników, w bibliotece anime próbuje dodatkowo pobrać jej bezpośrednie pozycje (jak natywny widok Jellyfin). Folder typu `Folder` jest dopuszczany wyłącznie wtedy, gdy ma `tvshow.nfo` lub `movie.nfo` i jest pod skonfigurowaną ścieżką anime. Nie rozpoznaje anime po dowolnej nazwie folderu.
-2. **Wyszukiwarka anime**: dla biblioteki anime typu `mixed` dopuszczono foldery z NFO i klasyfikuje się je jako Series/Movie. Dla wyszukiwania zwykłych filmów i seriali zapytanie pozostaje bez dodatkowych folderów.
-3. **Panel karuzel**: kolejność, widoczność, podgląd identyfikatora i ścieżek, przycisk edycji ścieżek przekierowujący do istniejącej konfiguracji biblioteki. Zapis po stronie serwera jako `HomeCarouselOrder` i `HiddenHomeCarousels`. Nowe biblioteki są automatycznie dopisywane, a zmiana nazwy nie zmienia powiązania.
-4. **Kolekcje** mogą być przenoszone i ukrywane jak inne karuzele; ich odrębny widok i wyszukiwanie pozostają bez zmian.
+1. W ustawieniach karuzel są Kolekcje i sześć innych bibliotek, ale brakuje Anime PL/ENG.
+   Przyczyna w kodzie: panel odrzucał w `Library/VirtualFolders` bibliotekę bez podanego
+   `CollectionType`, chociaż panel ścieżek interpretował taką bibliotekę jako `mixed`.
+   Po poprawce oba panele rozpoznają taki sam brak typu jako `mixed` i respektują
+   zapisaną rolę `anime_pl`, `anime_eng`, `anime_both`.
+2. Na stronie głównej widnieją Anime PL i Anime ENG; ENG ma jedną pozycję, a PL jest pusta.
+   W konfiguratorze ścieżka jest pokazywana z bieżącego stanu Jellyfina NAWET
+   jeśli administrator nie kliknął „Zapisz ścieżki i role”. W takim przypadku
+   serwer nadal może korzystać z `AnimeRoot=/media/raid/animelektor`, podczas gdy
+   nowy folder to `/media/raid/anime_lektor`. Jest to bardzo prawdopodobny powód,
+   ale NIE jest potwierdzony bez odczytu aktywnej konfiguracji na NAS-ie.
+3. Dodano wyraźne ostrzeżenie w panelu, gdy `LibraryPathsConfigured=false`.
+4. Jeśli po zapisaniu ścieżek karuzela nadal jest pusta, MisioFlix dodatkowo spróbuje
+   odczytać bezpośrednie foldery przez autoryzowany wariant `Users/{userId}/Items`
+   (alternatywa dla `Items?UserId=...`). Akceptuje tylko rzeczywiste NFO we właściwym
+   katalogu; nie skanuje globalnie serwera i nie zmienia plików na dysku.
 
-## Wgranie przez samą stronę GitHub
+## Dokładne kroki po aktualizacji
 
-1. Użyj tylko wariantu zgodnego z aktualną wersją (z flagami lub bez); nie mieszaj ich.
-2. Rozpakuj ZIP. Prześlij **zmienione pliki**, a nie ZIP, do odpowiadających im folderów repo `kumblip/misioflix` (Code → odpowiedni folder → Add file → Upload files → Commit changes).
-3. Pozostaw istniejący `.github/workflows` bez zmian. Nowy numer wydania wyznacza obecny workflow automatycznie.
-4. Sprawdź wynik `Actions` (testy i kompilacja .NET). Dopiero potem opublikuj wydanie przyciskiem `Run workflow` z zatwierdzeniem `PUBLIKUJ`.
-5. W Jellyfinie otwórz panel MisioFlixa → **Biblioteki Jellyfin — ścieżki i klasyfikacja**, sprawdź Anime PL: `/media/raid/anime_lektor` i rolę Anime PL; zapisz jeśli trzeba. Otwórz **Karuzele strony głównej** → ułóż kolejność, zaznacz widoczność → Zapisz, przeładuj stronę główną.
-6. Sprawdź Anime PL (strona główna), Anime ENG, wyszukiwarkę anime, MAL, Simkl, ekran sezonów i obrazy. Porównaj z biblioteką Jellyfina (u Ciebie 603 pozycje w Anime PL).
+1. Kokpit Jellyfin → Wtyczki → MisioFlix → „Biblioteki Jellyfin — ścieżki i klasyfikacja”.
+2. Dla `Anime PL` sprawdź rolę `Anime PL — NFO + MAL` i ścieżkę `/media/raid/anime_lektor`.
+   Dla `Anime ENG` rolę `Anime ENG — NFO + MAL` i ścieżkę `/media/raid/anime`.
+3. Kliknij **„Zapisz ścieżki i role”**. Samo „Użyj ścieżek Jellyfina” nie zapisuje zmian.
+4. „Karuzele strony głównej” → „Odśwież listę karuzel”. Na liście powinny być też
+   Anime PL i Anime ENG; ustaw kolejność/widoczność i kliknij „Zapisz kolejność”.
+5. Odśwież stronę Jellyfina (`Ctrl+F5`) i sprawdź stronę główną.
 
-## Diagnostyka, jeśli nadal pusta
+## Jeśli nadal jest pusto
 
-- Sprawdź, czy natywna biblioteka nadal pokazuje 603 pozycje.
-- Podaj log z GitHub Actions, jeżeli kompilacja lub testy nie przejdą.
-- W narzędziach deweloperskich przeglądarki (Sieć/Network), sprawdź odpowiedź `/MisioFlix/api/home/shelf?libraryId=53e751439e5d36e699d03863df66b710&mode=latest&startIndex=0&limit=10`. Ważne są `items` i kod HTTP; nie publikuj tokenów autoryzacyjnych.
-- Jeżeli w odpowiedzi nadal będzie `items: []`, przyczyną może być rzeczywisty typ encji, niewłaściwe NFO lub mapowanie ścieżki Jellyfina; sama statyczna analiza kodu nie dowodzi, że problem już zniknął.
+- Sprawdź w narzędziach deweloperskich (F12 → Sieć/Network), czy żądanie
+  `MisioFlix/api/home/shelf?libraryId=53e751439e5d36e699d03863df66b710&mode=latest&startIndex=0&limit=10`
+  zwraca `items: []` lub błąd HTTP. **Nie udostępniaj tokenów/cookies**.
+- Sprawdź `MisioFlix/api/home/libraries`: czy pozycja Anime PL ma `category: "anime"`.
+- Jeżeli nadal `items: []`, potrzebne są liczniki/typy odpowiedzi Jellyfina; ta poprawka
+  nie jest dowodem, że 603 pozycje będą wyświetlane na każdym serwerze Jellyfin.
 
-## Ograniczenia i bezpieczeństwo
+## Zakres i weryfikacja
 
-Nie zmieniono plików mediów, NFO, obrazów, nazw bibliotek ani uprawnień Jellyfina. Nie wykonano testu na NAS użytkownika ani kompilacji .NET (środowisko nie zawiera dotnet). Wykonane testy automatyczne Python/Node nie zastępują testu integracyjnego Jellyfin.
+Zmodyfikowane pliki: `src/Jellyfin.Plugin.MisioFlix/Web/configPage.html`,
+`src/Jellyfin.Plugin.MisioFlix/Services/MisioFlixCatalogService.cs`.
+Dodane testy: `tests/current/test_carousel_virtual_folder_consistency.py`,
+`tests/current/carousel_virtual_folder_consistency.cjs`.
 
-Zgodność: bazowa wtyczka Jellyfin 12.4, funkcje MAL/Simkl pozostają w kodzie, automatyczna numeracja wydań bez zmian.
+- Z flagami: 561/561 Python i 61/61 Node.
+- Bez flag: 545/545 Python i 61/61 Node.
+- Sprawdzono składnię JS; brak lokalnej kompilacji .NET i brak testu na NAS-ie.
+- Żadne media, NFO, obrazki, uprawnienia, repozytoria, MAL/Simkl ani workflow `.github`
+  nie zostały zmienione.
+
+## Wgrywanie tylko przez WWW GitHub
+
+Wybierz JEDEN wariant zgodny z aktualnym repozytorium, rozpakuj ZIP.
+Wgraj pliki do **odpowiadających im ścieżek** w repo przez `Add file → Upload files`.
+Nie wgrywaj ZIP-a w całości jako jednego pliku i nie mieszaj wariantów.
+Następnie sprawdź `Actions` i uruchom publikowanie zgodnie z istniejącym workflow.
+Numerowanie buildów nie zostało zmienione.
+
+## Powrót
+
+Zachowano pełne archiwa sprzed poprawki (z rozmowy) i najnowsze źródła w osobnych ZIP.
+W razie regresji przywróć poprzedni commit przez Revert PR lub pliki z backupu,
+nie usuwaj bibliotek Jellyfina.

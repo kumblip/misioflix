@@ -955,7 +955,18 @@
        if(!response.ok)throw Error('Nie można odczytać bibliotek: HTTP '+response.status);
        const libraries=await response.json();if(!Array.isArray(libraries))throw Error('Nieprawidłowa lista bibliotek.');
        const mapping=new Map((config.LibraryPaths||[]).map(x=>[normalizedId(x.LibraryId),x]));
-       const classified=libraries.filter(x=>normalizedId(x.ItemId)&&['mixed','movies','tvshows'].includes(String(x.CollectionType||'').toLowerCase())).map(x=>{
+       // Jellyfin /Library/VirtualFolders is allowed to omit CollectionType
+       // for a mixed/untyped media library. The path configuration panel has
+       // always treated that omission as 'mixed'; this carousel panel must do
+       // exactly the same, or Anime PL/ENG disappear from administration.
+       // Explicitly configured anime roles are also accepted even if Jellyfin
+       // reports an unexpected collection type after a rename or rescan.
+       const classified=libraries.filter(x=>{
+         const id=normalizedId(x.ItemId);
+         const kind=String(x.CollectionType||'mixed').toLowerCase();
+         const role=String(mapping.get(id)?.Role||'');
+         return id && (['mixed','movies','tvshows'].includes(kind)||role.startsWith('anime_'));
+       }).map(x=>{
          const id=normalizedId(x.ItemId),entry=mapping.get(id);
          const paths=Array.isArray(entry?.Paths)&&entry.Paths.length?entry.Paths:Array.isArray(x.Locations)?x.Locations:[];
          return {id,name:String(x.Name||id),paths:paths.map(String),role:String(entry?.Role||''),visible:true};
@@ -1082,7 +1093,9 @@
         audio:String(saved?.AudioLanguage||guessAudio(name))};
      }).sort((a,b)=>a.name.localeCompare(b.name,'pl'));
      loaded=true;render();
-     status.textContent='Odczytano '+rows.length+' bibliotek. Po zmianach kliknij „Zapisz ścieżki i role”.';
+     status.textContent=(config.LibraryPathsConfigured
+      ? 'Odczytano '+rows.length+' bibliotek. Role i ścieżki są zapisane; po zmianach ponownie kliknij „Zapisz ścieżki i role”.'
+      : 'UWAGA: Odczytano '+rows.length+' bibliotek, ale ich role i ścieżki są na razie tylko propozycjami! Kliknij „Zapisz ścieżki i role”, aby MisioFlix przestał korzystać ze starych ścieżek anime.');
     }catch(e){loaded=false;status.textContent='Błąd: '+e.message+'. Nic nie zapisano.';}
     finally{busy=false;reload.disabled=false;save.disabled=!loaded;}
    }
