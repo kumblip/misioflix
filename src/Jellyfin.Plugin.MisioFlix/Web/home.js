@@ -23,6 +23,9 @@
   let recommendationRows = new Map();
   let recommendationInitialized = false;
   let recommendationIncludeAnime = true;
+  let recommendationAudioMode = 'pl'; // pl -> original -> all, per Home mount; no persistent account writes.
+  let recommendationSubtitlesMode = 'all'; // all -> pl -> en -> all; uses the SAME language-flags index.
+  let librariesReadyPromise = null;
   let recommendationPresets = [];
   let recommendationCandidates = [];
   let recommendationSeasonGenres = new Map();
@@ -37,7 +40,7 @@
   const SEARCH_CATALOG_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
   const SEARCH_CATALOG_DB = 'misioflix-search-catalog-v1';
   let catalogDatabasePromise = null;
-  const catalogSchemaVersion = 'v3-library-paths'; // Old snapshots predate the library map.
+  const catalogSchemaVersion = 'v4-library-paths-audio'; // Old snapshots predate the library map.
   let libraryPathsRevision = ''; // Reported by the authenticated server on /home/libraries.
   function catalogScope(){
     const client = window.ApiClient || window.ConnectionManager?.getApiClient?.();
@@ -1972,6 +1975,79 @@
     });
     control.appendChild(button);return control;
   }
+  // Three states for PROPOSALS only. The reusable language-flags index on the
+  // server is authoritative; this never probes videos, starts playback or scans NFO.
+  function recommendationAudioToggle(){
+    const control=own('div','mf-home-libraries-control mf-home-audio-control');
+    const button=own('button','mf-home-libraries-toggle mf-home-audio-toggle');
+    button.type='button';
+    const track=own('span','mf-home-libraries-track');track.setAttribute('aria-hidden','true');
+    const label=own('span','mf-home-libraries-label');
+    append(button,track,label);
+    const titles={
+      pl:'Audio PL',
+      original:'Audio nie-PL',
+      all:'Wszystkie'
+    };
+    function showState(){
+      const mode=recommendationAudioMode;
+      button.dataset.mfAudioMode=mode;
+      button.setAttribute('aria-label','Język audio w propozycjach: '+titles[mode]+'. Kliknij, aby zmienić filtr.');
+      button.setAttribute('aria-pressed',String(mode!=='all'));
+      button.title='Filtr audio propozycji: '+titles[mode]+'. Kolejność: polskie → oryginał → wszystkie.';
+      label.textContent=titles[mode];
+    }
+    showState();
+    button.addEventListener('click',()=>{
+      recommendationAudioMode=recommendationAudioMode==='pl'?'original':
+        recommendationAudioMode==='original'?'all':'pl';
+      showState();
+      if(recommendationInitialized && recommendationCandidates.length)paintRecommendationSets();
+    });
+    control.appendChild(button);
+    return control;
+  }
+  function recommendationHasRequestedAudio(item){
+    if(recommendationAudioMode==='all')return true;
+    // Null means the manually refreshed index does not know this title's
+    // audio tracks. Do NOT treat missing evidence as original-language audio.
+    if(typeof item?.pl_audio!=='boolean')return false;
+    return recommendationAudioMode==='pl' ? item.pl_audio : !item.pl_audio;
+  }
+  // Independent three-state subtitle filter for genre recommendations only.
+  // It uses flags from the same manually refreshed server-side language index as
+  // the audio toggle: NO new request, NFO read, stream scan or extra database.
+  function recommendationSubtitlesToggle(){
+    const control=own('div','mf-home-libraries-control mf-home-subtitles-control');
+    const button=own('button','mf-home-libraries-toggle mf-home-subtitles-toggle');
+    button.type='button';
+    const track=own('span','mf-home-libraries-track');track.setAttribute('aria-hidden','true');
+    const label=own('span','mf-home-libraries-label');
+    append(button,track,label);
+    const titles={all:'Wszystkie',pl:'Napisy PL',en:'Napisy EN'};
+    function showState(){
+      const mode=recommendationSubtitlesMode;
+      button.dataset.mfSubtitlesMode=mode;
+      button.setAttribute('aria-label','Język napisów w propozycjach: '+titles[mode]+'. Kliknij, aby zmienić filtr.');
+      button.setAttribute('aria-pressed',String(mode!=='all'));
+      button.title='Filtr napisów propozycji: '+titles[mode]+'. Kolejność: wszystkie → PL → EN.';
+      label.textContent=titles[mode];
+    }
+    showState();
+    button.addEventListener('click',()=>{
+      recommendationSubtitlesMode=recommendationSubtitlesMode==='all'?'pl':
+        recommendationSubtitlesMode==='pl'?'en':'all';
+      showState();
+      if(recommendationInitialized && recommendationCandidates.length)paintRecommendationSets();
+    });
+    control.appendChild(button);
+    return control;
+  }
+  function recommendationHasRequestedSubtitles(item){
+    if(recommendationSubtitlesMode==='all')return true;
+    // Missing/partial index results must not be treated as verified subtitles.
+    return recommendationSubtitlesMode==='pl' ? item?.pl_subtitles===true : item?.en_subtitles===true;
+  }
   function randomizeRecommendations(pool){
     // Fisher–Yates over the ENTIRE eligible list: no five-item random limit.
     const result=[...pool];
@@ -2172,6 +2248,8 @@
       if(!selected.length)continue;
       const matching=recommendationCandidates.filter(item=>{
         if(!recommendationIncludeAnime&&item.anime)return false;
+        if(!recommendationHasRequestedAudio(item))return false;
+        if(!recommendationHasRequestedSubtitles(item))return false;
         // Opt-out only: every current/future library is included unless
         // ALL known memberships of this item are manually excluded.
         // Preserve legacy allowlists until an admin opens and saves the new selector.
@@ -2196,7 +2274,13 @@
       recommendationRows.set(id,row);
       area.appendChild(row.section);
     }
-    if(!recommendationRows.size)return; // No configured set matches this user's catalog.
+    if(!recommendationRows.size){
+      if((recommendationAudioMode!=='all' && recommendationCandidates.some(item=>item.pl_audio==null)) ||
+         (recommendationSubtitlesMode!=='all' && recommendationCandidates.some(item=>item.pl_subtitles==null || item.en_subtitles==null)))
+        area.appendChild(own('p','mf-home-empty',
+          'Brak propozycji z potwierdzonymi ścieżkami audio lub napisami. Odśwież bazę języków w ustawieniach MisioFlixa albo wybierz „Wszystkie”.'));
+      return;
+    } // No configured set matches this user's catalog.
     // Only hydrate visible rows. Each row loads 10 initially then 25 per further scroll,
     // unlimited shuffle and identical existing cards minus descriptions.
     if(typeof IntersectionObserver==='function'){
@@ -2234,6 +2318,8 @@
         return;
       }
       area.replaceChildren(own('p','mf-home-empty','Wczytywanie katalogu propozycji…'));
+      if(librariesReadyPromise)await librariesReadyPromise;
+      if(!isCurrent(serial)||!area.isConnected)return;
       const data=await getCatalogForSearch();
       if(!isCurrent(serial)||!area.isConnected)return;
       const all=Array.isArray(data?.items)?data.items:[];
@@ -2365,8 +2451,12 @@
       showHiddenResume=false;
       homeRoot.appendChild(resumeShelf());
       recommendationIncludeAnime=true; // ON by default on every Home mount.
+      recommendationAudioMode='pl'; // First mode: only confirmed Polish audio.
+      recommendationSubtitlesMode='all'; // Subtitles are unfiltered by default.
       const switches=own('div','mf-home-switches');
       append(switches,libraryShelvesToggle(),recommendationToggle(),recommendationAnimeToggle());
+      switches.appendChild(recommendationAudioToggle());
+      switches.appendChild(recommendationSubtitlesToggle());
       homeRoot.appendChild(switches);
       collectionsPage=createCollectionsPage();
       collectionsLoad={busy:false,loaded:false,offset:0,hasMore:true,requestId:0};
@@ -2384,7 +2474,8 @@
       observeCollectionsFeed();
       document.documentElement.classList.add('mf-home-custom-active');
       syncCollectionsPage();
-      void loadLibraries(serial);
+      librariesReadyPromise=loadLibraries(serial).catch(()=>{});
+      void librariesReadyPromise; // Library revision must be known before catalog snapshots.
       void loadResume(serial);
       void initializeRecommendations(serial); // Visible on Home from the first mount.
     }finally{mounting=false;}
@@ -2397,6 +2488,7 @@
       recommendationInitialized=false;recommendationRows.clear();
       recommendationCandidates=[];recommendationPresets=[];recommendationSeasonGenres.clear();
       homeRoot.remove();homeRoot=null;homeHost=null;
+      librariesReadyPromise=null;
       discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;epoch++;rows.clear();
     }
     document.documentElement.classList.remove('mf-home-custom-active');

@@ -15,7 +15,7 @@ class LibrariesVisibility106(unittest.TestCase):
         self.assertIn("rowsArea.hidden=true",mount)
         self.assertIn("homeRoot.appendChild(hero(discoveryRefs.section))",mount)
         self.assertIn('homeRoot.appendChild(collectionsPage.section)',mount)
-        self.assertIn('void loadLibraries(serial)',mount)
+        self.assertIn('librariesReadyPromise=loadLibraries(serial)',mount)
         self.assertIn('void loadResume(serial)',mount)
 
     def test_switch_is_button_with_default_off_state(self):

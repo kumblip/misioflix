@@ -14,7 +14,7 @@ assert(mount.indexOf('homeRoot.appendChild(resumeShelf())')<mount.indexOf('libra
 assert(mount.indexOf('libraryShelvesToggle()')<mount.indexOf('homeRoot.appendChild(rowsArea)'));
 assert(source.includes("rowsArea.id='mf-home-rows';"),'switch points at the actual shelf container');
 assert(source.includes('rowsArea.hidden=true;'),'initial state is OFF');
-assert(source.includes("void loadLibraries(serial);"),'library metadata still loads for hero/search shortcuts');
+assert(source.includes("librariesReadyPromise=loadLibraries(serial)"),'library metadata still loads for hero/search shortcuts');
 assert(source.includes("homeRoot.appendChild(collectionsPage.section);"),'collections page is not removed');
 assert(css.includes('.mf-home-0412 [hidden]{display:none!important}'),'hidden shelves cannot be made visible by flex styling');
 assert(css.includes('.mf-home-libraries-toggle:focus-visible'),'keyboard focus is visible');

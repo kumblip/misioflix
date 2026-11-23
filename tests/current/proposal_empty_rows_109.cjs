@@ -22,6 +22,8 @@ const own=(tag,klass='',label='')=>new El(tag,klass,label);
 const area=new El();
 const ctx={
   homeRoot:{isConnected:true,querySelector:q=>q==='#mf-home-recommendations'?area:null},
+  recommendationAudioMode:'all',recommendationHasRequestedAudio:()=>true,
+  recommendationSubtitlesMode:'all',recommendationHasRequestedSubtitles:()=>true,
   recommendationInitialized:true,recommendationIncludeAnime:false,
   recommendationPresets:[{genres:['Isekai'],matchAll:false}],
   recommendationCandidates:[{id:'a'.repeat(32),anime:true,type:'Series',genres:['Isekai']}],

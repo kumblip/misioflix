@@ -20,6 +20,8 @@ const area=new El();
 const created=[];const hydrated=[];
 const ctx={
   homeRoot:{querySelector:q=>q==='#mf-home-recommendations'?area:null},
+  recommendationAudioMode:'all',recommendationHasRequestedAudio:()=>true,
+  recommendationSubtitlesMode:'all',recommendationHasRequestedSubtitles:()=>true,
   recommendationInitialized:true,recommendationIncludeAnime:true,
   recommendationPresets:[
     {genres:['Akcja','Komedia'],matchAll:true},

@@ -2503,3 +2503,100 @@ html.misioflix-skin .mf-home-stats > .mf-home-member-collection:only-child {
 
 
 
+
+/* Three-state audio filter for genre recommendations. It does not change
+   library shelves or playback. Green=PL, blue=non-PL, grey=all. */
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode]{transition:background-color .16s ease,border-color .16s ease}
+html.misioflix-skin .mf-home-audio-toggle .mf-home-libraries-track{width:48px}
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="pl"]{
+  background:rgba(49,159,98,.19);border-color:#54c88b;color:#e4ffed
+}
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="pl"] .mf-home-libraries-track{
+  background:#43b978;border-color:#43b978
+}
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="pl"] .mf-home-libraries-track::after{
+  transform:translateX(28px)
+}
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="original"]{
+  background:rgba(65,162,214,.19);border-color:#62c8ed;color:#e4faff
+}
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="original"] .mf-home-libraries-track{
+  background:#309fd6;border-color:#62c8ed
+}
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="original"] .mf-home-libraries-track::after{
+  transform:translateX(14px)
+}
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="all"]{
+  background:rgba(145,143,153,.12);border-color:#89838f;color:#edeaf0
+}
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="all"] .mf-home-libraries-track{
+  background:#77717e;border-color:#99939f
+}
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="all"] .mf-home-libraries-track::after{
+  transform:translateX(0)
+}
+@media(max-width:560px){
+  html.misioflix-skin .mf-home-switches .mf-home-audio-toggle .mf-home-libraries-track{width:44px}
+  html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="pl"] .mf-home-libraries-track::after{transform:translateX(26px)}
+  html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="original"] .mf-home-libraries-track::after{transform:translateX(13px)}
+}
+
+
+/* Three-state SUBTITLES filter for genre recommendations: grey=all (default),
+   green=PL subtitles, blue=EN subtitles; independent of the audio filter. */
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode]{transition:background-color .16s ease,border-color .16s ease}
+html.misioflix-skin .mf-home-subtitles-toggle .mf-home-libraries-track{width:48px}
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="all"]{
+  background:rgba(145,143,153,.12);border-color:#89838f;color:#edeaf0
+}
+/* Light CC captions pictogram, only for the default ALL subtitles state.
+   Decorative only; language flags, labels, accessibility and filter logic stay unchanged. */
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="all"] .mf-home-libraries-label::before{
+  content:"CC";
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:22px;
+  height:16px;
+  box-sizing:border-box;
+  border:1px solid #caefff;
+  border-radius:3px;
+  background:rgba(192,231,255,.17);
+  color:#f4fbff;
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.15px;
+  line-height:1;
+  margin-right:.36em;
+  vertical-align:middle;
+}
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="all"] .mf-home-libraries-track{
+  background:#77717e;border-color:#99939f
+}
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="all"] .mf-home-libraries-track::after{
+  transform:translateX(0)
+}
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="pl"]{
+  background:rgba(49,159,98,.19);border-color:#54c88b;color:#e4ffed
+}
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="pl"] .mf-home-libraries-track{
+  background:#43b978;border-color:#43b978
+}
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="pl"] .mf-home-libraries-track::after{
+  transform:translateX(14px)
+}
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="en"]{
+  background:rgba(65,162,214,.19);border-color:#62c8ed;color:#e4faff
+}
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="en"] .mf-home-libraries-track{
+  background:#309fd6;border-color:#62c8ed
+}
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="en"] .mf-home-libraries-track::after{
+  transform:translateX(28px)
+}
+@media(max-width:560px){
+  html.misioflix-skin .mf-home-switches .mf-home-subtitles-toggle .mf-home-libraries-track{width:44px}
+  html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="pl"] .mf-home-libraries-track::after{transform:translateX(13px)}
+  html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="en"] .mf-home-libraries-track::after{transform:translateX(26px)}
+}

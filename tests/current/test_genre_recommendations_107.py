@@ -48,7 +48,7 @@ class GenreRecommendations107(unittest.TestCase):
         self.assertLess(mount.index('libraryShelvesToggle()'),mount.index('recommendationToggle()'))
         self.assertIn("genreArea.hidden=false",mount)
         self.assertIn("genreArea.id='mf-home-recommendations'",mount)
-        self.assertIn('void loadLibraries(serial)',mount)
+        self.assertIn('librariesReadyPromise=loadLibraries(serial)',mount)
         self.assertIn("button.setAttribute('aria-checked','true')",HOME.split('function recommendationToggle(){',1)[1].split('function randomizeRecommendations(',1)[0])
         self.assertIn("row.isGenre || row.mode==='latest'",HOME)
         self.assertIn('randomizeRecommendations(row.base)',HOME)

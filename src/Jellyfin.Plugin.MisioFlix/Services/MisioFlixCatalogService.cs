@@ -77,6 +77,10 @@ public sealed class MisioFlixCatalogService
             throw new UnauthorizedAccessException("Jellyfin did not recognize the caller");
         }
 
+        // Load the existing, administrator-refreshed language index once.
+        // Absolutely no media stream probing or disk writes happen here.
+        await EnsureLanguageIndexAsync(cancel).ConfigureAwait(false);
+
         // An optional library scope is accepted only when visible to the caller.
         // Include mixed Jellyfin Folder items ONLY for an explicitly anime-scoped
         // catalogue, never for the global movie/series search.
@@ -142,6 +146,9 @@ public sealed class MisioFlixCatalogService
                         id = itemId,
                         library_ids = libraryIds,
                         anime = true,
+                        pl_audio = KnownPolishAudio(itemId),
+                        pl_subtitles = KnownSubtitles(itemId, "pl"),
+                        en_subtitles = KnownSubtitles(itemId, "en"),
                         anime_source = animeSource,
                         type = itemType,
                         // Season -> its Jellyfin Series GUID, never a title-based guess.
@@ -189,6 +196,9 @@ public sealed class MisioFlixCatalogService
                         id = itemId,
                         library_ids = libraryIds,
                         anime = false,
+                        pl_audio = KnownPolishAudio(itemId),
+                        pl_subtitles = KnownSubtitles(itemId, "pl"),
+                        en_subtitles = KnownSubtitles(itemId, "en"),
                         type = type,
                         title = Text(Get(json, "Name")),
                         year = Text(Get(json, "ProductionYear")),
@@ -217,6 +227,27 @@ public sealed class MisioFlixCatalogService
         return new CatalogResponse(result, new GenreSets(animeGenres, mediaGenres));
     }
 
+    // An unknown/incomplete index entry is not proof of original-language audio.
+    // This method reads the already loaded in-memory index only (O(1) per item).
+    private static bool? KnownPolishAudio(string itemId)
+    {
+        if (!Guid.TryParse(itemId, out var id) ||
+            !LanguageFlagsCache.TryGetValue(id.ToString("N"), out var flags)) return null;
+        if (flags.pl is "audio" or "both") return true;
+        return flags.partial ? null : false;
+    }
+
+    // Read subtitle presence from the SAME durable index as card flags and
+    // pl_audio. A partial/unknown entry is not evidence of subtitles.
+    private static bool? KnownSubtitles(string itemId, string language)
+    {
+        if (!Guid.TryParse(itemId, out var id) ||
+            !LanguageFlagsCache.TryGetValue(id.ToString("N"), out var flags)) return null;
+        var availability = language == "pl" ? flags.pl : flags.en;
+        if (availability is "subtitles" or "both") return true;
+        return flags.partial ? null : false;
+    }
+
     // Home shelves are small, server-side filtered queries, NEVER a second catalogue scan.
     // User /Views scopes the allowed ParentId to libraries actually visible to the caller.
     public async Task<List<HomeLibrary>> ReadHomeLibrariesAsync(HttpRequest caller, CancellationToken cancel)
@@ -227,6 +258,7 @@ public sealed class MisioFlixCatalogService
 
     private async Task<List<HomeLibrary>> GetHomeLibrariesAsync(Uri origin, string auth, string userId, CancellationToken cancel)
     {
+        await EnsureLanguageIndexAsync(cancel).ConfigureAwait(false);
         using var doc = await GetJsonAsync(origin, $"Users/{Uri.EscapeDataString(userId)}/Views", auth, cancel).ConfigureAwait(false);
         var views = Get(doc.RootElement, "Items");
         var result = new List<HomeLibrary>();
@@ -269,7 +301,10 @@ public sealed class MisioFlixCatalogService
             };
             var href = $"#/" + kind + $"?topParentId={guid:N}&collectionType={Uri.EscapeDataString(collection)}";
             // The user's home page should be library-specific, not alphabetically mixed.
-            var revision = Plugin.Instance?.Configuration?.LibraryPathsRevision ?? string.Empty;
+            // A manual flags-index refresh must also invalidate the browser's
+            // persisted recommendation catalog on every client device.
+            var revision = (Plugin.Instance?.Configuration?.LibraryPathsRevision ?? string.Empty)
+                + ":audio:" + (_languageFlagsUpdatedUtc?.UtcDateTime.Ticks.ToString(CultureInfo.InvariantCulture) ?? "0");
             result.Add(new HomeLibrary(guid.ToString("N"), name, category, href, revision));
         }
         return result;
@@ -2198,6 +2233,12 @@ public sealed class CatalogItem
     // Same stable CollectionFolder GUIDs as /Library/VirtualFolders and User /Views.
     public List<string> library_ids { get; set; } = new();
     public bool anime { get; set; }
+    // Cached, verified Polish AUDIO availability; null means unknown.
+    // Subtitles alone do not count as audio. Never inferred from a folder name here.
+    public bool? pl_audio { get; set; }
+    // From the identical durable PL/EN language-flags index; unknown != false.
+    public bool? pl_subtitles { get; set; }
+    public bool? en_subtitles { get; set; }
     // "lektor" = animelektor (PL); "original" = anime (original audio / EN subs).
     public string anime_source { get; set; } = string.Empty;
     public string type { get; set; } = string.Empty;
