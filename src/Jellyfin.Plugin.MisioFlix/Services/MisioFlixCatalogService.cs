@@ -84,10 +84,14 @@ public sealed class MisioFlixCatalogService
         // An optional library scope is accepted only when visible to the caller.
         // Include mixed Jellyfin Folder items ONLY for an explicitly anime-scoped
         // catalogue, never for the global movie/series search.
+        // Use the same currently visible library IDs and administrator roles as
+        // the Home carousels. Media paths may lag behind a Jellyfin folder rename.
+        var allowed = await GetHomeLibrariesAsync(origin, auth, userId, cancel).ConfigureAwait(false);
+        var animeLibraryIds = allowed.Where(view => view.category == "anime")
+            .Select(view => view.id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var includeAnimeFolders = false;
         if (libraryId.HasValue)
         {
-            var allowed = await GetHomeLibrariesAsync(origin, auth, userId, cancel).ConfigureAwait(false);
             var selected = allowed.FirstOrDefault(view => view.id.Equals(libraryId.Value.ToString("N"), StringComparison.OrdinalIgnoreCase));
             if (selected is null) throw new UnauthorizedAccessException("Requested library is not accessible");
             includeAnimeFolders = selected.category == "anime";
@@ -125,8 +129,13 @@ public sealed class MisioFlixCatalogService
                     .Select(folder => folder.Id.ToString("N"))
                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 var mediaPath = originalItem.Path;
-                var animeSource = AnimeSource(mediaPath);
-                var isAnime = animeSource.Length != 0;
+                // The authoritative membership is the same view ID used by Home.
+                // A library rename/move must not reclassify anime as Simkl media.
+                var inAnimeLibrary = libraryIds.Any(animeLibraryIds.Contains);
+                var animeSource = AnimeSourceForLibraryMembership(libraryIds, mediaPath);
+                var isAnime = inAnimeLibrary || animeSource.Length != 0;
+                if (inAnimeLibrary && animeSource.Length == 0)
+                    animeSource = "both"; // Anime is known, audio type is not: never guess PL.
                 var itemType = Text(Get(json, "Type"));
                 // Mixed Jellyfin libraries can expose a media root as Type=Folder
                 // even though the directory has tvshow.nfo/movie.nfo. Never guess
@@ -911,7 +920,7 @@ public sealed class MisioFlixCatalogService
                 $"Items/{id:N}?UserId={Uri.EscapeDataString(userId)}&Fields=MediaSources,MediaStreams",
                 auth, cancel).ConfigureAwait(false);
             availability.AddItem(detailed.RootElement, LibraryAudioHint(id));
-            partial = !availability.SawStreamInfo;
+            partial = !availability.AudioClassificationComplete;
         }
         else
         {
@@ -946,7 +955,7 @@ public sealed class MisioFlixCatalogService
                         { partial=true; }
                     }
                     availability.Merge(episodeFlags);
-                    if (!episodeFlags.SawStreamInfo) partial=true;
+                    if (!episodeFlags.AudioClassificationComplete) partial=true;
                 }
                 if (episodes.GetArrayLength() < pageSize) break;
                 if (offset+pageSize >= maxEpisodes) partial=true;
@@ -974,8 +983,13 @@ public sealed class MisioFlixCatalogService
                     .FirstOrDefault(mapping => Guid.TryParse(mapping.LibraryId, out var libId)
                         && libId == folder.Id))
                     .Where(mapping => mapping is not null)
-                    .Select(mapping => mapping!.AudioLanguage is "pl" or "en"
-                        ? mapping.AudioLanguage : string.Empty)
+                    .Select(mapping => mapping!.AudioLanguage switch
+                    {
+                        "pl" => "pl", "en" => "en",
+                        // An anime-pl/eng role already expresses the library default.
+                        // Only used for a SINGLE audio track; never invent a second one.
+                        _ => mapping.Role switch { "anime_pl" => "pl", "anime_eng" => "en", _ => string.Empty }
+                    })
                     .Where(language => language.Length != 0).Distinct().Take(2).ToArray();
                 if (mapped.Length == 1) return mapped[0];
                 if (mapped.Length > 1) return string.Empty;
@@ -1006,6 +1020,7 @@ public sealed class MisioFlixCatalogService
             var parents = new Dictionary<string, TrackAvailability>(StringComparer.OrdinalIgnoreCase);
             var incomplete = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var typed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var seasonToSeries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             const int pageSize = 250;
             const int maxItems = 50000;
             var reachedEnd = false;
@@ -1027,7 +1042,21 @@ public sealed class MisioFlixCatalogService
                     var type=Text(Get(item,"Type"));
                     if (type is not ("Movie" or "Video" or "Series" or "Season" or "Episode")) continue;
                     typed[idText]=type;
-                    if (type is "Series" or "Season") { parents.TryAdd(idText,new TrackAvailability()); continue; }
+                    if (type is "Series" or "Season")
+                    {
+                        parents.TryAdd(idText,new TrackAvailability());
+                        if (type=="Season")
+                        {
+                            // Some Jellyfin Episode DTOs provide only SeasonId/ParentId.
+                            // Use the Season's actual authorized SeriesId/ParentId to
+                            // propagate verified episode flags up to its Series.
+                            var rawParent=Text(Get(item,"SeriesId"));
+                            if (!Guid.TryParse(rawParent,out var sid))
+                                Guid.TryParse(Text(Get(item,"ParentId")),out sid);
+                            if (sid!=Guid.Empty) seasonToSeries[idText]=sid.ToString("N");
+                        }
+                        continue;
+                    }
                     var flags=new TrackAvailability();
                     flags.AddItem(item,LibraryAudioHint(id));
                     if (!flags.SawStreamInfo)
@@ -1044,7 +1073,7 @@ public sealed class MisioFlixCatalogService
                         catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
                         { /* No invented tracks for inaccessible/unreadable files. */ }
                     }
-                    fresh[idText]=new LanguageFlagInfo(idText,flags.Mode("pl"),flags.Mode("en"),!flags.SawStreamInfo);
+                    fresh[idText]=new LanguageFlagInfo(idText,flags.Mode("pl"),flags.Mode("en"),!flags.AudioClassificationComplete);
                     if (type=="Episode")
                     {
                         foreach (var parentKey in new[] {Text(Get(item,"ParentId")),Text(Get(item,"SeasonId")),Text(Get(item,"SeriesId"))})
@@ -1053,18 +1082,27 @@ public sealed class MisioFlixCatalogService
                             var key=pid.ToString("N");
                             if (!parents.TryGetValue(key,out var union)) parents[key]=union=new TrackAvailability();
                             union.Merge(flags);
-                            if (!flags.SawStreamInfo) incomplete.Add(key);
+                            if (!flags.AudioClassificationComplete) incomplete.Add(key);
                         }
                     }
                 }
                 if (items.GetArrayLength()<pageSize) { reachedEnd=true; break; }
             }
             if (!reachedEnd) throw new InvalidOperationException("Zbyt wiele plików w bibliotece — nie zastąpiono bazy niepełnymi danymi.");
+            foreach (var (seasonId,seriesId) in seasonToSeries)
+            {
+                if (!parents.TryGetValue(seasonId,out var seasonFlags)) continue;
+                if (!parents.TryGetValue(seriesId,out var seriesFlags))
+                    parents[seriesId]=seriesFlags=new TrackAvailability();
+                seriesFlags.Merge(seasonFlags); // Boolean union; duplicate Episode.SeriesId is harmless.
+                if (incomplete.Contains(seasonId)) incomplete.Add(seriesId);
+            }
             foreach (var (key,type) in typed)
             {
                 if (type is not ("Season" or "Series")) continue;
                 if (!parents.TryGetValue(key,out var union)) union=new TrackAvailability();
-                fresh[key]=new LanguageFlagInfo(key,union.Mode("pl"),union.Mode("en"),incomplete.Contains(key));
+                fresh[key]=new LanguageFlagInfo(key,union.Mode("pl"),union.Mode("en"),
+                    incomplete.Contains(key) || !union.AudioClassificationComplete);
             }
             // One atomic commit only after the COMPLETE scan succeeded.
             var refreshedUtc=DateTimeOffset.UtcNow;
@@ -1080,7 +1118,11 @@ public sealed class MisioFlixCatalogService
     private sealed class TrackAvailability
     {
         private bool _plAudio,_plSubs,_enAudio,_enSubs;
+        private bool _sawAudioTrack, _unclassifiedAudio;
         public bool SawStreamInfo { get; private set; }
+        // An empty stream list or undecipherable audio language is NOT
+        // confirmation that Polish audio is absent.
+        public bool AudioClassificationComplete => _sawAudioTrack && !_unclassifiedAudio;
         public string? Mode(string language)
         {
             var audio=language=="pl" ? _plAudio : _enAudio;
@@ -1092,6 +1134,8 @@ public sealed class MisioFlixCatalogService
             _plAudio |= other._plAudio; _enAudio |= other._enAudio;
             _plSubs |= other._plSubs; _enSubs |= other._enSubs;
             SawStreamInfo |= other.SawStreamInfo;
+            _sawAudioTrack |= other._sawAudioTrack;
+            _unclassifiedAudio |= other._unclassifiedAudio;
         }
         public void AddItem(JsonElement item,string libraryHint)
         {
@@ -1120,6 +1164,11 @@ public sealed class MisioFlixCatalogService
                 if (type is not ("Audio" or "Subtitle")) continue;
                 var lang=type=="Audio" && audioTracks.Length==1 && libraryHint.Length>0
                     ? libraryHint : LanguageOf(stream);
+                if (type=="Audio")
+                {
+                    _sawAudioTrack=true;
+                    if (lang.Length==0) _unclassifiedAudio=true;
+                }
                 if (lang=="pl")
                 { if (type=="Audio") _plAudio=true; else _plSubs=true; }
                 else if (lang=="en")
@@ -1134,7 +1183,14 @@ public sealed class MisioFlixCatalogService
                 var resolved=NormalizeLanguage(specified);
                 if (resolved.Length!=0) return resolved;
                 if (specified.Trim().ToLowerInvariant() is not ("und" or "unk" or "unknown"))
+                {
+                    // A standard non-PL/non-EN language tag (ja/jpn/deu/etc.)
+                    // is known non-Polish; an unparseable free-form value is not.
+                    var tag = specified.Trim();
+                    if (tag.Length is >= 2 and <= 12 && tag.All(c => char.IsLetter(c) || c == '-'))
+                        return "other";
                     return string.Empty;
+                }
             }
             foreach (var key in new[]{"DisplayLanguage","Title","DisplayTitle"})
             {
@@ -2001,6 +2057,27 @@ public sealed class MisioFlixCatalogService
             }
         }
         return matchedRole;
+    }
+
+    // Catalog/search/proposals use the SAME stable Jellyfin library IDs as Home.
+    // An administrator may rename/move a root while the saved path is stale.
+    // Never infer audio from the path here; the language index does that separately.
+    private static string AnimeSourceForLibraryMembership(IEnumerable<string> libraryIds, string? mediaPath)
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config?.LibraryPathsConfigured == true)
+        {
+            var ids = libraryIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var roles = (config.LibraryPaths ?? new())
+                .Where(mapping => Guid.TryParse(mapping.LibraryId, out var id) && ids.Contains(id.ToString("N")))
+                .Select(mapping => mapping.Role)
+                .ToHashSet(StringComparer.Ordinal);
+            if (roles.Contains("anime_both") || (roles.Contains("anime_pl") && roles.Contains("anime_eng")))
+                return "both";
+            if (roles.Contains("anime_pl")) return "lektor";
+            if (roles.Contains("anime_eng")) return "original";
+        }
+        return AnimeSource(mediaPath);
     }
 
     // Both PL+ENG archives are eligible for either anime search audio mode.

@@ -40,7 +40,7 @@
   const SEARCH_CATALOG_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
   const SEARCH_CATALOG_DB = 'misioflix-search-catalog-v1';
   let catalogDatabasePromise = null;
-  const catalogSchemaVersion = 'v4-library-paths-audio'; // Old snapshots predate the library map.
+  const catalogSchemaVersion = 'v5-library-id-anime-audio-confidence'; // Bust stale classifications and audio flags.
   let libraryPathsRevision = ''; // Reported by the authenticated server on /home/libraries.
   function catalogScope(){
     const client = window.ApiClient || window.ConnectionManager?.getApiClient?.();
@@ -2234,6 +2234,15 @@
       if(reset)row.scroll.replaceChildren(msg);else row.scroll.appendChild(msg);
     }finally{row.busy=false;row.shuffle.disabled=false;row.reset.disabled=false;}
   }
+  // Home's own role-based library list is authoritative, including after
+  // rename/move. Also guards against a stale authorized catalog snapshot.
+  function recommendationIsAnime(item){
+    if(item?.anime===true)return true;
+    if(!Array.isArray(item?.library_ids))return false;
+    const animeIds=new Set(librariesCache.filter(lib=>lib.category==='anime')
+      .map(lib=>compactId(lib.id)));
+    return item.library_ids.some(id=>animeIds.has(compactId(id)));
+  }
   // Filter the existing authorized catalog for each independently configured
   // AND/OR proposal. No extra calls and no change to library / search cache.
   function paintRecommendationSets(){
@@ -2241,13 +2250,19 @@
     if(!area||!recommendationInitialized)return;
     recommendationObserver?.disconnect();recommendationObserver=null;
     area.replaceChildren();recommendationRows.clear();
+    // Keep the toggle correct even if a previously cached row said anime=false.
+    // Home's own ID-based view categories take precedence over old paths.
+    const animeIds=new Set((typeof librariesCache==='undefined'?[]:librariesCache)
+      .filter(lib=>lib.category==='anime').map(lib=>compactId(lib.id)));
+    const isAnime=item=>item?.anime===true ||
+      (Array.isArray(item?.library_ids) && item.library_ids.some(id=>animeIds.has(compactId(id))));
     let index=0;
     for(const preset of recommendationPresets){
       index++;
       const selected=(Array.isArray(preset.genres)?preset.genres:[]).map(normalized).filter(Boolean);
       if(!selected.length)continue;
       const matching=recommendationCandidates.filter(item=>{
-        if(!recommendationIncludeAnime&&item.anime)return false;
+        if(!recommendationIncludeAnime&&isAnime(item))return false;
         if(!recommendationHasRequestedAudio(item))return false;
         if(!recommendationHasRequestedSubtitles(item))return false;
         // Opt-out only: every current/future library is included unless
@@ -2261,7 +2276,7 @@
           if(item.library_ids.every(id=>excluded.has(compactId(id))))return false;
         }
         const genres=new Set([...(Array.isArray(item.genres)?item.genres:[]),
-          ...(item.anime&&item.type==='Series'?(recommendationSeasonGenres.get(compactId(item.id))||[]):[])].map(normalized));
+          ...(isAnime(item)&&item.type==='Series'?(recommendationSeasonGenres.get(compactId(item.id))||[]):[])].map(normalized));
         return preset.matchAll?selected.every(g=>genres.has(g)):selected.some(g=>genres.has(g));
       });
       // A configured proposal is not necessarily a visible row. Omit empty
@@ -2325,7 +2340,7 @@
       const all=Array.isArray(data?.items)?data.items:[];
       recommendationSeasonGenres=new Map();
       for(const item of all){
-        if(!item?.anime||item.type!=='Season'||!validId(item.parent_series_id))continue;
+        if(!recommendationIsAnime(item)||item.type!=='Season'||!validId(item.parent_series_id))continue;
         const id=compactId(item.parent_series_id);
         const values=recommendationSeasonGenres.get(id)||[];
         if(Array.isArray(item.genres))values.push(...item.genres);
