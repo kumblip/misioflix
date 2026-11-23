@@ -19,15 +19,16 @@ class Features0422(unittest.TestCase):
     def test_release_single_version_source(self):
         self.assertRegex(json.loads((ROOT/'meta.json').read_text())['version'],r'^0\.4\.\d+\.0$')
         self.assertIn(json.loads((ROOT/'meta.json').read_text())['version'],(P/'Jellyfin.Plugin.MisioFlix.csproj').read_text())
-    def test_home_uses_proven_native_detail_button_for_resume(self):
-        self.assertIn('window.MisioFlixPlayItem(entry.resumeId)',HOME)
+    def test_home_uses_one_native_detail_button_for_resume(self):
+        self.assertIn('const nativePlay=window.MisioFlixPlayItem;',HOME)
+        self.assertIn('await nativePlay(entry.resumeId)',HOME)
         self.assertIn('window.MisioFlixPlayItem = playEpisode;',DETAILS)
         self.assertIn('const page = activeDetailsPage(target)',DETAILS)
-        self.assertIn('button.click(); return true;',DETAILS)
-        self.assertIn('await playViaItemDetails(entry,serial)',HOME) # only fallback
-        self.assertIn('async function tryNativeResume(entry, serial)',HOME)
-        self.assertIn("'data-id':compactId(entry.resumeId)",HOME)
-        self.assertIn('if(!click.defaultPrevented)return false;',HOME)
+        self.assertIn('button.click();',DETAILS)
+        self.assertNotIn('tryNativeResume(',HOME)
+        self.assertNotIn('playViaItemDetails(',HOME)
+        self.assertNotIn('2200',HOME)
+        self.assertNotIn('750',DETAILS)
         self.assertNotIn('manager.play({ids:',HOME)
     def test_back_and_native_shuffle_hidden_only_on_details(self):
         self.assertIn('ensureBackButton(page);',DETAILS)

@@ -27,7 +27,7 @@ const ctx={
     {id:id(3),anime:false,library_ids:[mediaId],type:'Series',genres:['Isekai'],pl_audio:true},
     {id:id(4),anime:false,library_ids:[animeId],type:'Series',genres:['Isekai'],pl_audio:false}
   ],
-  recommendationPresets:[{genres:['Isekai'],matchAll:false}],
+  recommendationPresets:[{genres:['Isekai'],normalizedGenres:['isekai'],matchAll:false,allLibraries:true,excludedLibraryIds:[]}],
   recommendationSeasonGenres:new Map(),recommendationRows:new Map(),recommendationObserver:null,
   homeRoot:{querySelector:q=>q==='#mf-home-recommendations'?area:null},
   own:(...x)=>new El(...x),append:(p,...children)=>children.forEach(v=>p.appendChild(v)),
@@ -35,6 +35,8 @@ const ctx={
   recommendationShelf:(title,matching)=>{seen.push(matching.map(item=>item.id));return {section:new El()};},
   loadRecommendationPage:async()=>{},IntersectionObserver:undefined
 };
+ctx.recommendationAnimeIds=new Set([animeId]);
+ctx.recommendationGenresById=new Map(ctx.recommendationCandidates.map(item=>[item.id,new Set(['isekai'])]));
 vm.createContext(ctx);
 const a=src.indexOf('  function recommendationAnimeToggle(){');
 const b=src.indexOf('  function randomizeRecommendations(',a);

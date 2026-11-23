@@ -61,7 +61,7 @@ const saveNow=async()=>{save.listeners.click();await new Promise(r=>setImmediate
  await ctx.tested.activate();p=selector();items=choices(p);
  assert.deepEqual(byName(p),{'Anime NEW':false,'Anime Polski':true,'Filmy PL':false,'New later':true});
  const home=fs.readFileSync(path.join(root,'src/Jellyfin.Plugin.MisioFlix/Web/home.js'),'utf8');
- assert(home.includes('preset.excludedLibraryIds?.length'));
+ assert(home.includes('preset.excludedLibraryIds.length'));
  assert(home.includes('item.library_ids.every(id=>excluded.has(compactId(id)))'));
  console.log('PASS proposal libraries: opt-out, future ON, stable IDs, legacy migration, select-all, preserved configuration');
 })().catch(e=>{console.error(e);process.exitCode=1});

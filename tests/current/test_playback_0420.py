@@ -17,15 +17,14 @@ class Playback0420(unittest.TestCase):
         self.assertIn("if(event.target.closest('.mf-home-resume-info,.mf-home-resume-card-actions'))return;",JS)
     def test_exact_id_and_native_player(self):
         self.assertIn('async function playResume(entry)',JS)
-        self.assertIn('async function playViaItemDetails(entry,serial)',JS)
-        self.assertIn('const route=nativeDetails(targetId,entry.item.serverId)',JS)
-        self.assertIn('button.click(); // Jellyfin',JS)
-        self.assertNotIn('window.location.hash=nativeDetails(entry.resumeId,item.serverId)',JS)
+        self.assertIn('const nativePlay=window.MisioFlixPlayItem;',JS)
+        self.assertIn('await nativePlay(entry.resumeId)',JS)
+        self.assertNotIn('playViaItemDetails(',JS)
+        self.assertNotIn('tryNativeResume(',JS)
     def test_no_shortcut_false_positive(self):
-        self.assertIn('window.MisioFlixPlayItem(entry.resumeId)',JS)
-        self.assertIn('if(started || serial!==resumePlaySerial)return;',JS)
-        self.assertIn('await playViaItemDetails(entry,serial)',JS)
+        self.assertIn('if(started||serial!==resumePlaySerial)return;',JS)
         self.assertNotIn('if(click.defaultPrevented)return',JS)
+        self.assertNotIn('2200',JS)
     def test_do_not_touch_video_isolation(self):
         self.assertIn('mf-home-resume-poster:focus-visible',CSS)
         self.assertIn('mf-home-play-warning',CSS)

@@ -25,7 +25,7 @@ const ctx={
   recommendationAudioMode:'all',recommendationHasRequestedAudio:()=>true,
   recommendationSubtitlesMode:'all',recommendationHasRequestedSubtitles:()=>true,
   recommendationInitialized:true,recommendationIncludeAnime:false,
-  recommendationPresets:[{genres:['Isekai'],matchAll:false}],
+  recommendationPresets:[{genres:['Isekai'],normalizedGenres:['isekai'],matchAll:false,allLibraries:true,excludedLibraryIds:[]}],
   recommendationCandidates:[{id:'a'.repeat(32),anime:true,type:'Series',genres:['Isekai']}],
   recommendationSeasonGenres:new Map(),recommendationRows:new Map(),recommendationObserver:null,
   normalized:x=>String(x).toLocaleLowerCase('pl'),compactId:x=>x,
@@ -33,6 +33,8 @@ const ctx={
   recommendationShelf:()=>{throw Error('No shelf should be constructed for 0 matches')},
   loadRecommendationPage:async()=>{},IntersectionObserver:undefined
 };
+ctx.recommendationAnimeIds=new Set();
+ctx.recommendationGenresById=new Map([['a'.repeat(32),new Set(['isekai'])]]);
 vm.createContext(ctx);
 const a=src.indexOf('  function paintRecommendationSets(){');
 const b=src.indexOf('  async function initializeRecommendations(serial){',a);
@@ -45,7 +47,7 @@ assert.equal(area.childElementCount,0,'no heading, message or blank rail');
 const loaderSrc=src.slice(src.indexOf('  async function loadRecommendationPage(row,reset){'),a);
 assert(loaderSrc.startsWith('  async function loadRecommendationPage'));
 const hydration={
-  ...ctx,request:async()=>[],makeCard:()=>new El('article','mf-home-card'),
+  ...ctx,recommendationCards:async()=>[],makeCard:()=>new El('article','mf-home-card'),
 };
 vm.createContext(hydration);
 vm.runInContext(loaderSrc,hydration);
@@ -61,14 +63,14 @@ const row=()=>({
   assert.equal(empty.scroll.childElementCount,0,'no empty message or title placeholder');
 
   const real=row();
-  hydration.request=async()=>[{id:'a'.repeat(32)}];
+  hydration.recommendationCards=async()=>[{id:'a'.repeat(32)}];
   await hydration.loadRecommendationPage(real,true);
   assert.equal(real.section.hidden,false,'populated rail must remain visible');
   assert.equal(real.scroll.querySelectorAll('.mf-home-empty').length,0);
   assert.equal(real.scroll.querySelector('.mf-home-card')?.tag,'article');
 
   const failed=row();
-  hydration.request=async()=>{throw new Error('temporary network fault')};
+  hydration.recommendationCards=async()=>{throw new Error('temporary network fault')};
   await hydration.loadRecommendationPage(failed,true);
   assert.equal(failed.section.hidden,false,'network failure is not an empty genre');
   assert.equal(failed.scroll.children[0].textContent,'Nie udało się wczytać propozycji. ');

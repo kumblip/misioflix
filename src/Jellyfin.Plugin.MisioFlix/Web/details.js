@@ -321,24 +321,33 @@
     }
     return null;
   }
-  // Known-good Jellyfin 12.4 fallback: navigate to the EXACT playable item's
-  // details page, then press Jellyfin's real player/resume button after render.
+  // v0.4.140: single, default playback path for Home resume and episode
+  // clicks. No hidden shortcut proxies and no unconditional delay.
+  // The exact playable ID and current hash must match before a native click.
   async function playEpisode(id) {
-    if (!valid(id)) return;
+    if (!valid(id)) return false;
     const target = compact(id);
     const playSerial = ++playbackGeneration;
-    window.location.hash = detailsRoute(target);
+    const oldPage = activeDetailsPage();
+    if (itemRoute() !== target) window.location.hash = detailsRoute(target);
     const start = Date.now();
     while (Date.now() - start < 10000 && playSerial === playbackGeneration) {
-      if (itemRoute() !== target) return;
-      if (Date.now() - start >= 750) {
-        const page = activeDetailsPage(target);
-        const button = page && nativePlayButton(page, true);
-        if (button) { button.click(); return true; }
+      if (itemRoute() !== target) return false;
+      const page = activeDetailsPage(target);
+      const button = page && nativePlayButton(page, true);
+      // Jellyfin reuses SPA details DOM. Never click the previous title's
+      // native play control even when it is still visible during navigation.
+      const nativeId = compact(page?.querySelector('.mainDetailButtons .btnPlaystate[data-id]')?.dataset.id ||
+        page?.querySelector('.mainDetailButtons .btnUserRating[data-id]')?.dataset.id || '');
+      // When Jellyfin has not stamped the native item ID yet, require a
+      // newly mounted page. Reused/old SPA DOM must never start the wrong item.
+      if (button && (nativeId === target || (!valid(nativeId) && page !== oldPage))) {
+        button.click();
+        return true;
       }
-      await new Promise(resolve => window.setTimeout(resolve, 140));
+      await new Promise(resolve => window.setTimeout(resolve, 60));
     }
-    console.warn('[MisioFlix] Nie znaleziono przycisku odtwarzania w szczegółach odcinka.');
+    console.warn('[MisioFlix] Nie znaleziono gotowego przycisku odtwarzania dla właściwego tytułu.');
     return false;
   }
   // Expose the already verified native-button path to the homepage carousel.

@@ -41,6 +41,14 @@ const ctx={
   loadRecommendationPage:async(row,reset)=>{hydrated.push([row.genre,reset])},
   IntersectionObserver:undefined
 };
+ctx.recommendationAnimeIds=new Set();
+ctx.recommendationGenresById=new Map(items.map(item=>[item.id,
+  new Set([...item.genres,...(ctx.recommendationSeasonGenres.get(item.id)||[])].map(ctx.normalized))]));
+ctx.recommendationPresets.forEach(p=>{
+  p.normalizedGenres=p.genres.map(ctx.normalized);
+  p.allLibraries=true;
+  p.excludedLibraryIds=[];
+});
 vm.createContext(ctx);
 const a=src.indexOf('  function paintRecommendationSets(){');
 const b=src.indexOf('  async function initializeRecommendations(serial){',a);

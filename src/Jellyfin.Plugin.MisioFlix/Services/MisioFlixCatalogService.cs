@@ -394,6 +394,16 @@ public sealed class MisioFlixCatalogService
         var views = await GetHomeLibrariesAsync(origin, auth, userId, cancel).ConfigureAwait(false);
         var view = views.FirstOrDefault(v => v.id.Equals(libraryId.ToString("N"), StringComparison.OrdinalIgnoreCase));
         if (view is null) throw new UnauthorizedAccessException("Library is not accessible to this user");
+        return await ReadHomeShelfAuthorizedAsync(origin, auth, userId, view, libraryId, mode, startIndex, limit, cancel)
+            .ConfigureAwait(false);
+    }
+
+    // The same authorization-scoped shelf builder is reused by the batch API;
+    // only the caller's /Views lookup is shared, never cached across requests.
+    private async Task<HomeShelfResponse> ReadHomeShelfAuthorizedAsync(
+        Uri origin, string auth, string userId, HomeLibrary view, Guid libraryId,
+        string? mode, int startIndex, int limit, CancellationToken cancel)
+    {
         if (startIndex < 0 || startIndex > 40000) throw new ArgumentOutOfRangeException(nameof(startIndex));
         if (limit < 1 || limit > 25) throw new ArgumentOutOfRangeException(nameof(limit));
         var random = string.Equals(mode, "random", StringComparison.OrdinalIgnoreCase);
@@ -488,6 +498,32 @@ public sealed class MisioFlixCatalogService
         var hasMore = !random && (pageCount > examined || pageCount >= limit + 1);
         return new HomeShelfResponse(view.id, view.name, random ? "random" : "latest", startIndex, hasMore, list,
             random ? null : startIndex + examined);
+    }
+
+    // Initial latest shelves can be loaded in one authorized round trip.
+    // No user privileges are cached: authentication and /Views run for every
+    // batch request; inaccessible GUIDs are NEVER returned.
+    public async Task<List<HomeShelfResponse>> ReadHomeShelvesAsync(
+        HttpRequest caller, IReadOnlyList<Guid> libraryIds, CancellationToken cancel)
+    {
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        var views = await GetHomeLibrariesAsync(origin, auth, userId, cancel).ConfigureAwait(false);
+        var requested = libraryIds.Distinct().Take(12).ToArray();
+        var allowed = requested.Select(id => (Id: id, View: views.FirstOrDefault(v =>
+                v.id.Equals(id.ToString("N"), StringComparison.OrdinalIgnoreCase))))
+            .Where(x => x.View is not null).ToArray();
+        using var limiter = new SemaphoreSlim(3, 3); // never flood a small NAS
+        var jobs = allowed.Select(async entry =>
+        {
+            await limiter.WaitAsync(cancel).ConfigureAwait(false);
+            try
+            {
+                return await ReadHomeShelfAuthorizedAsync(origin, auth, userId,
+                    entry.View!, entry.Id, "latest", 0, 10, cancel).ConfigureAwait(false);
+            }
+            finally { limiter.Release(); }
+        }).ToArray();
+        return (await Task.WhenAll(jobs).ConfigureAwait(false)).ToList();
     }
 
     // Collections do not need a separate "BoxSets" user-view/library. Jellyfin

@@ -50,8 +50,8 @@ class SeasonsAndLibraryProposals(unittest.TestCase):
         self.assertIn('excludedLibraryIds = (x?.ExcludedLibraryIds',ROUTER)
         self.assertIn('library_ids = libraryIds', CATALOG)
         self.assertIn('GetCollectionFolders(originalItem)',CATALOG)
-        self.assertIn('if(preset.allLibraries===false)',HOME)  # legacy conversion
-        self.assertIn('preset.excludedLibraryIds?.length',HOME)
+        self.assertIn('preset.allLibraries===false?new Set(preset.libraryIds)',HOME)  # legacy conversion
+        self.assertIn('preset.excludedLibraryIds.length',HOME)
         self.assertIn('item.library_ids.every(id=>excluded.has(compactId(id)))',HOME)
         self.assertIn('item.library_ids.some',HOME)
         self.assertIn('Library/VirtualFolders',PAGE)

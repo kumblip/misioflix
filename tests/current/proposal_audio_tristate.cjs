@@ -24,7 +24,7 @@ const area=new El();
 const matches=[];
 const context={
   recommendationAudioMode:'pl',recommendationSubtitlesMode:'all',recommendationIncludeAnime:true,recommendationInitialized:true,
-  recommendationCandidates:testItems,recommendationPresets:[{genres:['Isekai'],matchAll:false}],
+  recommendationCandidates:testItems,recommendationPresets:[{genres:['Isekai'],normalizedGenres:['isekai'],matchAll:false,allLibraries:true,excludedLibraryIds:[]}],
   recommendationSeasonGenres:new Map(),recommendationRows:new Map(),recommendationObserver:null,
   homeRoot:{querySelector:q=>q==='#mf-home-recommendations'?area:null},
   own:(t,c='',v='')=>new El(t,c,v),append:(p,...x)=>x.forEach(c=>p.appendChild(c)),
@@ -32,6 +32,8 @@ const context={
   recommendationShelf:(title,pool)=>{matches.push(pool.map(i=>i.id));return {section:new El('section'),genre:title}},
   loadRecommendationPage:async()=>{},IntersectionObserver:undefined
 };
+context.recommendationAnimeIds=new Set();
+context.recommendationGenresById=new Map(testItems.map(item=>[item.id,new Set(['isekai'])]));
 vm.createContext(context);
 const start=src.indexOf('  function recommendationAudioToggle(){');
 const end=src.indexOf('  function randomizeRecommendations(pool){',start);

@@ -25,7 +25,7 @@ class El {
 const area=new El(),matches=[];
 const ctx={
   recommendationAudioMode:'pl',recommendationSubtitlesMode:'all',recommendationIncludeAnime:true,
-  recommendationInitialized:true,recommendationCandidates:candidates,recommendationPresets:[{genres:['Akcja'],matchAll:false}],
+  recommendationInitialized:true,recommendationCandidates:candidates,recommendationPresets:[{genres:['Akcja'],normalizedGenres:['akcja'],matchAll:false,allLibraries:true,excludedLibraryIds:[]}],
   recommendationSeasonGenres:new Map(),recommendationRows:new Map(),recommendationObserver:null,
   homeRoot:{querySelector:q=>q==='#mf-home-recommendations'?area:null},
   own:(t,c='',v='')=>new El(t,c,v),append:(p,...x)=>x.forEach(c=>p.appendChild(c)),
@@ -33,6 +33,8 @@ const ctx={
   recommendationShelf:(title,pool)=>{matches.push(pool.map(i=>i.id));return {section:new El('section'),genre:title}},
   loadRecommendationPage:async()=>{},IntersectionObserver:undefined
 };
+ctx.recommendationAnimeIds=new Set();
+ctx.recommendationGenresById=new Map(candidates.map(item=>[item.id,new Set(['akcja'])]));
 vm.createContext(ctx);
 const start=src.indexOf('  function recommendationAudioToggle(){');
 const end=src.indexOf('  function randomizeRecommendations(pool){',start);

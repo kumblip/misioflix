@@ -26,10 +26,9 @@ const ctx={
   compactId:id=>id,
   own:(tag,cls,txt)=>{const n=new DummyNode(cls);n.textContent=txt;return n;},
   makeCard:()=>{const n=new DummyNode('mf-home-card');n.querySelector=()=>({remove(){}});return n;},
-  request:async uri=>{
+  recommendationCards:async ids=>{
     calls++;
     if(fail){fail=false;throw Error('network down');}
-    const ids=decodeURIComponent(uri.split('ids=')[1]).split(',');
     return ids.map(id=>({id}));
   }
 };

@@ -13,13 +13,12 @@ PLUGIN=(P/'Plugin.cs').read_text(encoding='utf8')
 INJECT=(P/'Services/ScriptInjection.cs').read_text(encoding='utf8')
 
 class Navigation0419(unittest.TestCase):
-    def test_play_exact_resume_id_with_native_shortcuts(self):
+    def test_play_exact_resume_id_with_single_native_path(self):
         self.assertIn('async function playResume(entry)',JS)
-        self.assertIn('window.MisioFlixPlayItem(entry.resumeId)',JS)
-        self.assertIn('const route=nativeDetails(targetId,entry.item.serverId)',JS)
-        self.assertIn('if(!click.defaultPrevented)return false;',JS)
-        self.assertIn('await tryNativeResume(entry,serial)',JS)
-        self.assertIn('await playViaItemDetails(entry,serial)',JS)
+        self.assertIn('const nativePlay=window.MisioFlixPlayItem;',JS)
+        self.assertIn('await nativePlay(entry.resumeId)',JS)
+        self.assertNotIn('tryNativeResume(',JS)
+        self.assertNotIn('playViaItemDetails(',JS)
         self.assertIn('position_ticks = (long)Number(Get(data, "PlaybackPositionTicks"))',SVC)
         self.assertIn('entry.next_up, entry.position_ticks, entry.resume_type',SVC)
     def test_info_targets_root_not_resume_episode(self):

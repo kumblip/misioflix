@@ -5,8 +5,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const src = fs.readFileSync('src/Jellyfin.Plugin.MisioFlix/Web/home.js','utf8');
-const a=src.indexOf('  async function loadShelf(row,mode,reset){');
-const b=src.indexOf('  // v0.4.22:',a);
+const a=src.indexOf('  function acceptShelfResponse(row,data,mode,start){');
+const b=src.indexOf('  // v0.4.140: One canonical playback path',a);
 assert(a>0&&b>a);
 class Box {
   constructor(){this.isConnected=true;this.children=[];this.childElementCount=0;this.scrollLeft=7;}

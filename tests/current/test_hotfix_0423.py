@@ -15,13 +15,13 @@ class Hotfix0423(unittest.TestCase):
         self.assertIn('LIBRARY_ROUTE.test(href)',H)
         self.assertIn("document.addEventListener('click',interceptLibraryNavigation,true)",H)
         self.assertIn('normalizeLibraryRoute()',H)
-    def test_direct_resume_never_claims_success_on_unhandled_event(self):
-        self.assertIn('async function tryNativeResume(entry, serial)',H)
-        self.assertIn('if(!click.defaultPrevented)return false;',H)
-        self.assertIn('if(playingLocally())return true;',H)
-        self.assertIn('await window.MisioFlixPlayItem(entry.resumeId)',H)
-        self.assertIn('await playViaItemDetails(entry,serial)',H)
-        self.assertIn('data-positionticks',H)
+    def test_single_resume_path_guards_exact_media_id(self):
+        self.assertIn('const nativePlay=window.MisioFlixPlayItem;',H)
+        self.assertIn('await nativePlay(entry.resumeId)',H)
+        self.assertIn('if (itemRoute() !== target) return false;',D)
+        self.assertIn('nativeId === target',D)
+        self.assertNotIn('tryNativeResume(',H)
+        self.assertNotIn('data-positionticks',H)
     def test_details_restore_when_leaving(self):
         self.assertIn('restoreLayout(lastPage)',D)
         self.assertIn("page.querySelector('.mf-detail-poster-rail')?.remove()",D)

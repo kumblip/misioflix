@@ -30,6 +30,19 @@
   let recommendationCandidates = [];
   let recommendationSeasonGenres = new Map();
   let recommendationObserver = null;
+  // v0.4.140: bounded per-Home cache. Never share tiles across user sessions,
+  // and revalidate with the authenticated Jellyfin endpoint after the TTL.
+  const recommendationCardCache = new Map();
+  const recommendationCardInFlight = new Map();
+  const RECOMMENDATION_CARD_TTL_MS = 45_000;
+  const RECOMMENDATION_CARD_CACHE_LIMIT = 500;
+  let recommendationCardGeneration = 0;
+  let recommendationGenresById = new Map();
+  let recommendationAnimeIds = new Set();
+  function clearRecommendationCardCache(){
+    recommendationCardGeneration++;
+    recommendationCardCache.clear();recommendationCardInFlight.clear();
+  }
   let processedGenreLink = '';
   const catalogCache = new Map();
   // v0.4.100: search-only snapshots; never persist authorization tokens.
@@ -605,6 +618,59 @@
     });
     return row;
   }
+  function acceptShelfResponse(row,data,mode,start){
+    row.scroll.replaceChildren();
+    const list=Array.isArray(data?.items)?data.items:[];
+    list.forEach(item=>row.scroll.appendChild(makeCard(item)));
+    row.offset=Number.isInteger(data.nextStartIndex)&&data.nextStartIndex>start
+      ?data.nextStartIndex:start+list.length;
+    row.hasMore=Boolean(data.hasMore)&&list.length>0;
+    row.mode=mode;
+    row.reset.classList.toggle('mf-home-view-active',mode==='latest');
+    row.shuffle.classList.toggle('mf-home-view-active',mode==='random');
+    if(!row.scroll.childElementCount)
+      row.scroll.appendChild(own('p','mf-home-empty','Brak pozycji w tej bibliotece.'));
+  }
+
+  // Shared authentication and /Views scope for visible first-page carousels.
+  // Existing single-shelf API stays the fallback and handles paging/shuffle.
+  async function loadInitialShelfRowsBatch(selected){
+    const batched=selected.filter(row=>!row.busy&&row.lib.id!=='collections');
+    if(batched.length<2){
+      for(const row of selected)void loadShelf(row,'latest',true);
+      return;
+    }
+    const serial=epoch;
+    for(const row of batched){
+      row.busy=true;row.shuffle.disabled=true;row.reset.disabled=true;
+      row.scroll.replaceChildren(own('p','mf-home-empty','Ładowanie…'));
+    }
+    const fallback=[];
+    try{
+      const ids=batched.map(row=>row.lib.id);
+      const responses=await request('/home/shelves?ids='+encodeURIComponent(ids.join(',')));
+      if(!isCurrent(serial))return;
+      const returned=new Map((Array.isArray(responses)?responses:[])
+        .map(data=>[compactId(data?.libraryId),data]));
+      for(const row of batched){
+        if(!row.section.isConnected)continue;
+        const data=returned.get(compactId(row.lib.id));
+        if(data)acceptShelfResponse(row,data,'latest',0);
+        else fallback.push(row); // e.g. permissions were changed during load
+      }
+    }catch(error){
+      if(isCurrent(serial))fallback.push(...batched.filter(row=>row.section.isConnected));
+    }finally{
+      for(const row of batched){
+        row.busy=false;row.shuffle.disabled=false;row.reset.disabled=false;
+      }
+    }
+    if(isCurrent(serial))for(const row of fallback)void loadShelf(row,'latest',true);
+    // Synthetic global BoxSets is intentionally separate: no invented GUID.
+    for(const row of selected.filter(row=>row.lib.id==='collections'))
+      if(row.section.isConnected&&isCurrent(serial))void loadShelf(row,'latest',true);
+  }
+
   async function loadShelf(row,mode,reset){
     if(row.busy || !homeRoot?.isConnected)return;
     const serial=epoch;
@@ -626,17 +692,15 @@
       const data=await request(endpoint+
         `mode=${mode}&startIndex=${start}&limit=${mode==='random'?RANDOM_LIMIT:(reset?SHELF_LIMIT:SHELF_MORE_LIMIT)}`);
       if(!isCurrent(serial)||!row.section.isConnected)return;
-      if(reset)row.scroll.replaceChildren();
-      const list=Array.isArray(data.items)?data.items:[];
-      list.forEach(item=>row.scroll.appendChild(makeCard(item)));
-      row.offset=Number.isInteger(data.nextStartIndex)&&data.nextStartIndex>start
-        ?data.nextStartIndex:start+list.length;
-      row.hasMore=Boolean(data.hasMore)&&list.length>0;
-      row.mode=mode;
-      // Both actions stay available: another click on Losuj draws five NEW choices.
-      row.reset.classList.toggle('mf-home-view-active',mode==='latest');
-      row.shuffle.classList.toggle('mf-home-view-active',mode==='random');
-      if(!row.scroll.childElementCount)row.scroll.appendChild(own('p','mf-home-empty','Brak pozycji w tej bibliotece.'));
+      if(reset)acceptShelfResponse(row,data,mode,start);
+      else {
+        const list=Array.isArray(data.items)?data.items:[];
+        list.forEach(item=>row.scroll.appendChild(makeCard(item)));
+        row.offset=Number.isInteger(data.nextStartIndex)&&data.nextStartIndex>start
+          ?data.nextStartIndex:start+list.length;
+        row.hasMore=Boolean(data.hasMore)&&list.length>0;
+        row.mode=mode;
+      }
     }catch(e){
       if(!isCurrent(serial))return;
       const msg=own('p','mf-home-empty','Nie udało się pobrać biblioteki. ');
@@ -649,135 +713,26 @@
       row.busy=false;row.shuffle.disabled=false;row.reset.disabled=false;
     }
   }
-  // v0.4.22: playable cards reuse the proven native Jellyfin detail-page
-  // Resume/Play button. Never route the playable click to its parent series.
-  // The old detail-waiter remains an error fallback only.
+  // v0.4.140: One canonical playback path: navigate to the EXACT playable
+  // movie/episode and click Jellyfin's own Resume/Play button. The old proxy
+  // shortcuts and their long confirmation wait caused unnecessary delay and duplicate
+  // route attempts. Playback lives in details.js, which is injected on Home.
   let resumePlaySerial = 0;
-  const pause = ms => new Promise(resolve => window.setTimeout(resolve,ms));
-  function playingLocally(){
-    if([...document.querySelectorAll('video')].some(v=>!v.paused && !v.ended))return true;
-    if(/^#\/(?:video|playback|player)(?:\?|\/|$)/i.test(window.location.hash))return true;
-    return Boolean(document.querySelector('.videoPlayerContainer:not(.hide) video, .videoOsd:not(.hide) video'));
-  }
-  function nativePlayControl(){
-    // Exclude hidden SPA pages and controls outside the actual details screen.
-    const candidates=[...document.querySelectorAll([
-      '.itemDetailPage:not(.hide) .btnResume',
-      '.itemDetailPage:not(.hide) .btnPlay',
-      '.itemDetailPage:not(.hide) [data-action="resume"]',
-      '.itemDetailPage:not(.hide) [data-action="play"]',
-      '.itemDetailsPage:not(.hide) .btnResume',
-      '.itemDetailsPage:not(.hide) .btnPlay',
-      '[data-testid="item-details"] [data-testid="resume-button"]',
-      '[data-testid="item-details"] [data-testid="play-button"]',
-      '#itemDetailPage:not(.hide) .btnResume',
-      '#itemDetailPage:not(.hide) .btnPlay',
-      '.detailsPage:not(.hide) .btnResume',
-      '.detailsPage:not(.hide) .btnPlay',
-      '[class*="itemDetails"] button',
-      '[class*="ItemDetails"] button',
-      '.itemDetailPage:not(.hide) button',
-      '.itemDetailsPage:not(.hide) button',
-      // React-based Jellyfin details may render accessible play buttons under main.
-      'main button[aria-label="Odtwórz"]',
-      'main button[aria-label="Wznów"]',
-      'main button[aria-label="Play"]',
-      'main button[aria-label="Resume"]'
-    ].join(','))];
-    const eligible=button=>{
-      if(!button.isConnected || button.disabled || button.closest('[hidden],[aria-hidden="true"],.hide'))return false;
-      if(!button.getClientRects().length)return false;
-      const label=(button.getAttribute('aria-label')||button.title||button.textContent||'').trim();
-      if(/zwiastun|trailer|losuj|shuffle|odtwórz wszystkie|play all/i.test(label))return false;
-      return button.matches('.btnResume,.btnPlay,[data-action="play"],[data-action="resume"],[data-testid="resume-button"],[data-testid="play-button"]') ||
-        /^(?:wznów|kontynuuj|odtwórz|odtwarzaj|play|resume|continue)(?:\b|\s|$)/i.test(label);
-    };
-    return candidates.find(eligible)||null;
-  }
-  async function playViaItemDetails(entry,serial){
-    const targetId=compactId(entry.resumeId);
-    const route=nativeDetails(targetId,entry.item.serverId);
-    if(route==='#/home')return;
-    window.location.hash=route; // exact playable movie/episode, NOT item.id (series)
-    const start=Date.now();
-    const maxWait=10000;
-    while(serial===resumePlaySerial && Date.now()-start<maxWait){
-      if(playingLocally())return;
-      const hash=window.location.hash;
-      if(!/^#\/details(?:\?|$)/i.test(hash))return;
-      const actualId=new URLSearchParams(hash.slice(hash.indexOf('?')+1)).get('id');
-      if(compactId(actualId)!==targetId)return;
-      // Wait for the exact detail page to mount rather than clicking a stale
-      // play button left in Jellyfin's cached/hidden SPA views.
-      if(Date.now()-start>=200){
-        const button=nativePlayControl();
-        if(button){
-          button.click(); // Jellyfin's genuine player/resume handler
-          return;
-        }
-      }
-      await pause(130);
-    }
-    if(serial===resumePlaySerial){
-      console.warn('[MisioFlix] Odtwarzanie nie uruchomiło się; nie znaleziono przycisku odtwarzania w Jellyfin.');
-      const warning=own('div','mf-home-play-warning','Nie udało się automatycznie uruchomić filmu. Kliknij Odtwórz na stronie odcinka lub filmu.');
-      warning.setAttribute('role','status');document.body.appendChild(warning);
-      window.setTimeout(()=>warning.remove(),6000);
-    }
-  }
-  async function tryNativeResume(entry, serial){
-    const item=entry.item||{};
-    const api=window.ApiClient||window.ConnectionManager?.getApiClient?.();
-    const server=validId(item.serverId)?compactId(item.serverId):
-      compactId(typeof api?.serverId==='function'?api.serverId():api?.serverId);
-    if(!validId(server))return false;
-    // shortcuts.onClick is bound by Jellyfin to its ORIGINAL itemsContainer
-    // (not document.body or arbitrary MisioFlix elements).
-    const scope=[...document.querySelectorAll('#indexPage .itemsContainer, .homeTab .itemsContainer, .itemsContainer')]
-      .find(node=>!node.closest('#mf-home-0412') && node.isConnected);
-    if(!scope)return false;
-    const proxy=own('div','itemAction mf-home-native-resume-proxy');
-    proxy.style.cssText='position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none';
-    const isEpisode=entry.resumeType==='Episode' || entry.season!=null || entry.episode!=null;
-    for(const [key,value] of Object.entries({
-      'data-id':compactId(entry.resumeId),'data-serverid':server,
-      'data-type':isEpisode?'Episode':'Movie','data-mediatype':'Video',
-      'data-isfolder':'false','data-positionticks':String(Math.max(0,Number(entry.positionTicks)||0))
-    }))proxy.setAttribute(key,value);
-    const button=own('button','mf-home-native-resume-action','');
-    button.type='button';button.setAttribute('data-action','resume');
-    proxy.appendChild(button);scope.appendChild(proxy);
-    try{
-      await pause(80); // give Jellyfin's delegated listener a stable ancestor
-      if(serial!==resumePlaySerial)return false;
-      const click=new MouseEvent('click',{bubbles:true,cancelable:true,view:window});
-      button.dispatchEvent(click);
-      // Shortcut must explicitly consume the event. Do not assume that the
-      // click worked merely because the button exists.
-      if(!click.defaultPrevented)return false;
-      const startedAt=Date.now();
-      while(serial===resumePlaySerial && Date.now()-startedAt<2200){
-        if(playingLocally())return true;
-        await pause(120);
-      }
-      return playingLocally();
-    } catch(error){
-      console.warn('[MisioFlix] Direct native resume unavailable',error);
-      return false;
-    } finally {proxy.remove();}
-  }
   async function playResume(entry){
-    if(!validId(entry.resumeId))return;
+    if(!validId(entry?.resumeId))return;
     const serial=++resumePlaySerial;
-    // Fast path: try Jellyfin's actual playback shortcut without navigating.
-    if(await tryNativeResume(entry,serial))return;
-    if(serial!==resumePlaySerial)return;
-    // Compatible fallback known to work on the user's Jellyfin build.
-    if(typeof window.MisioFlixPlayItem==='function'){
-      const started=await window.MisioFlixPlayItem(entry.resumeId);
-      if(started || serial!==resumePlaySerial)return;
+    const nativePlay=window.MisioFlixPlayItem;
+    if(typeof nativePlay==='function'){
+      try{
+        const started=await nativePlay(entry.resumeId);
+        if(started||serial!==resumePlaySerial)return;
+      }catch(error){console.warn('[MisioFlix] Native playback failed',error);}
     }
-    if(serial===resumePlaySerial)await playViaItemDetails(entry,serial);
+    if(serial!==resumePlaySerial)return;
+    const warning=own('div','mf-home-play-warning',
+      'Nie udało się uruchomić filmu. Otwórz jego szczegóły i kliknij Odtwórz.');
+    warning.setAttribute('role','status');document.body.appendChild(warning);
+    window.setTimeout(()=>warning.remove(),6000);
   }
   function resumeTile(entry,hidden=false){
     const item=entry.item;
@@ -2079,6 +2034,47 @@
     }
     return result;
   }
+  // All tiles are authorized by /home/recommendation-cards BEFORE entering
+  // this in-memory cache. Missing/forbidden IDs are never cached, and this
+  // cache is cleared on Home teardown, user change and browser return.
+  async function recommendationCards(ids){
+    const requested=[...new Set(ids.filter(validId).map(compactId))].slice(0,25);
+    if(!requested.length)return [];
+    const now=Date.now();
+    const missing=requested.filter(id=>{
+      const saved=recommendationCardCache.get(id);
+      return !saved||now-saved.at>=RECOMMENDATION_CARD_TTL_MS;
+    });
+    if(missing.length){
+      const requestKey=missing.join(',');
+      let pending=recommendationCardInFlight.get(requestKey);
+      if(!pending){
+        const generation=recommendationCardGeneration;
+        pending=request('/home/recommendation-cards?ids='+encodeURIComponent(requestKey))
+          .then(list=>{
+            if(generation!==recommendationCardGeneration)return;
+            const allowed=new Set(missing);
+            for(const item of (Array.isArray(list)?list:[])){
+              const id=compactId(item?.id);
+              if(!allowed.has(id))continue;
+              recommendationCardCache.delete(id);
+              recommendationCardCache.set(id,{at:Date.now(),item});
+            }
+            while(recommendationCardCache.size>RECOMMENDATION_CARD_CACHE_LIMIT)
+              recommendationCardCache.delete(recommendationCardCache.keys().next().value);
+          }).finally(()=>{
+            if(recommendationCardInFlight.get(requestKey)===pending)
+              recommendationCardInFlight.delete(requestKey);
+          });
+        recommendationCardInFlight.set(requestKey,pending);
+      }
+      await pending;
+    }
+    const current=Date.now();
+    return requested.map(id=>recommendationCardCache.get(id))
+      .filter(entry=>entry&&current-entry.at<RECOMMENDATION_CARD_TTL_MS)
+      .map(entry=>entry.item);
+  }
   // v0.4.110: Clicking a genre rail opens its entire authorized catalog as
   // a paginated modal (all matched titles, same current random/latest order).
   // No new server endpoint, no MAL/Simkl writes and no global route changes.
@@ -2120,7 +2116,7 @@
           if(!ids.length)break;
           const start=offset;offset+=ids.length;attempts++;
           let list;
-          try{list=await request('/home/recommendation-cards?ids='+encodeURIComponent(ids.join(',')));}
+          try{list=await recommendationCards(ids);}
           catch(e){offset=start;throw e;}
           if(!alive())return;
           for(const item of (Array.isArray(list)?list:[])){
@@ -2225,7 +2221,7 @@
         const pageStart=row.offset;
         row.offset+=batch.length;tries++;
         let list;
-        try{list=await request('/home/recommendation-cards?ids='+encodeURIComponent(batch.join(',')));}
+        try{list=await recommendationCards(batch);}
         catch(error){row.offset=pageStart;throw error;} // retry the SAME page
         if(!isCurrent(serial)||!row.section.isConnected)return;
         if(reset){row.scroll.replaceChildren();reset=false;}
@@ -2274,15 +2270,16 @@
     area.replaceChildren();recommendationRows.clear();
     // Keep the toggle correct even if a previously cached row said anime=false.
     // Home's own ID-based view categories take precedence over old paths.
-    const animeIds=new Set((typeof librariesCache==='undefined'?[]:librariesCache)
-      .filter(lib=>lib.category==='anime').map(lib=>compactId(lib.id)));
     const isAnime=item=>item?.anime===true ||
-      (Array.isArray(item?.library_ids) && item.library_ids.some(id=>animeIds.has(compactId(id))));
+      (Array.isArray(item?.library_ids) && item.library_ids.some(id=>recommendationAnimeIds.has(compactId(id))));
     let index=0;
     for(const preset of recommendationPresets){
       index++;
-      const selected=(Array.isArray(preset.genres)?preset.genres:[]).map(normalized).filter(Boolean);
+      const selected=preset.normalizedGenres;
       if(!selected.length)continue;
+      const allowed=preset.allLibraries===false?new Set(preset.libraryIds):null;
+      const excluded=preset.allLibraries!==false&&preset.excludedLibraryIds.length
+        ?new Set(preset.excludedLibraryIds):null;
       const matching=recommendationCandidates.filter(item=>{
         if(!recommendationIncludeAnime&&isAnime(item))return false;
         if(!recommendationHasRequestedAudio(item))return false;
@@ -2290,15 +2287,13 @@
         // Opt-out only: every current/future library is included unless
         // ALL known memberships of this item are manually excluded.
         // Preserve legacy allowlists until an admin opens and saves the new selector.
-        if(preset.allLibraries===false){
-          const allowed=new Set((preset.libraryIds||[]).map(compactId));
+        if(allowed){
           if(!Array.isArray(item.library_ids)||!item.library_ids.some(id=>allowed.has(compactId(id))))return false;
-        }else if(preset.excludedLibraryIds?.length&&Array.isArray(item.library_ids)&&item.library_ids.length){
-          const excluded=new Set(preset.excludedLibraryIds.map(compactId));
+        }else if(excluded&&Array.isArray(item.library_ids)&&item.library_ids.length){
           if(item.library_ids.every(id=>excluded.has(compactId(id))))return false;
         }
-        const genres=new Set([...(Array.isArray(item.genres)?item.genres:[]),
-          ...(isAnime(item)&&item.type==='Series'?(recommendationSeasonGenres.get(compactId(item.id))||[]):[])].map(normalized));
+        const genres=recommendationGenresById.get(compactId(item.id));
+        if(!genres)return false;
         return preset.matchAll?selected.every(g=>genres.has(g)):selected.some(g=>genres.has(g));
       });
       // A configured proposal is not necessarily a visible row. Omit empty
@@ -2348,7 +2343,8 @@
         matchAll:p?.matchAll===true,
         allLibraries:p?.allLibraries!==false,
         libraryIds:(Array.isArray(p?.libraryIds)?p.libraryIds:[]).filter(validId).map(compactId),
-        excludedLibraryIds:(Array.isArray(p?.excludedLibraryIds)?p.excludedLibraryIds:[]).filter(validId).map(compactId)
+        excludedLibraryIds:(Array.isArray(p?.excludedLibraryIds)?p.excludedLibraryIds:[]).filter(validId).map(compactId),
+        normalizedGenres:(Array.isArray(p?.genres)?p.genres:[]).map(normalized).filter(Boolean)
       }));
       if(!recommendationPresets.some(p=>p.genres.length)){
         area.replaceChildren(); // Empty configuration should not leave an empty Home section.
@@ -2369,6 +2365,15 @@
         recommendationSeasonGenres.set(id,values);
       }
       recommendationCandidates=all.filter(x=>validId(x?.id)&&(x.type==='Movie'||x.type==='Series'));
+      recommendationAnimeIds=new Set(librariesCache.filter(lib=>lib.category==='anime').map(lib=>compactId(lib.id)));
+      recommendationGenresById=new Map(recommendationCandidates.map(item=>{
+        const anime=item?.anime===true||(Array.isArray(item.library_ids)&&
+          item.library_ids.some(id=>recommendationAnimeIds.has(compactId(id))));
+        const inherited=anime&&item.type==='Series'
+          ?(recommendationSeasonGenres.get(compactId(item.id))||[]):[];
+        const genres=new Set([...(Array.isArray(item.genres)?item.genres:[]),...inherited].map(normalized));
+        return [compactId(item.id),genres];
+      }));
       paintRecommendationSets();
     }catch(e){
       if(!isCurrent(serial))return;
@@ -2431,11 +2436,16 @@
       if(!rows.size){container.appendChild(own('p','mf-home-empty','Brak bibliotek dla karuzel.'));return;}
       if(typeof IntersectionObserver==='function'){
         const observer=new IntersectionObserver(entries=>{
+          const ready=[];
           for(const entry of entries){
             if(!entry.isIntersecting)continue;
             observer.unobserve(entry.target);
             const row=rows.get(entry.target.getAttribute('data-mf-library'));
-            if(row)void loadShelf(row,'latest',true);
+            if(row)ready.push(row);
+          }
+          for(let index=0;index<ready.length;index+=12){
+            const group=ready.slice(index,index+12);
+            void loadInitialShelfRowsBatch(group);
           }
         },{rootMargin:'600px 0px'});
         for(const row of rows.values())observer.observe(row.section);
@@ -2480,6 +2490,7 @@
       genreArea.id='mf-home-recommendations';genreArea.hidden=false; // Default green proposals mode.
       homeRoot.appendChild(genreArea);
       recommendationInitialized=false;recommendationRows.clear();
+      clearRecommendationCardCache();recommendationGenresById.clear();
       host.prepend(homeRoot);
       observeCollectionsFeed();
       document.documentElement.classList.add('mf-home-custom-active');
@@ -2497,6 +2508,7 @@
       recommendationObserver?.disconnect();recommendationObserver=null;
       recommendationInitialized=false;recommendationRows.clear();
       recommendationCandidates=[];recommendationPresets=[];recommendationSeasonGenres.clear();
+      recommendationGenresById.clear();recommendationAnimeIds.clear();clearRecommendationCardCache();
       homeRoot.remove();homeRoot=null;homeHost=null;
       librariesReadyPromise=null;
       discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;epoch++;rows.clear();
@@ -2522,6 +2534,7 @@
       owner=token;epoch++;
       closeSearch();recommendationObserver?.disconnect();recommendationObserver=null;recommendationRows.clear();recommendationInitialized=false;
       recommendationCandidates=[];recommendationPresets=[];recommendationSeasonGenres.clear();
+      recommendationGenresById.clear();recommendationAnimeIds.clear();clearRecommendationCardCache();
       homeRoot?.remove();homeRoot=null;homeHost=null;discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;rows.clear();resumeData={items:[],hidden:[]};librariesCache=[];catalogCache.clear();catalogFetchedAt.clear();
     }
     if(homeRoot && homeRoot.isConnected && homeHost===host){syncCollectionsPage();maybeOpenLinkedGenre();return;}
@@ -2557,6 +2570,15 @@
     },300);
   }
 
+  // A user may have rated/watched items in another tab; never keep that
+  // personalized state after the document has been in the background.
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden)clearRecommendationCardCache();
+  });
+  // MAL changes can also occur without leaving Home. The next filter redraw
+  // must use fresh personalized user state, not a previously hydrated tile.
+  window.addEventListener('misioflix-mal-cache-changed',clearRecommendationCardCache);
+  window.addEventListener('misioflix-mal-cards-updated',clearRecommendationCardCache);
   function start(){
     if(!normalizeLibraryRoute())reconcile();
     document.addEventListener('keydown',event=>{

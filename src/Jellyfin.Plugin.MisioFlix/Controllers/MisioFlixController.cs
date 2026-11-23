@@ -175,6 +175,26 @@ public sealed class MisioFlixController : ControllerBase
         catch (InvalidOperationException) { return StatusCode(503, new { error="Niedostępny katalog NFO" }); }
     }
 
+    // v0.4.140: first pages of several visible Home carousels in one request.
+    // The catalog service verifies the caller and their /Views once per request.
+    [HttpGet("api/home/shelves")]
+    [Authorize]
+    public async Task<IActionResult> HomeShelves([FromQuery] string? ids, CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        var pieces=(ids ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (ids is null || ids.Length > 500 || pieces.Length is < 1 or > 12 ||
+            pieces.Any(id => !Guid.TryParse(id, out _)))
+            return BadRequest(new { error="Nieprawidłowa lista bibliotek" });
+        var libraryIds=pieces.Select(Guid.Parse).Distinct().ToArray();
+        if (libraryIds.Any(id => id == Guid.Empty)) return BadRequest();
+        Response.Headers.CacheControl = "private, no-store";
+        try { return Ok(await _catalog.ReadHomeShelvesAsync(Request, libraryIds, cancel).ConfigureAwait(false)); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (HttpRequestException) { return StatusCode(502, new { error="Nie udało się odczytać bibliotek" }); }
+        catch (InvalidOperationException) { return StatusCode(503, new { error="Niedostępne dane bibliotek" }); }
+    }
+
     // Public to authenticated Home users: genre labels and boolean match mode,
     // NEVER any admin credentials or private MAL/Simkl configuration.
     [HttpGet("api/home/recommendation-genres")]
