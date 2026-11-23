@@ -26,7 +26,7 @@ class CollectionsDirectory0428(unittest.TestCase):
 
     def test_both_collection_links_open_full_directory(self):
         self.assertIn("const COLLECTIONS_URL = '#/home?mfCollections=1'", HOME)
-        self.assertIn("lib.category==='collections'?COLLECTIONS_URL:safeLibraryHref(lib.href,lib.id)", HOME)
+        self.assertIn("isGlobalCollections?COLLECTIONS_URL:safeLibraryHref(lib.href,lib.id)", HOME)
         self.assertIn("'href',COLLECTIONS_URL", HOME)
         self.assertIn("setAttribute('aria-label','Otwórz listę wszystkich kolekcji')", HOME)
         self.assertNotIn("[data-mf-library=\"collections\"]')?.scrollIntoView", HOME)

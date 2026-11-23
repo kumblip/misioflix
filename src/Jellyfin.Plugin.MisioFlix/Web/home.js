@@ -569,7 +569,13 @@
     const section=own('section','mf-home-shelf');
     section.setAttribute('data-mf-library', lib.id);
     const top=own('div','mf-home-shelf-heading');
-    const head=append(own('h2',''),set(own('a','',lib.category==='collections'?'Kolekcje':lib.name),'href',lib.category==='collections'?COLLECTIONS_URL:safeLibraryHref(lib.href,lib.id)));
+    // Keep the virtual all-BoxSets carousel and the real Jellyfin BoxSets
+    // library independent. Both can be shown, hidden and ordered by their ID.
+    const isGlobalCollections=lib.id==='collections';
+    const shelfTitle=isGlobalCollections?'Kolekcje — globalne':
+      lib.category==='collections'?lib.name+' — biblioteka Jellyfina':lib.name;
+    const head=append(own('h2',''),set(own('a','',shelfTitle),'href',
+      isGlobalCollections?COLLECTIONS_URL:safeLibraryHref(lib.href,lib.id)));
     const tools=own('div','mf-home-actions');
     const shuffle=own('button','mf-home-button mf-home-shuffle','Losuj ↻');
     shuffle.type='button';
@@ -608,7 +614,10 @@
     row.shuffle.disabled=true;
     row.reset.disabled=true;
     try{
-      const endpoint=row.lib.category==='collections'
+      // Only the synthetic "collections" ID uses the global BoxSet endpoint.
+      // A real Jellyfin Collections library uses the same ID-scoped shelf
+      // API as every other media library; never duplicate the global feed.
+      const endpoint=row.lib.id==='collections'
         ? '/home/collections?'
         : `/home/shelf?libraryId=${encodeURIComponent(row.lib.id)}&`;
       const data=await request(endpoint+
@@ -2284,7 +2293,7 @@
       if(!Array.isArray(libs)||!libs.length){container.appendChild(own('p','mf-home-empty','Nie znaleziono dostępnych bibliotek.'));return;}
       // Collections are a separate home row, never Jellyfin's optional
       // 'group movies into collections' setting. Place directly after AnimePL.
-      const valid=librariesCache.filter(lib=>validId(lib.id) && ['anime','movies','series','mixed'].includes(lib.category));
+      const valid=librariesCache.filter(lib=>validId(lib.id) && ['anime','movies','series','mixed','collections'].includes(lib.category));
       // A global BoxSet shelf is always available; /Users/Me/Views commonly
       // omits the Collections library entirely. No made-up parent GUIDs.
       const collectionsShelf={id:'collections',name:'Kolekcje',category:'collections',href:''};

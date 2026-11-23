@@ -30,11 +30,11 @@ const ctx={
   }
 };
 vm.createContext(ctx);vm.runInContext(src.slice(a,b),ctx);
-const row=(category='anime')=>({lib:{id:'a'.repeat(32),category},mode:'latest',offset:0,hasMore:false,busy:false,
+const row=(category='anime',id='a'.repeat(32))=>({lib:{id,category},mode:'latest',offset:0,hasMore:false,busy:false,
   scroll:new Box(),section:{isConnected:true},shuffle:{disabled:false,classList:{toggle(){}}},reset:{disabled:false,classList:{toggle(){}}}});
 (async()=>{
   for(const category of ['anime','collections']){
-    const r=row(category);const begin=calls.length;
+    const r=row(category,category==='collections'?'collections':'a'.repeat(32));const begin=calls.length;
     await ctx.loadShelf(r,'latest',true);
     assert.equal(r.scroll.children.length,10);
     assert.equal(r.offset,10);
@@ -52,5 +52,10 @@ const row=(category='anime')=>({lib:{id:'a'.repeat(32),category},mode:'latest',o
     assert.deepEqual(calls.slice(c).map(x=>[x.start,x.limit]),[[0,5]]);
     assert.equal(r.scroll.children.length,5);
   }
-  console.log('PASS v0.4.119: library and collections 10 + 25 + 25, random five unchanged');
+  // The real Jellyfin BoxSets library must not be redirected to global collections.
+  const physical=row('collections','f'.repeat(32));
+  await ctx.loadShelf(physical,'latest',true);
+  assert(calls.at(-1).url.startsWith('/home/shelf?libraryId='+'f'.repeat(32)),
+         'Physical collections use their own scoped library ID');
+  console.log('PASS: library, global collections and physical collection shelves route independently');
 })().catch(err=>{console.error(err);process.exitCode=1});
