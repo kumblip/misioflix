@@ -94,7 +94,7 @@ public sealed class MisioFlixCatalogService
             var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
                        (libraryId.HasValue ? $"&ParentId={libraryId.Value:N}" : string.Empty) +
                        "&Recursive=true&IncludeItemTypes=Movie,Series,Season" +
-                       "&Fields=Genres,Overview,Tags,DateCreated,ChildCount,RecursiveItemCount,ParentId" +
+                       "&Fields=Genres,Overview,DateCreated,ChildCount,RecursiveItemCount,ParentId" +
                        "&EnableUserData=true" +
                        $"&StartIndex={start}&Limit={pageSize}";
             using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
@@ -224,13 +224,15 @@ public sealed class MisioFlixCatalogService
                     Guid.TryParse(x.LibraryId, out var mappedId) && mappedId == guid)
                 : null;
             var isAnime = mapped is null
-                ? name.Contains("anime", StringComparison.OrdinalIgnoreCase)
-                : mapped.Role is "anime_pl" or "anime_eng";
+                ? (settings?.LibraryPathsConfigured != true && name.Contains("anime", StringComparison.OrdinalIgnoreCase))
+                : mapped.Role is "anime_pl" or "anime_eng" or "anime_both";
             // No arbitrary view types, no top-level global search, no special collections.
             var category = isAnime ? "anime" : collection switch
             {
                 "movies" => "movies",
                 "tvshows" => "series",
+                // A Simkl-assigned Jellyfin mixed library can contain both movies and series.
+                "mixed" when mapped?.Role is "simkl" or "other" => "mixed",
                 "boxsets" => "collections",
                 _ => ""
             };
@@ -1534,11 +1536,18 @@ public sealed class MisioFlixCatalogService
             .Distinct().OrderBy(n=>n).ToList();
     }
 
-    // Unified, read-only Simkl exclusion. A <tag>Anime</tag> NFO tag (or
-    // Jellyfin's imported Anime tag) is decisive, irrespective of library type.
-    // The existing AnimeRoot exclusion remains as an additional safeguard.
+    // Admin-classified libraries are the authoritative Simkl boundary.
+    // This check uses the stored paths/IDs, without reading thousands of NFO tags.
+    // Unmapped paths are excluded from Simkl until an administrator classifies them.
+    // Legacy installs without a saved map retain the old tag-based safety gate.
     internal static bool IsSimklAnime(BaseItem local, string type, JsonElement item = default)
     {
+        var config = Plugin.Instance?.Configuration;
+        if (config?.LibraryPathsConfigured == true)
+        {
+            var role = ManagedLibraryRoleFromPath(local.Path);
+            return role != "simkl" && role != "other";
+        }
         if (AnimeSource(local.Path).Length != 0) return true;
         static bool AnimeTag(string? value) => string.Equals(value?.Trim(),"Anime",StringComparison.OrdinalIgnoreCase);
         var fromApi = Get(item,"Tags");
@@ -1819,33 +1828,49 @@ public sealed class MisioFlixCatalogService
         return await JsonDocument.ParseAsync(body, cancellationToken: cancel).ConfigureAwait(false);
     }
 
-    // Two physical anime roots: existing Polish voice-over and optional original audio
-    // with English subtitles. The NFO and MAL handling is identical in both.
-    // Identify by the complete directory path, never by a similar title or genre.
+    // A saved map is authoritative. The library ID remains stable across renames;
+    // Jellyfin-provided paths are stored in each mapping and can be refreshed by admin.
+    // Resolve by the longest matching root, so nested roots never override a
+    // more specific classification. No file or NFO is accessed during lookup.
+    private static string ManagedLibraryRoleFromPath(string? mediaPath)
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config?.LibraryPathsConfigured != true || string.IsNullOrWhiteSpace(mediaPath))
+            return string.Empty;
+        var bestLength = -1;
+        var matchedRole = string.Empty;
+        foreach (var entry in config.LibraryPaths ?? new())
+        {
+            foreach (var path in entry.Paths ?? new())
+            {
+                if (string.IsNullOrWhiteSpace(path)) continue;
+                try
+                {
+                    var fullRoot = Path.GetFullPath(path);
+                    if (fullRoot.Length <= bestLength || !IsBelowRoot(mediaPath, fullRoot)) continue;
+                    bestLength = fullRoot.Length;
+                    matchedRole = entry.Role;
+                }
+                catch (ArgumentException) { /* Ignore invalid administrator paths. */ }
+            }
+        }
+        return matchedRole;
+    }
+
+    // Both PL+ENG archives are eligible for either anime search audio mode.
+    // For legacy installations, retain the historic two physical anime roots.
     private static string AnimeSource(string? mediaPath)
     {
         var config = Plugin.Instance?.Configuration;
-        // Once an administrator saves the complete map, it is authoritative:
-        // never use the outdated legacy AnimeRoot after a folder has been renamed.
         if (config?.LibraryPathsConfigured == true)
         {
-            foreach (var entry in config.LibraryPaths ?? new())
+            return ManagedLibraryRoleFromPath(mediaPath) switch
             {
-                var source = entry.Role switch
-                {
-                    "anime_pl" => "lektor",
-                    "anime_eng" => "original",
-                    _ => string.Empty
-                };
-                if (source.Length == 0) continue;
-                foreach (var path in entry.Paths ?? new())
-                {
-                    if (string.IsNullOrWhiteSpace(path)) continue;
-                    try { if (IsBelowRoot(mediaPath, Path.GetFullPath(path))) return source; }
-                    catch (ArgumentException) { /* Ignore a broken admin path; do not read arbitrary media. */ }
-                }
-            }
-            return string.Empty;
+                "anime_pl" => "lektor",
+                "anime_eng" => "original",
+                "anime_both" => "both",
+                _ => string.Empty
+            };
         }
         if (!string.IsNullOrWhiteSpace(config?.AnimeRoot) &&
             IsBelowRoot(mediaPath, Path.GetFullPath(config.AnimeRoot))) return "lektor";

@@ -14,19 +14,25 @@ const context={
  termsForFilter:()=>new Set(),normalized:()=>'',titleMatches:()=>true,
 };vm.createContext(context);vm.runInContext(filter,context);
 const state={kind:'anime',unmatchedGenre:'',libraryStates:new Map(),
-  typeStates:new Map(),genreStates:new Map(),input:{value:''},lektor:{checked:true}};
+  typeStates:new Map(),genreStates:new Map(),input:{value:''},lektor:{value:'lektor'}};
 function sourceMatches(source){return context.fitsSearch({anime:true,anime_source:source,type:'Series'},state)}
 assert.equal(sourceMatches('lektor'),true,'PL anime visible by default');
 assert.equal(sourceMatches('original'),false,'EN anime hidden by default');
+assert.equal(sourceMatches('both'),true,'PL+ENG is visible in PL mode');
 assert.equal(sourceMatches(undefined),true,'legacy cached items remain PL');
-state.lektor.checked=false;
-assert.equal(sourceMatches('original'),true,'unchecked selects original audio');
-assert.equal(sourceMatches('lektor'),false,'unchecked hides PL library');
-assert.equal(sourceMatches(undefined),false,'legacy PL never appears as EN');
+state.lektor.value='original';
+assert.equal(sourceMatches('original'),true,'English mode selects original audio');
+assert.equal(sourceMatches('lektor'),false,'English mode hides PL-only library');
+assert.equal(sourceMatches('both'),true,'PL+ENG is visible in ENG mode');
+assert.equal(sourceMatches(undefined),false,'legacy PL never appears as ENG');
+state.lektor.value='all';
+assert.equal(sourceMatches('original'),true,'all mode includes ENG');
+assert.equal(sourceMatches('lektor'),true,'all mode includes PL');
+assert.equal(sourceMatches('both'),true,'all mode includes dual-language libraries');
 state.kind='media';
 assert.equal(context.fitsSearch({anime:false,anime_source:'',type:'Movie'},state),true,
   'media search must not be constrained by anime audio filter');
 assert.match(source,/displaySearchCatalog\(state,data,force && state\.pool\.length>0\)/,
   'manual refresh must keep genre selections and scroll position');
-assert.match(source,/lektor\.checked=true/,'default and reset select Polish voice-over');
-console.log('PASS v0.4.105: two mutually exclusive anime roots, default PL, media unaffected, manual filters preserved');
+assert.match(source,/lektor\.value='lektor'/,'default and reset select Polish voice-over');
+console.log('PASS v0.4.105: three audio modes and dual-role anime, default PL, media unaffected, manual filters preserved');

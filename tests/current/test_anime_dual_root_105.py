@@ -23,11 +23,11 @@ class DualAnimeSource105(unittest.TestCase):
 
     def test_search_filter_default_and_refresh(self):
         home=(SRC/'Web/home.js').read_text(encoding='utf-8')
-        self.assertIn("lektor.type='checkbox';lektor.checked=true",home)
+        self.assertIn("lektor.value='lektor'",home)
         self.assertIn("lektor.addEventListener('change',()=>paintSearchResults(state))",home)
         self.assertIn("item.anime_source||'lektor'",home)
-        self.assertIn("state.lektor?.checked===false?'original':'lektor'",home)
-        self.assertIn("lektor.checked=true",home)
+        self.assertIn("state.lektor?.value||'lektor'",home)
+        self.assertIn("lektor.value='lektor'",home)
         self.assertIn('displaySearchCatalog(state,data,force && state.pool.length>0)',home)
         self.assertIn("const catalogSchemaVersion = 'v3-library-paths'",home)
         self.assertIn('const previousScroll=preserveFilters?state.scroller.scrollTop:0',home)

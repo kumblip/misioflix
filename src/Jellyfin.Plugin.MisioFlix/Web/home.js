@@ -33,7 +33,7 @@
   // Database keys include Jellyfin server, authenticated user and catalog schema.
   const catalogFetchedAt = new Map();
   const catalogRequests = new Map();
-  const SEARCH_CATALOG_FRESH_MS = 90000;
+  const SEARCH_CATALOG_FRESH_MS = 24 * 60 * 60 * 1000; // Background refresh at most daily; manual Refresh is immediate.
   const SEARCH_CATALOG_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
   const SEARCH_CATALOG_DB = 'misioflix-search-catalog-v1';
   let catalogDatabasePromise = null;
@@ -1277,10 +1277,13 @@
   }
   function fitsSearch(item,state,withText=true){
     if(state.unmatchedGenre)return false;
-    // Filter by the authenticated server's physical anime root, not library
-    // display names or guessed audio tracks. Older cached records are PL-only.
-    if(state.kind==='anime' && (item.anime_source||'lektor') !==
-       (state.lektor?.checked===false?'original':'lektor'))return false;
+    // Library role is set once by administrator. PL+ENG is visible in both
+    // audio modes; library selection remains an independent filter by GUID.
+    if(state.kind==='anime'){
+      const mode=state.lektor?.value||'lektor';
+      const source=item.anime_source||'lektor';
+      if(mode!=='all' && source!=='both' && source!==mode)return false;
+    }
     if(state.libraryStates && !allowGroup(compactId(item.library_id),state.libraryStates))return false;
     if(!searchByType(item,state))return false;
     if(!watchModeMatches(item,state))return false;
@@ -1502,7 +1505,7 @@
     input.setAttribute('aria-label','Wyszukaj tytuł');
     const suggestions=own('div','mf-home-suggestions');suggestions.hidden=true;
     append(searchWrap,input,suggestions);
-    const scopedLibraries=librariesCache.filter(lib=>kind==='anime'?lib.category==='anime':['movies','series'].includes(lib.category));
+    const scopedLibraries=librariesCache.filter(lib=>kind==='anime'?lib.category==='anime':['movies','series','mixed'].includes(lib.category));
     const libraryChoices=makeFilterGroup('Biblioteki', 'Zielony: uwzględnij · czerwony: wyklucz · ponownie: obojętne');
     const libraryOptions=scopedLibraries.map(lib=>({id:compactId(lib.id),label:lib.name}));
     const typeChoices=makeFilterGroup('Typy produkcji', 'Możesz zaznaczyć kilka typów jednocześnie');
@@ -1522,12 +1525,16 @@
     if(kind!=='anime')seasonLabel.hidden=true;
     const reset=own('button','mf-home-button','Wyczyść filtry');reset.type='button';
     const refresh=own('button','mf-home-button','Odśwież dane');refresh.type='button';
-    // Existing AnimePL remains the default. Unchecking targets the separate
-    // physical "anime" root (original audio + English subtitles) when available.
+    // Independently filter PL / ENG / all anime libraries. A mixed PL+ENG
+    // library participates in both modes, without duplicating title entries.
     const lektorLabel=own('label','mf-home-search-lektor');
-    const lektor=own('input','');lektor.type='checkbox';lektor.checked=true;
-    lektorLabel.append(lektor,document.createTextNode(' Lektor (AnimePL)'));
-    lektorLabel.title='Zaznaczony: animelektor (polski lektor) · odznaczony: anime (oryginalny dźwięk, napisy angielskie)';
+    lektorLabel.appendChild(document.createTextNode('Język anime '));
+    const lektor=own('select','mf-home-search-select');
+    for(const [value,text] of [['lektor','Polski (lektor)'],['original','Bez lektora (ENG)'],['all','Wszystkie (PL + ENG)']]){
+      const option=own('option','',text);option.value=value;lektor.appendChild(option);
+    }
+    lektor.value='lektor';lektorLabel.appendChild(lektor);
+    lektorLabel.title='Anime PL i Anime PL+ENG: polskie · Anime ENG i Anime PL+ENG: bez lektora';
     if(kind!=='anime')lektorLabel.hidden=true;
     tool.append(searchWrap,seasonLabel,lektorLabel,reset,refresh);
     const choicesWrap=own('div','mf-home-choice-groups');
@@ -1585,7 +1592,7 @@
     input.addEventListener('keydown',e=>{if(e.key==='Enter')state.suggestions.hidden=true;});
     dialog.addEventListener('click',e=>{if(!searchWrap.contains(e.target))suggestions.hidden=true;});
     reset.addEventListener('click',()=>{
-      input.value='';includeSeasons.checked=false;lektor.checked=true;
+      input.value='';includeSeasons.checked=false;lektor.value='lektor';
       syncSearchPlaceholder();
       state.libraryStates.clear();state.typeStates.clear();state.genreStates.clear();
       state.watchMode=0;drawWatchFilter(state);
@@ -2272,7 +2279,7 @@
       if(!Array.isArray(libs)||!libs.length){container.appendChild(own('p','mf-home-empty','Nie znaleziono dostępnych bibliotek.'));return;}
       // Collections are a separate home row, never Jellyfin's optional
       // 'group movies into collections' setting. Place directly after AnimePL.
-      const valid=librariesCache.filter(lib=>validId(lib.id) && ['anime','movies','series'].includes(lib.category));
+      const valid=librariesCache.filter(lib=>validId(lib.id) && ['anime','movies','series','mixed'].includes(lib.category));
       // A global BoxSet shelf is always available; /Users/Me/Views commonly
       // omits the Collections library entirely. No made-up parent GUIDs.
       const collectionsShelf={id:'collections',name:'Kolekcje',category:'collections',href:''};

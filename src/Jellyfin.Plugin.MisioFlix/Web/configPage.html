@@ -65,7 +65,7 @@
    <section style="padding:8px 0 20px">
     <p>Lista obejmuje <strong>wszystkie biblioteki Jellyfina</strong>, w tym dodane później. Ładowana jest na żywo z Jellyfina, a konfiguracja MisioFlixa jest przypisana do identyfikatorów bibliotek — zmiana nazwy nie zeruje przypisania.</p>
     <p>Ścieżki podawaj <strong>w formie widocznej z kontenera Jellyfin</strong> (np. <code>/media/raid/anime_lektor</code>), po jednej w wierszu. <strong>Zapis zmienia wyłącznie rozpoznawanie pozycji w MisioFlixie; nie przenosi folderów ani nie edytuje bibliotek Jellyfina.</strong></p>
-    <p>Wybierz „Anime PL (NFO + MAL)” dla biblioteki z polskim anime oraz „Anime ENG (NFO + MAL)” dla biblioteki anime w oryginale. Pozostałym przypisz „Zwykła biblioteka”.</p>
+    <p><strong>Rola całej biblioteki</strong> — wybierz Simkl (filmy/seriale), Anime PL, Anime ENG albo Anime PL+ENG. Wszystkie tytuły z biblioteki anime korzystają z NFO + MAL; nie trzeba odczytywać tagu Anime osobno przy synchronizacji. Biblioteka PL+ENG będzie widoczna przy obu filtrach języka w wyszukiwarce anime.</p>
     <button type="button" class="raised emby-button" id="mf-library-reload">Odśwież listę bibliotek z Jellyfina</button>
     <div id="mf-library-list" aria-label="Wykryte biblioteki"></div>
     <button type="button" class="raised button-submit emby-button" id="mf-library-save">Zapisz ścieżki i role w MisioFlixie</button>
@@ -885,8 +885,12 @@
    let rows=[];
    let loaded=false;
    let busy=false;
-   const guessRole=name=>/^anime(?:\s|_|-)*(?:pl|polski|lektor)/i.test(name)?'anime_pl':
-     /^anime(?:\s|_|-)*(?:eng|en|english)/i.test(name)?'anime_eng':'other';
+   const guessRole=name=>{
+     const pl=/^anime(?:\s|_|-)*(?:pl|polski|lektor)/i.test(name);
+     const en=/^anime(?:\s|_|-)*(?:eng|en|english)/i.test(name);
+     if(pl&&en||/^anime.*(?:pl\s*[+\/]\s*eng|eng\s*[+\/]\s*pl)/i.test(name))return 'anime_both';
+     return pl?'anime_pl':en?'anime_eng':'simkl';
+   };
    const guessAudio=name=>/(?:\s|_|-)*eng$/i.test(name)?'en':/(?:\s|_|-)*pl$/i.test(name)?'pl':'auto';
    const normalizedId=value=>String(value||'').replace(/-/g,'').trim().toLowerCase();
    const validRoot=p=>p.startsWith('/')&&p.length<=1024&&!p.includes('\u0000')&&p.split('/').every(segment=>segment!=='..');
@@ -914,7 +918,7 @@
      const fields=el('div');fields.className='mf-lib-fields';
      const roleLabel=el('label','Typ w MisioFlix');
      const role=el('select');role.className='emby-select';
-     for(const [value,caption] of [['other','Zwykła biblioteka'],['anime_pl','Anime PL — NFO + MAL'],['anime_eng','Anime ENG — NFO + MAL']]){
+     for(const [value,caption] of [['simkl','Simkl — filmy i seriale'],['anime_pl','Anime PL — NFO + MAL'],['anime_eng','Anime ENG — NFO + MAL'],['anime_both','Anime PL+ENG — NFO + MAL']]){
       const option=el('option',caption);option.value=value;role.append(option);
      }
      role.value=row.role;role.addEventListener('change',()=>{row.role=role.value;});
@@ -955,7 +959,7 @@
       const paths=saved&&savedPaths.length&&!equalPaths(savedPaths,oldLivePaths)?savedPaths:livePaths;
       const name=String(lib.Name||id);
       return {id,name,kind:String(lib.CollectionType||'mixed'),livePaths,
-        paths:[...paths],role:String(saved?.Role||guessRole(name)),
+        paths:[...paths],role:String(saved?.Role==='other'?'simkl':saved?.Role||guessRole(name)),
         audio:String(saved?.AudioLanguage||guessAudio(name))};
      }).sort((a,b)=>a.name.localeCompare(b.name,'pl'));
      loaded=true;render();
@@ -969,8 +973,9 @@
     for(const row of rows){
      if(row.paths.length>16)problems.push(row.name+': maks. 16 ścieżek');
      if(row.paths.some(p=>!validRoot(p)))problems.push(row.name+': nieprawidłowa ścieżka kontenera');
-     if(row.role!=='other'&&!row.paths.length)problems.push(row.name+': anime wymaga ścieżki');
-     if(row.role!=='other')for(const path of row.paths){
+     if(!['simkl','anime_pl','anime_eng','anime_both'].includes(row.role))problems.push(row.name+': nieznana rola');
+     if(!row.paths.length)problems.push(row.name+': przypisanie wymaga ścieżki');
+     for(const path of row.paths){
       if(assigned.has(path)&&assigned.get(path)!==row.role)problems.push('Niejednoznaczna ścieżka '+path);
       assigned.set(path,row.role);
      }
@@ -985,13 +990,13 @@
       Role:row.role,AudioLanguage:row.audio,Paths:row.paths,JellyfinPaths:row.livePaths}));
      config.LibraryPathsConfigured=true;
          config.LibraryPathsRevision=String(Date.now());
-     const pl=rows.find(r=>r.role==='anime_pl'&&r.paths.length);
-     const en=rows.find(r=>r.role==='anime_eng'&&r.paths.length);
+     const pl=rows.find(r=>['anime_pl','anime_both'].includes(r.role)&&r.paths.length);
+     const en=rows.find(r=>['anime_eng','anime_both'].includes(r.role)&&r.paths.length);
      // Compatibility for modules/older versions that only inspect two legacy roots.
      config.AnimeRoot=pl?pl.paths[0]:'';
      config.AnimeOriginalRoot=en?en.paths[0]:'';
      await ApiClient.updatePluginConfiguration(pluginId,config);
-     status.textContent='Zapisano '+rows.length+' bibliotek. Przeładuj MisioFlix, a w wyszukiwarce anime użyj „Odśwież dane”, aby odnowić zapisany indeks.';
+     status.textContent='Zapisano '+rows.length+' bibliotek. Odśwież MisioFlix; indeks wyszukiwarki dostanie nową rewizję. NFO anime nadal dostarczają tytułów i gatunków.';
     }catch(e){status.textContent='Błąd zapisu: '+e.message;}
     finally{busy=false;save.disabled=false;reload.disabled=false;}
    }

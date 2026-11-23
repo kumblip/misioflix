@@ -22,7 +22,7 @@ class DynamicLibraryPaths(unittest.TestCase):
         for value in ['LibraryPathsConfigured','LibraryPathsRevision','MisioFlixLibraryPath',
                       'LibraryId','JellyfinPaths','Paths','AudioLanguage']:
             self.assertIn(value,CONFIG)
-        self.assertIn('mapped.Role is "anime_pl" or "anime_eng"',CATALOG)
+        self.assertIn('mapped.Role is "anime_pl" or "anime_eng" or "anime_both"',CATALOG)
         self.assertIn('foreach (var entry in config.LibraryPaths ?? new())',CATALOG)
         self.assertIn('foreach (var path in entry.Paths ?? new())',CATALOG)
         self.assertIn('if (config?.LibraryPathsConfigured == true)',CATALOG)

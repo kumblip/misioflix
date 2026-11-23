@@ -32,7 +32,7 @@ class Collections0426(unittest.TestCase):
         self.assertIn("const collectionsShelf={id:'collections'",H)
         self.assertIn("[...animeViews,collectionsShelf,...otherViews]",H)
         self.assertIn("if(lib.category==='collections')continue;",H)
-        self.assertIn("['movies','series'].includes(lib.category)",H)
+        self.assertIn("['movies','series','mixed'].includes(lib.category)",H)
         self.assertIn("item.type==='BoxSet'?'KOLEKCJA'",H)
     def test_folder_never_mislabeled_collection(self):
         self.assertIn("type==='boxset'?'KOLEKCJA':'FOLDER'",J)

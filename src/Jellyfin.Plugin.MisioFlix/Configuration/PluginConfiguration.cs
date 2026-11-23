@@ -57,8 +57,9 @@ public sealed class MisioFlixLibraryPath
 {
     public string LibraryId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    // anime_pl, anime_eng, other. Both anime roles use NFO/MAL handling.
-    public string Role { get; set; } = "other";
+    // simkl, anime_pl, anime_eng, anime_both; previous "other" remains a Simkl alias.
+    // The administrator classifies whole libraries, never individual media by tag.
+    public string Role { get; set; } = "simkl";
     // pl, en, auto. Optional audio fallback ONLY for single, unlabeled tracks.
     public string AudioLanguage { get; set; } = "auto";
     public List<string> Paths { get; set; } = new();
