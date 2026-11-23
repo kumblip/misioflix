@@ -2634,3 +2634,86 @@ html.misioflix-skin .mf-home-content-mode-icon{
 @media(max-width:560px){
  html.misioflix-skin .mf-home-content-mode-toggle[data-mf-home-mode="recommendations"] .mf-home-libraries-track::after{transform:translateX(12px)}
 }
+
+/* v0.4.138: one visual language for the four Home recommendation switches.
+   Default = GREEN (thumb on the right); second state = BLUE; third = ORANGE.
+   This is presentation-only: no changes to library, MAL/Simkl or language filters. */
+html.misioflix-skin .mf-home-switches{
+  /* On desktop align the full group right; `safe` avoids clipping on overflow. */
+  justify-content:safe flex-end;
+}
+@media(max-width:880px){
+  html.misioflix-skin .mf-home-switches{
+    /* Preserve access to the first switch when the single row overflows. */
+    justify-content:flex-start;
+  }
+}
+
+/* GREEN: Propozycje, anime ON, Audio PL, Napisy Wszystkie. */
+html.misioflix-skin .mf-home-content-mode-toggle[data-mf-home-mode="recommendations"],
+html.misioflix-skin .mf-home-anime-toggle[aria-checked="true"],
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="pl"],
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="all"]{
+  --mf-home-switch-bg:rgba(34,108,70,.38);
+  --mf-home-switch-hover:rgba(38,135,84,.50);
+  --mf-home-switch-border:#45b879;
+  --mf-home-switch-ink:#e7fff0;
+  --mf-home-switch-track:#45b879;
+}
+
+/* BLUE: Biblioteki, anime OFF, Audio nie-PL, Napisy PL. */
+html.misioflix-skin .mf-home-content-mode-toggle[data-mf-home-mode="libraries"],
+html.misioflix-skin .mf-home-anime-toggle[aria-checked="false"],
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="original"],
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="pl"]{
+  --mf-home-switch-bg:rgba(30,100,163,.40);
+  --mf-home-switch-hover:rgba(33,116,186,.54);
+  --mf-home-switch-border:#56b6ef;
+  --mf-home-switch-ink:#e7f6ff;
+  --mf-home-switch-track:#329bdb;
+}
+
+/* ORANGE: Audio Wszystkie, Napisy EN. */
+html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="all"],
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="en"]{
+  --mf-home-switch-bg:rgba(171,102,28,.36);
+  --mf-home-switch-hover:rgba(196,118,31,.48);
+  --mf-home-switch-border:#f0a14a;
+  --mf-home-switch-ink:#fff5e8;
+  --mf-home-switch-track:#dc9335;
+}
+
+/* Overrides of the historical, state-specific styles above. Keep sizing,
+   labels, icons, accessibility, click handling and animation intact. */
+html.misioflix-skin .mf-home-switches .mf-home-libraries-toggle{
+  background:var(--mf-home-switch-bg);
+  border-color:var(--mf-home-switch-border);
+  color:var(--mf-home-switch-ink);
+}
+html.misioflix-skin .mf-home-switches .mf-home-libraries-toggle:hover{
+  background:var(--mf-home-switch-hover);
+}
+html.misioflix-skin .mf-home-switches .mf-home-libraries-toggle .mf-home-libraries-track{
+  background:var(--mf-home-switch-track);
+  border-color:var(--mf-home-switch-track);
+}
+/* The CC icon now matches the default green subtitles state. */
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="all"] .mf-home-libraries-label::before{
+  background:rgba(191,238,207,.18);
+  border-color:#bfeecf;
+  color:#f6fffa;
+}
+
+/* All green/default thumbs are RIGHT. In the 3-state controls, the blue thumb
+   stays in the MIDDLE and the orange thumb sits on the LEFT. */
+html.misioflix-skin .mf-home-switches .mf-home-subtitles-toggle[data-mf-subtitles-mode="all"] .mf-home-libraries-track::after{
+  transform:translateX(28px);
+}
+html.misioflix-skin .mf-home-switches .mf-home-subtitles-toggle[data-mf-subtitles-mode="en"] .mf-home-libraries-track::after{
+  transform:translateX(0);
+}
+@media(max-width:560px){
+  html.misioflix-skin .mf-home-switches .mf-home-subtitles-toggle[data-mf-subtitles-mode="all"] .mf-home-libraries-track::after{
+    transform:translateX(26px);
+  }
+}
