@@ -2131,7 +2131,7 @@
       if(!isCurrent(serial)||recommendationWatchPending!==pending)return;
       if(!data||typeof data!=='object'||Array.isArray(data))throw Error('Nieprawidłowe statusy');
       recommendationWatchSnapshot=new Map(Object.entries(data).filter(([id,status])=>
-        validId(id)&&['watched','unwatched','started','completed'].includes(normalizeRecommendationWatchStatus(status))).map(([id,status])=>[compactId(id),normalizeRecommendationWatchStatus(status)]));
+        validId(id)&&['unwatched','started','completed'].includes(normalizeRecommendationWatchStatus(status))).map(([id,status])=>[compactId(id),normalizeRecommendationWatchStatus(status)]));
     }catch(error){
       if(!isCurrent(serial)||recommendationWatchPending!==pending)return;
       recommendationWatchError=true;
@@ -2761,7 +2761,7 @@
     }
     if(homeRoot && homeRoot.isConnected && homeHost===host){syncCollectionsPage();maybeOpenLinkedGenre();return;}
     homeRoot?.remove();
-    window.MisioFlixDiagnosticSession?.homeMounted?.('0.4.151.0');
+    window.MisioFlixDiagnosticSession?.homeMounted?.('0.4.143.0');
     mount(host);
   }
   let queued=false;

@@ -754,7 +754,7 @@ public sealed class MisioFlixCatalogService
         await ReadPages("&IncludeItemTypes=Movie,Series&CollapseBoxSetItems=false&Fields=RecursiveItemCount", (item, id) =>
         {
             if (Get(item, "UserData").ValueKind != JsonValueKind.Object) return;
-            result[id.ToString("N")] = WatchStatus(item);
+            result[id.ToString("N")] = RecommendationWatchStatus(item);
         }).ConfigureAwait(false);
         // A partly played first episode does not decrement UnplayedItemCount.
         // Use the native resumable episode list to recognize those series too.
@@ -2345,21 +2345,43 @@ public sealed class MisioFlixCatalogService
     private static string WatchStatus(JsonElement item)
     {
         var data = Get(item, "UserData");
-        var played = Get(data, "Played").ValueKind == JsonValueKind.True;
         var total = PositiveInt(Get(item, "RecursiveItemCount"));
-        // Jellyfin's per-series Played flag may be inconsistent, but a completed
-        // item should never fall into "started" only because auxiliary counts or
-        // resume metadata remain populated. Prefer an explicit Played flag first.
-        if (played) return "completed";
+        // Jellyfin's per-series Played flag may be inconsistent; when episode counts
+        // are available, prefer the actual watched/unwatched episode aggregation.
         if (total.HasValue && Get(data, "UnplayedItemCount").ValueKind == JsonValueKind.Number)
         {
             var count = Number(Get(data, "UnplayedItemCount"));
-            if (count <= 0) return "completed";
+            if (count <= 0) return "watched";
             if (count < total.Value) return "started";
             return "unwatched";
         }
+        if (Get(data, "Played").ValueKind == JsonValueKind.True) return "watched";
         if (Progress(item) > 0 || Number(Get(data, "PlayedPercentage")) > 0
             || !string.IsNullOrWhiteSpace(Text(Get(data, "LastPlayedDate")))) return "started";
+        return "unwatched";
+    }
+
+    // Proposal-only classification. Keep the shared catalog/card contract unchanged.
+    private static string RecommendationWatchStatus(JsonElement item)
+    {
+        var data = Get(item, "UserData");
+        if (Get(data, "Played").ValueKind == JsonValueKind.True) return "watched";
+        var percentage = Number(Get(data, "PlayedPercentage"));
+        if (percentage >= 100) return "watched";
+        var position = Number(Get(data, "PlaybackPositionTicks"));
+        if (position > 0 || percentage > 0) return "started";
+        var total = PositiveInt(Get(item, "RecursiveItemCount"));
+        if (total.HasValue && Get(data, "UnplayedItemCount").ValueKind == JsonValueKind.Number)
+        {
+            var count = Number(Get(data, "UnplayedItemCount"));
+            if (count >= 0 && count <= total.Value)
+            {
+                if (count == 0) return "watched";
+                if (count < total.Value) return "started";
+            }
+        }
+        if (Number(Get(data, "PlayCount")) > 0 ||
+            !string.IsNullOrWhiteSpace(Text(Get(data, "LastPlayedDate")))) return "started";
         return "unwatched";
     }
 

@@ -12,20 +12,23 @@ const ctx={recommendationWatchMode:'all',recommendationWatchSnapshot:null,recomm
   own:(...x)=>new El(...x),append:(p,...x)=>x.forEach(c=>p.appendChild(c)),recommendationShelf:(title,pool,full)=>mockRow(El,title,pool,full),loadRecommendationPage:async row=>{row.needsLoad=false;},IntersectionObserver:undefined,recommendationCardCache:new Map(),RECOMMENDATION_CARD_TTL_MS:45000,SHELF_LIMIT:10,
   request:(url)=>{assert.equal(url,'/home/recommendation-watch-status');return new Promise((resolve,reject)=>pending.push({resolve,reject}));}};
 vm.createContext(ctx);
-vm.runInContext(source.slice(source.indexOf('  function recommendationWatchToggle(){'),source.indexOf('  function randomizeRecommendations(pool){')),ctx);
+vm.runInContext(source.slice(source.indexOf('  function normalizeRecommendationWatchStatus(status){'),source.indexOf('  function randomizeRecommendations(pool){')),ctx);
 vm.runInContext(source.slice(source.indexOf('  function paintRecommendationSets(){'),source.indexOf('  async function initializeRecommendations(serial){')),ctx);
 const btn=ctx.recommendationWatchToggle().children[0],click=()=>btn.listeners.click(), tick=()=>new Promise(r=>setImmediate(r));
 const row=()=>ctx.recommendationRows.get('proposal-1');const matches=()=>Array.from(row()?.matching||[],x=>x.id);
 (async()=>{
-  ctx.paintRecommendationSets();assert.equal(pending.length,0);assert.deepEqual(matches(),candidates.map(x=>x.id));const first=row();
-  click();assert.equal(btn.dataset.mfWatchMode,'unwatched');assert.equal(pending.length,1);assert.equal(row(),first);assert.equal(row().section.hidden,true);
-  click();assert.equal(btn.dataset.mfWatchMode,'started');assert.equal(pending.length,1);
-  pending[0].resolve({[id(1)]:'watched',[id(2)]:'started',[id(3)]:'unwatched',[id(17001)]:'started'});await tick();assert.equal(row(),first);assert.deepEqual(matches(),[id(2),id(17001)]);assert.equal(row().section.hidden,false);
+  const label=()=>btn.children[1].textContent;
+  ctx.paintRecommendationSets();assert.equal(pending.length,0);assert.deepEqual(matches(),candidates.map(x=>x.id));const first=row();assert.equal(label(),'📹 Wszystkie');
+  click();assert.equal(btn.dataset.mfWatchMode,'unwatched');assert.equal(label(),'Stan: Nierozpoczęte');assert.equal(pending.length,1);assert.equal(row(),first);assert.equal(row().section.hidden,true);
+  click();assert.equal(btn.dataset.mfWatchMode,'started');assert.equal(label(),'Stan: Rozpoczęte');assert.equal(pending.length,1);
+  pending[0].resolve({[id(1)]:'watched',[id(2)]:'started',[id(3)]:'unwatched',[id(17001)]:'started'});await tick();assert.equal(row(),first);assert.deepEqual(matches(),[id(2),id(17001)]);assert.equal(row().section.hidden,false);assert.equal(ctx.recommendationWatchError,false);
   ctx.recommendationIncludeAnime=false;ctx.paintRecommendationSets();assert.deepEqual(matches(),[id(17001)]);ctx.recommendationIncludeAnime=true;
-  click();assert.deepEqual(matches(),candidates.map(x=>x.id));assert.equal(pending.length,1);
-  click();assert.equal(pending.length,2);pending[1].resolve({[id(1)]:'unwatched',[id(2)]:'started',[id(3)]:'watched',[id(4)]:'unwatched',[id(17001)]:'unwatched'});await tick();assert.deepEqual(matches(),[id(1),id(4),id(17001)]);
+  click();assert.equal(btn.dataset.mfWatchMode,'completed');assert.equal(label(),'Stan: Zakończone');assert.deepEqual(matches(),[id(1)]);assert.equal(pending.length,1);
+  click();assert.equal(label(),'📹 Wszystkie');assert.deepEqual(matches(),candidates.map(x=>x.id));assert.equal(pending.length,1);
+  click();assert.equal(pending.length,2);pending[1].resolve({[id(1)]:'unwatched',[id(2)]:'started',[id(3)]:'completed',[id(4)]:'unwatched',[id(17001)]:'unwatched'});await tick();assert.deepEqual(matches(),[id(1),id(4),id(17001)]);
   ctx.recommendationAudioMode='pl';ctx.paintRecommendationSets();assert.deepEqual(matches(),[id(1),id(17001)]);ctx.recommendationAudioMode='all';
-  click();click();click();assert.equal(pending.length,3);click();click();assert.equal(ctx.recommendationWatchMode,'all');pending[2].resolve({[id(1)]:'started'});await tick();assert.deepEqual(matches(),candidates.map(x=>x.id),'late response cannot change All');
+  click();assert.deepEqual(matches(),[id(2)]);click();assert.deepEqual(matches(),[id(3)]);click();assert.deepEqual(matches(),candidates.map(x=>x.id));
+  click();assert.equal(pending.length,3);click();click();click();assert.equal(ctx.recommendationWatchMode,'all');pending[2].resolve({[id(1)]:'started'});await tick();assert.deepEqual(matches(),candidates.map(x=>x.id),'late response cannot change All');
   click();pending[3].reject(Error('network'));await tick();assert.equal(row().section.hidden,true);assert.equal(ctx.recommendationWatchError,true);const retry=area.children.find(x=>x.className==='mf-home-empty').children[0];retry.listeners.click();assert.equal(pending.length,5);valid=false;ctx.resetRecommendationWatchStatuses();pending[4].resolve({[id(1)]:'unwatched'});await tick();assert.equal(ctx.recommendationWatchSnapshot,null,'old user response discarded');
-  console.log('PASS watch mode, default no request, full pool, other filters, retained rows, retry and stale response guards');
+  console.log('PASS four watch modes, full button labels, full pool, other filters, retained rows, retry and stale response guards');
 })().catch(e=>{console.error(e);process.exitCode=1;});
