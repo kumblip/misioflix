@@ -98,27 +98,34 @@ public sealed class MisioFlixCatalogService
         }
         var result = new List<CatalogItem>();
         const int pageSize = 400;
-        const int maxItems = 16000; // Defensive bound; not a catalog size claim.
-
-        for (var start = 0; start < maxItems; start += pageSize)
+        // Page through the authenticated result, not an arbitrary item ceiling.
+        // Keep only GUIDs as a progress guard; each JSON page is disposed before the next.
+        var seen = new HashSet<Guid>();
+        var start = 0;
+        while (true)
         {
+            cancel.ThrowIfCancellationRequested();
             var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
                        (libraryId.HasValue ? $"&ParentId={libraryId.Value:N}" : string.Empty) +
                        "&Recursive=true&IncludeItemTypes=Movie,Series,Season" +
                        (includeAnimeFolders ? ",Folder" : string.Empty) +
                        "&Fields=Genres,Overview,DateCreated,ChildCount,RecursiveItemCount,ParentId" +
-                       "&EnableUserData=true" +
+                       "&EnableUserData=true&EnableTotalRecordCount=false" +
+                       "&SortBy=SortName&SortOrder=Ascending" +
                        $"&StartIndex={start}&Limit={pageSize}";
             using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
             var items = Get(doc.RootElement, "Items");
-            if (items.ValueKind != JsonValueKind.Array) break;
+            if (items.ValueKind != JsonValueKind.Array)
+                throw new HttpRequestException("Jellyfin returned an invalid catalog page.");
 
-            var received = 0;
+            var received = items.GetArrayLength();
+            if (received == 0) break;
+            var seenBefore = seen.Count;
             foreach (var json in items.EnumerateArray())
             {
-                received++;
+                cancel.ThrowIfCancellationRequested();
                 var itemId = Text(Get(json, "Id"));
-                if (!Guid.TryParse(itemId, out var guid)) continue;
+                if (!Guid.TryParse(itemId, out var guid) || !seen.Add(guid)) continue;
 
                 // The GUID originates from the already-authorized /Items result.
                 var originalItem = _library.GetItemById(guid);
@@ -224,7 +231,13 @@ public sealed class MisioFlixCatalogService
                     });
                 }
             }
-            if (received < pageSize) break;
+            // A non-empty page without new IDs is not a successful end. Fail rather
+            // than loop forever or publish a silently incomplete catalog to IndexedDB.
+            if (seen.Count == seenBefore)
+                throw new HttpRequestException("Jellyfin catalog pagination did not advance.");
+            // Advance by the raw page length, including filtered seasons and duplicates.
+            // Some servers return fewer than Limit; only an empty page confirms the end.
+            start = checked(start + received);
         }
 
         var animeGenres = result.Where(x => x.anime).SelectMany(x => x.genres)

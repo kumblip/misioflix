@@ -21,7 +21,7 @@ class ProposalAudioTristate(unittest.TestCase):
         self.assertIn('public bool? pl_audio { get; set; }',self.server)
 
     def test_manual_refresh_invalidates_catalog_snapshot(self):
-        self.assertIn('v5-library-id-anime-audio-confidence',self.web)
+        self.assertIn('v6-full-catalog-library-id-anime-audio-confidence',self.web)
         self.assertIn('librariesReadyPromise=loadLibraries(serial)',self.web)
         self.assertIn('if(librariesReadyPromise)await librariesReadyPromise;',self.web)
         self.assertIn('_languageFlagsUpdatedUtc?.UtcDateTime.Ticks',self.server)

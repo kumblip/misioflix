@@ -6,6 +6,7 @@
   'use strict';
   if (window.__MISIOFLIX_HOME_0424__) return;
   window.__MISIOFLIX_HOME_0424__ = true;
+  window.__MISIOFLIX_DIAGNOSTICS_HOME_VERSION__ = '0.4.143.0';
 
   const API = '/MisioFlix/api';
   const SHELF_LIMIT = 10; // Initial tiles per library and recommendation rail.
@@ -53,7 +54,7 @@
   const SEARCH_CATALOG_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
   const SEARCH_CATALOG_DB = 'misioflix-search-catalog-v1';
   let catalogDatabasePromise = null;
-  const catalogSchemaVersion = 'v5-library-id-anime-audio-confidence'; // Bust stale classifications and audio flags.
+  const catalogSchemaVersion = 'v6-full-catalog-library-id-anime-audio-confidence'; // Bust stale classifications and audio flags.
   let libraryPathsRevision = ''; // Reported by the authenticated server on /home/libraries.
   function catalogScope(){
     const client = window.ApiClient || window.ConnectionManager?.getApiClient?.();
@@ -2285,9 +2286,7 @@
   function recommendationIsAnime(item){
     if(item?.anime===true)return true;
     if(!Array.isArray(item?.library_ids))return false;
-    const animeIds=new Set(librariesCache.filter(lib=>lib.category==='anime')
-      .map(lib=>compactId(lib.id)));
-    return item.library_ids.some(id=>animeIds.has(compactId(id)));
+    return item.library_ids.some(id=>recommendationAnimeIds.has(compactId(id)));
   }
   // Filter the existing authorized catalog for each independently configured
   // AND/OR proposal. No extra calls and no change to library / search cache.
@@ -2385,19 +2384,18 @@
       const data=await getCatalogForSearch();
       if(!isCurrent(serial)||!area.isConnected)return;
       const all=Array.isArray(data?.items)?data.items:[];
+      recommendationAnimeIds=new Set(librariesCache.filter(lib=>lib.category==='anime').map(lib=>compactId(lib.id)));
       recommendationSeasonGenres=new Map();
       for(const item of all){
-        if(!recommendationIsAnime(item)||item.type!=='Season'||!validId(item.parent_series_id))continue;
+        if(item?.type!=='Season'||!validId(item.parent_series_id)||!recommendationIsAnime(item))continue;
         const id=compactId(item.parent_series_id);
         const values=recommendationSeasonGenres.get(id)||[];
         if(Array.isArray(item.genres))values.push(...item.genres);
         recommendationSeasonGenres.set(id,values);
       }
       recommendationCandidates=all.filter(x=>validId(x?.id)&&(x.type==='Movie'||x.type==='Series'));
-      recommendationAnimeIds=new Set(librariesCache.filter(lib=>lib.category==='anime').map(lib=>compactId(lib.id)));
       recommendationGenresById=new Map(recommendationCandidates.map(item=>{
-        const anime=item?.anime===true||(Array.isArray(item.library_ids)&&
-          item.library_ids.some(id=>recommendationAnimeIds.has(compactId(id))));
+        const anime=recommendationIsAnime(item);
         const inherited=anime&&item.type==='Series'
           ?(recommendationSeasonGenres.get(compactId(item.id))||[]):[];
         const genres=new Set([...(Array.isArray(item.genres)?item.genres:[]),...inherited].map(normalized));
@@ -2568,7 +2566,9 @@
       homeRoot?.remove();homeRoot=null;homeHost=null;discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;rows.clear();resumeData={items:[],hidden:[]};librariesCache=[];catalogCache.clear();catalogFetchedAt.clear();
     }
     if(homeRoot && homeRoot.isConnected && homeHost===host){syncCollectionsPage();maybeOpenLinkedGenre();return;}
-    homeRoot?.remove();mount(host);
+    homeRoot?.remove();
+    window.MisioFlixDiagnosticSession?.homeMounted?.('0.4.143.0');
+    mount(host);
   }
   let queued=false;
   function schedule(){
