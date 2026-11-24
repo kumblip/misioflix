@@ -336,7 +336,10 @@ public sealed class MisioFlixCatalogService
             // persisted recommendation catalog on every client device.
             var revision = (Plugin.Instance?.Configuration?.LibraryPathsRevision ?? string.Empty)
                 + ":audio:" + (_languageFlagsUpdatedUtc?.UtcDateTime.Ticks.ToString(CultureInfo.InvariantCulture) ?? "0");
-            result.Add(new HomeLibrary(guid.ToString("N"), name, category, href, revision));
+            // Expose the configured role of this authenticated view to the search UI.
+            // Do not infer a role from physical membership of individual items.
+            var animeRole = isAnime ? mapped?.Role ?? string.Empty : string.Empty;
+            result.Add(new HomeLibrary(guid.ToString("N"), name, category, href, revision, animeRole));
         }
         return result;
     }
@@ -2446,7 +2449,7 @@ public sealed class OverlayInfo
 }
 
 // Personal home rows; every instance is derived from an allowed user-scoped Jellyfin item.
-public sealed record HomeLibrary(string id, string name, string category, string href, string catalogRevision = "");
+public sealed record HomeLibrary(string id, string name, string category, string href, string catalogRevision = "", string animeRole = "");
 public sealed record HomeShelfResponse(string libraryId, string libraryName, string mode,
     int startIndex, bool hasMore, List<HomeTile> items, int? nextStartIndex = null);
 public sealed class HomeTile

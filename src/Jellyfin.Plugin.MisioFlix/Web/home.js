@@ -54,7 +54,7 @@
   const SEARCH_CATALOG_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
   const SEARCH_CATALOG_DB = 'misioflix-search-catalog-v1';
   let catalogDatabasePromise = null;
-  const catalogSchemaVersion = 'v7-full-catalog-scoped-anime-source'; // Bust stale classifications and audio flags.
+  const catalogSchemaVersion = 'v8-anime-search-library-role'; // Bust stale classifications and audio flags.
   let libraryPathsRevision = ''; // Reported by the authenticated server on /home/libraries.
   function catalogScope(){
     const client = window.ApiClient || window.ConnectionManager?.getApiClient?.();
@@ -1062,12 +1062,37 @@
   async function refreshScopedCatalog(state){
     return loadScopedCatalogForMode(state,true);
   }
+  function scopedAnimeSearchSource(lib,item){
+    // A library explicitly assigned by the administrator is authoritative.
+    // A PL+ENG library is intentionally available in BOTH modes, even if a
+    // particular item's flags contain only Polish audio.
+    switch(lib.animeRole){
+      case 'anime_pl': return 'lektor';
+      case 'anime_eng': return 'original';
+      case 'anime_both': return 'both';
+    }
+    // Legacy installations without saved roles: recognize ONLY the standard
+    // library labels, not arbitrary titles, file paths or subtitle flags.
+    const name=String(lib.name||'').toLowerCase().replace(/[\s_-]+/gu,'');
+    if(/^anime(?:pl[+/]eng|eng[+/]pl)$/.test(name))return 'both';
+    if(name==='animepl')return 'lektor';
+    if(name==='animeeng')return 'original';
+    // Unclassified library: use the existing language-flags index exposed on
+    // catalog rows. No extra requests and no inference from subtitle presence.
+    if(item.pl_audio===true)return 'lektor';
+    if(item.pl_audio===false)return 'original';
+    // A real one-sided server classification may still come from a legacy root.
+    // Never trust an ambiguous "both" fallback as proof of a dual library.
+    if(item.anime_source==='lektor'||item.anime_source==='original')return item.anime_source;
+    return 'unknown'; // only the unfiltered view may show unknown items
+  }
   async function loadScopedCatalogForMode(state,force){
     const libraries=state.scopedLibraries;
     if(!libraries.length)return {items:[],needsRefresh:false};
     const all=await Promise.all(libraries.map(async lib=>{
       const data=await getCatalogForSearch(lib.id,force);
-      return data.items.map(item=>({...item,library_id:compactId(lib.id),library_name:lib.name}));
+      return data.items.map(item=>({...item,library_id:compactId(lib.id),library_name:lib.name,
+        ...(state.kind==='anime'?{search_anime_source:scopedAnimeSearchSource(lib,item)}:{})}));
     }));
     const needsRefresh=!force && libraries.some(lib=>{
       const stamp=catalogFetchedAt.get(catalogFullKey(lib.id));
@@ -1261,7 +1286,7 @@
     // audio modes; library selection remains an independent filter by GUID.
     if(state.kind==='anime'){
       const mode=state.lektor?.value||'lektor';
-      const source=item.anime_source||'lektor';
+      const source=item.search_anime_source??(item.anime_source||'lektor');
       if(mode!=='all' && source!=='both' && source!==mode)return false;
     }
     if(state.libraryStates && !allowGroup(compactId(item.library_id),state.libraryStates))return false;

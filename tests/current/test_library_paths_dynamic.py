@@ -32,11 +32,11 @@ class DynamicLibraryPaths(unittest.TestCase):
 
     def test_cache_revision_invalidation_on_all_devices(self):
         self.assertIn('config.LibraryPathsRevision=String(Date.now())',PANEL)
-        self.assertIn('new HomeLibrary(guid.ToString("N"), name, category, href, revision)',CATALOG)
+        self.assertIn('new HomeLibrary(guid.ToString("N"), name, category, href, revision, animeRole)',CATALOG)
         self.assertIn('let libraryPathsRevision',HOME)
         self.assertIn('libs[0].catalogRevision',HOME)
         self.assertIn('catalogCache.clear();catalogFetchedAt.clear()',HOME)
-        self.assertIn("catalogSchemaVersion = 'v7-full-catalog-scoped-anime-source'",HOME)
+        self.assertIn("catalogSchemaVersion = 'v8-anime-search-library-role'",HOME)
 
     def test_no_media_write_or_library_changes(self):
         self.assertIn('never writes media files',CONFIG)

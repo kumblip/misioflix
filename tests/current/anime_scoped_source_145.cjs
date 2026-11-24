@@ -6,7 +6,7 @@ function slice(a,b){const i=source.indexOf(a),j=source.indexOf(b,i+a.length);ass
 // loader and filter, including the independent type and library selections.
 const id=n=>n.toString(16).padStart(32,'0');
 const pl=id(1),en=id(2),both=id(3);
-const libs=[{id:pl,name:'PL renamed'},{id:en,name:'ENG renamed'},{id:both,name:'Both'}];
+const libs=[{id:pl,name:'PL renamed',animeRole:'anime_pl'},{id:en,name:'ENG renamed',animeRole:'anime_eng'},{id:both,name:'Both',animeRole:'anime_both'}];
 const catalogs=new Map(libs.map((lib,i)=>[lib.id,{items:['Series','Season','Movie'].map((type,j)=>({
  id:id(10+i*3+j),anime:true,anime_source:['lektor','original','both'][i],type,
  // An ambiguous physical membership must not override the scoped source.
