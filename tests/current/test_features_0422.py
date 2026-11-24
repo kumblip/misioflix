@@ -45,7 +45,7 @@ class Features0422(unittest.TestCase):
         self.assertIn("window.location.hash = '#/home?mfSearch='",DETAILS)
         self.assertIn("fetch(API + '/overlays?ids='",DETAILS)
         self.assertIn("item.anime === true ? 'anime' : 'media'",DETAILS)
-        self.assertIn('AnimeSource(libItem.Path).Length > 0',SERVICE)
+        self.assertIn('AnimeSourceForItem(_library, libItem).Length > 0',SERVICE)
         self.assertIn('IsBelowRoot(mediaPath, Path.GetFullPath(config.AnimeRoot))',SERVICE)
         self.assertIn('ReadNfo(libItem.Path, type)',SERVICE)
         self.assertIn('const names=state.kind===\'anime\'',HOME)

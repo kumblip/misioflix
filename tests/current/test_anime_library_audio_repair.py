@@ -26,7 +26,7 @@ class AnimeLibraryAudioRepair(unittest.TestCase):
         self.assertIn('return flags.partial ? null : false',s)
         self.assertIn("if(typeof item?.pl_audio!=='boolean')return false",h)
     def test_cached_old_classifications_are_invalidated(self):
-        self.assertIn('v8-anime-search-library-role',h)
+        self.assertIn('v9-anime-mal-library-role',h)
         self.assertIn('if(!recommendationIncludeAnime&&isAnime(item))return false',h)
         self.assertIn("lib.category==='anime'",h)
     def test_release_version_remains_user_controlled(self):

@@ -30,7 +30,7 @@ class MalNfo0432(unittest.TestCase):
         self.assertIn('AuthenticatedUserAsync(caller, cancel)',method)
         self.assertIn('&Ids={itemId:N}',method)
         self.assertIn('&Limit=2',method)
-        self.assertIn('AnimeSource(local.Path)',method)
+        self.assertIn('AnimeSourceForItem(_library, local)',method)
         self.assertIn('if (animeSource.Length == 0)',method)
         self.assertNotIn('ReadForAuthenticatedUserAsync(caller',method)
 

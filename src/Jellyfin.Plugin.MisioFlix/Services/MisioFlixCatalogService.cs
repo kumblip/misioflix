@@ -626,7 +626,7 @@ public sealed class MisioFlixCatalogService
             userRating = PersonalRating(item),
             watchStatus = WatchStatus(item),
             simklExcluded = isAnime || ((type == "Movie" || type == "Series") &&
-                _library.GetItemById(guid) is { } localSimkl && IsSimklAnime(localSimkl,type,item)),
+                _library.GetItemById(guid) is { } localSimkl && IsSimklAnime(_library, localSimkl,type,item)),
             malId = isAnime ? nfo?.MalId ?? FirstSeasonMalId(_library.GetItemById(guid)?.Path) : null
         };
     }
@@ -671,7 +671,7 @@ public sealed class MisioFlixCatalogService
             episodes = type == "Series" ? PositiveInt(Get(item, "RecursiveItemCount")) : null,
             userRating = PersonalRating(item),
             watchStatus = WatchStatus(item),
-            simklExcluded = anime || IsSimklAnime(local, type, item),
+            simklExcluded = anime || IsSimklAnime(_library, local, type, item),
             malId = anime ? nfo?.MalId ?? FirstSeasonMalId(local.Path) : null
         };
     }
@@ -702,7 +702,7 @@ public sealed class MisioFlixCatalogService
             if (!Guid.TryParse(Text(Get(item, "Id")), out var id) || !allowed.Contains(id)) continue;
             var media = _library.GetItemById(id);
             if (media is null) continue;
-            var category = AnimeSource(media.Path).Length != 0 ? "anime" : "movies";
+            var category = AnimeSourceForItem(_library, media).Length != 0 ? "anime" : "movies";
             var tile = MakeHomeTile(item, category);
             if (tile is not null) found[id] = tile;
         }
@@ -777,7 +777,7 @@ public sealed class MisioFlixCatalogService
             var type = Text(Get(item, "Type"));
             if (type != "Movie" && type != "Series") return;
             var key = id.ToString("N");
-            var anime = AnimeSource(local.Path).Length != 0;
+            var anime = AnimeSourceForItem(_library, local).Length != 0;
             // Same MAL identity as MakeHomeTile, including its first-season fallback.
             int? malId = anime && malEnabled ? ReadNfo(local.Path, type)?.MalId ?? FirstSeasonMalId(local.Path) : null;
             var fallback = WatchStatus(item);
@@ -828,7 +828,7 @@ public sealed class MisioFlixCatalogService
                 var id = Text(Get(json, "Id"));
                 if (!Guid.TryParse(id, out var guid)) continue;
                 var local = _library.GetItemById(guid);
-                var category = local is not null && AnimeSource(local.Path).Length > 0 ? "anime" : "movies";
+                var category = local is not null && AnimeSourceForItem(_library, local).Length > 0 ? "anime" : "movies";
                 var tile = MakeHomeTile(json, category);
                 if (tile is not null) cards[id] = tile;
             }
@@ -875,10 +875,10 @@ public sealed class MisioFlixCatalogService
             if (libItem is null) continue;
             var type = Text(Get(item,"Type"));
             if (type is "Movie" or "Series") mediaIds.Add(id);
-            var anime = AnimeSource(libItem.Path).Length > 0;
+            var anime = AnimeSourceForItem(_library, libItem).Length > 0;
             // NFO <tag>Anime</tag> is also a hard exclusion from Simkl,
             // even when an item lives outside the configured AnimeRoot.
-            var simklExcluded = IsSimklAnime(libItem, type, item);
+            var simklExcluded = IsSimklAnime(_library, libItem, type, item);
             var nfo = anime ? ReadNfo(libItem.Path, type) : null;
             // A few Jellyfin 12 item DTOs omit SeriesId/IndexNumber for Season.
             // Use the matching authorized local item, never a guessed title.
@@ -1894,12 +1894,13 @@ public sealed class MisioFlixCatalogService
     // This check uses the stored paths/IDs, without reading thousands of NFO tags.
     // Unmapped paths are excluded from Simkl until an administrator classifies them.
     // Legacy installs without a saved map retain the old tag-based safety gate.
-    internal static bool IsSimklAnime(BaseItem local, string type, JsonElement item = default)
+    internal static bool IsSimklAnime(ILibraryManager library, BaseItem local, string type, JsonElement item = default)
     {
         var config = Plugin.Instance?.Configuration;
         if (config?.LibraryPathsConfigured == true)
         {
-            var role = ManagedLibraryRoleFromPath(local.Path);
+            var role = ManagedLibraryRoleForMembership(CollectionLibraryIds(library, local));
+            if (role.Length == 0) role = ManagedLibraryRoleFromPath(local.Path);
             return role != "simkl" && role != "other";
         }
         if (AnimeSource(local.Path).Length != 0) return true;
@@ -1923,7 +1924,7 @@ public sealed class MisioFlixCatalogService
     {
         var local = _library.GetItemById(id);
         if (local is null) throw new UnauthorizedAccessException("Pozycja nie istnieje w bibliotece");
-        if (IsSimklAnime(local, kind=="movies"?"Movie":"Series", data))
+        if (IsSimklAnime(_library, local, kind=="movies"?"Movie":"Series", data))
             return new SimklMediaTarget(false, kind, seasonNumber, new Dictionary<string,string>(), "");
         var source = Get(data, "ProviderIds");
         var ids = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
@@ -1983,7 +1984,7 @@ public sealed class MisioFlixCatalogService
             throw new ArgumentException("Wybrana pozycja nie jest anime");
 
         var local = _library.GetItemById(itemId);
-        var animeSource = local is null ? string.Empty : AnimeSource(local.Path);
+        var animeSource = local is null ? string.Empty : AnimeSourceForItem(_library, local);
         if (animeSource.Length == 0)
             throw new UnauthorizedAccessException("Pozycja jest poza biblioteką anime");
 
@@ -2006,7 +2007,7 @@ public sealed class MisioFlixCatalogService
                     Guid.TryParse(Text(Get(first, "Id")), out var firstId))
                 {
                     var firstLocal = _library.GetItemById(firstId);
-                    if (firstLocal is not null && AnimeSource(firstLocal.Path) == animeSource)
+                    if (firstLocal is not null && AnimeSourceForItem(_library, firstLocal).Length != 0)
                     {
                         var firstMalId = ReadNfo(firstLocal.Path, "Season", requireMalId: true)?.MalId;
                         if (firstMalId.HasValue && firstMalId.Value > 0) return firstMalId.Value;
@@ -2214,22 +2215,44 @@ public sealed class MisioFlixCatalogService
     // Catalog/search/proposals use the SAME stable Jellyfin library IDs as Home.
     // An administrator may rename/move a root while the saved path is stale.
     // Never infer audio from the path here; the language index does that separately.
-    private static string AnimeSourceForLibraryMembership(IEnumerable<string> libraryIds, string? mediaPath)
+    private static IEnumerable<string> CollectionLibraryIds(ILibraryManager library, BaseItem item)
+        => library.GetCollectionFolders(item).Select(folder => folder.Id.ToString("N"));
+
+    // All item-level callers use the same Jellyfin membership as catalog/search.
+    // Call only with an already authorized local item (or a native playback event).
+    private static string AnimeSourceForItem(ILibraryManager library, BaseItem item)
+        => AnimeSourceForLibraryMembership(CollectionLibraryIds(library, item), item.Path);
+
+    private static string ManagedLibraryRoleForMembership(IEnumerable<string> libraryIds)
     {
         var config = Plugin.Instance?.Configuration;
-        if (config?.LibraryPathsConfigured == true)
+        if (config?.LibraryPathsConfigured != true) return string.Empty;
+        var ids = libraryIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var roles = (config.LibraryPaths ?? new())
+            .Where(mapping => Guid.TryParse(mapping.LibraryId, out var id) && ids.Contains(id.ToString("N")))
+            .Select(mapping => mapping.Role)
+            .ToHashSet(StringComparer.Ordinal);
+        // If a title belongs to both anime and ordinary libraries, do not send it to Simkl.
+        if (roles.Contains("anime_both") || (roles.Contains("anime_pl") && roles.Contains("anime_eng")))
+            return "anime_both";
+        if (roles.Contains("anime_pl")) return "anime_pl";
+        if (roles.Contains("anime_eng")) return "anime_eng";
+        if (roles.Contains("simkl") || roles.Contains("other")) return "simkl";
+        return string.Empty;
+    }
+
+    private static string AnimeSourceForLibraryMembership(IEnumerable<string> libraryIds, string? mediaPath)
+    {
+        var role = ManagedLibraryRoleForMembership(libraryIds);
+        // A known library assignment wins over an obsolete or overlapping path.
+        return role switch
         {
-            var ids = libraryIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var roles = (config.LibraryPaths ?? new())
-                .Where(mapping => Guid.TryParse(mapping.LibraryId, out var id) && ids.Contains(id.ToString("N")))
-                .Select(mapping => mapping.Role)
-                .ToHashSet(StringComparer.Ordinal);
-            if (roles.Contains("anime_both") || (roles.Contains("anime_pl") && roles.Contains("anime_eng")))
-                return "both";
-            if (roles.Contains("anime_pl")) return "lektor";
-            if (roles.Contains("anime_eng")) return "original";
-        }
-        return AnimeSource(mediaPath);
+            "anime_pl" => "lektor",
+            "anime_eng" => "original",
+            "anime_both" => "both",
+            "simkl" => string.Empty,
+            _ => AnimeSource(mediaPath)
+        };
     }
 
     // Both PL+ENG archives are eligible for either anime search audio mode.

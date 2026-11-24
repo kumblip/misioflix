@@ -36,7 +36,7 @@ class DynamicLibraryPaths(unittest.TestCase):
         self.assertIn('let libraryPathsRevision',HOME)
         self.assertIn('libs[0].catalogRevision',HOME)
         self.assertIn('catalogCache.clear();catalogFetchedAt.clear()',HOME)
-        self.assertIn("catalogSchemaVersion = 'v8-anime-search-library-role'",HOME)
+        self.assertIn("catalogSchemaVersion = 'v9-anime-mal-library-role'",HOME)
 
     def test_no_media_write_or_library_changes(self):
         self.assertIn('never writes media files',CONFIG)

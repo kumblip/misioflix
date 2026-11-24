@@ -126,9 +126,9 @@ public sealed class MisioFlixSimklPlaybackHostedService : IHostedService
         // No Simkl playback / watched-toggle writes for NFO-tagged anime,
         // including anime outside AnimeRoot. The series-level tag applies to
         // every episode; movies use their own movie.nfo/Jellyfin tags.
-        return MisioFlixCatalogService.IsSimklAnime(mediaRoot,
+        return MisioFlixCatalogService.IsSimklAnime(_library, mediaRoot,
                    mediaRoot is Movie ? "Movie" : "Series") ||
-               MisioFlixCatalogService.IsSimklAnime(item,
+               MisioFlixCatalogService.IsSimklAnime(_library, item,
                    item is Movie ? "Movie" : "Season");
     }
     private Playing? Prepare(BaseItem item,bool requireRuntime=true)

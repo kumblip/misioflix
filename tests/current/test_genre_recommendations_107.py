@@ -39,7 +39,7 @@ class GenreRecommendations107(unittest.TestCase):
         self.assertIn('IncludeItemTypes=Movie,Series',SERVICE)
         self.assertIn('allowed.Contains(id)',SERVICE)
         self.assertIn('MakeHomeTile(item, category)',SERVICE)
-        self.assertIn('AnimeSource(media.Path)',SERVICE)
+        self.assertIn('AnimeSourceForItem(_library, media)',SERVICE)
         self.assertNotIn('MalClientSecret',CONTROLLER.split('HomeRecommendationGenres()',1)[1].split('HomeRecommendationOptions(',1)[0])
 
     def test_home_both_switches_and_existing_modes(self):

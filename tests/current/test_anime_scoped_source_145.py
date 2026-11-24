@@ -15,6 +15,6 @@ class ScopedAnimeSource145(unittest.TestCase):
         self.assertIn('if (includeAnimeFolders) inAnimeLibrary = true;', C)
         self.assertIn('var animeSource = scopedAnimeSource.Length != 0\n                    ? scopedAnimeSource\n                    : AnimeSourceForLibraryMembership(libraryIds, mediaPath);', C)
         self.assertIn('anime_source = animeSource', C)
-        self.assertIn('if (roles.Contains("anime_pl")) return "lektor";', S)
-        self.assertIn('if (roles.Contains("anime_eng")) return "original";', S)
+        self.assertIn('if (roles.Contains("anime_pl")) return "anime_pl";', S)
+        self.assertIn('if (roles.Contains("anime_eng")) return "anime_eng";', S)
         self.assertIn('if (roles.Contains("anime_both")', S)

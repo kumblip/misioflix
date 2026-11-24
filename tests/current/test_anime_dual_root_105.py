@@ -16,10 +16,10 @@ class DualAnimeSource105(unittest.TestCase):
         self.assertIn('IsBelowRoot(mediaPath, Path.GetFullPath(config.AnimeOriginalRoot))) return "original"',service)
         self.assertIn('AnimeSourceForLibraryMembership(libraryIds, mediaPath)',service)
         self.assertIn('anime_source = animeSource',service)
-        self.assertIn('var animeSource = local is null ? string.Empty : AnimeSource(local.Path)',service)
-        self.assertIn('AnimeSource(firstLocal.Path) == animeSource',service)
+        self.assertIn('var animeSource = local is null ? string.Empty : AnimeSourceForItem(_library, local)',service)
+        self.assertIn('AnimeSourceForItem(_library, firstLocal).Length != 0',service)
         self.assertIn('if (AnimeSource(local.Path).Length != 0) return true;',service)
-        self.assertIn('var anime = AnimeSource(libItem.Path).Length > 0;',service)
+        self.assertIn('var anime = AnimeSourceForItem(_library, libItem).Length > 0;',service)
 
     def test_search_filter_default_and_refresh(self):
         home=(SRC/'Web/home.js').read_text(encoding='utf-8')
@@ -29,7 +29,7 @@ class DualAnimeSource105(unittest.TestCase):
         self.assertIn("state.lektor?.value||'lektor'",home)
         self.assertIn("lektor.value='lektor'",home)
         self.assertIn('displaySearchCatalog(state,data,force && state.pool.length>0)',home)
-        self.assertIn("const catalogSchemaVersion = 'v8-anime-search-library-role'",home)
+        self.assertIn("const catalogSchemaVersion = 'v9-anime-mal-library-role'",home)
         self.assertIn('const previousScroll=preserveFilters?state.scroller.scrollTop:0',home)
         self.assertIn('state.genreStates.set(genre,mode)',home)
 
