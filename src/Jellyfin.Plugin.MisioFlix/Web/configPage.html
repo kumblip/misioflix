@@ -262,17 +262,20 @@
    const status=panel.querySelector('#mf-diag-status'), tbody=panel.querySelector('#mf-diag-metrics'), cache=panel.querySelector('#mf-diag-cache');
    const names={catalog:'Katalog',shelf:'Biblioteka',shelves:'Biblioteki (batch)',recommendationCards:'Karty propozycji',recommendationGenres:'Gatunki',resume:'Oglądaj dalej',libraries:'Lista bibliotek',collections:'Kolekcje',recommendations:'Przygotowanie propozycji',carouselRender:'Renderowanie karuzeli',filterChange:'Zmiana filtra',playHandoff:'Play / Resume'};
    const buttons=[...panel.querySelectorAll('button')];
-   let busy=false;
-   async function query(path='',method='GET'){
-    const api=window.ApiClient||window.ConnectionManager?.getApiClient?.();
-    const token=typeof api?.accessToken==='function'?api.accessToken():api?.accessToken;
-    if(!token)throw Error('Brak sesji administratora');
-    const response=await fetch('/MisioFlix/api/diagnostics'+path,{method,cache:'no-store',headers:{'X-Emby-Token':token}});
-    if(!response.ok)throw Error('HTTP '+response.status);
+   let active=null;
+   const getApi=()=>typeof ApiClient!=='undefined'&&ApiClient?ApiClient:window.ApiClient||window.ConnectionManager?.getApiClient?.();
+   const getToken=api=>typeof api?.accessToken==='function'?api.accessToken():api?.accessToken;
+   async function query(path,method,signal){
+    const api=getApi(), token=getToken(api);
+    if(!token)throw Error('Brak aktywnej sesji administratora. Zaloguj się ponownie.');
+    if(typeof api?.getUrl!=='function')throw Error('Klient Jellyfin nie jest jeszcze gotowy. Spróbuj ponownie.');
+    const url=api.getUrl('MisioFlix/api/diagnostics'+path);
+    const headers={Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-diagnostics", Version="0.4.142", Token="'+String(token).replace(/["\r\n]/g,'')+'"'};
+    const response=await fetch(url,{method,cache:'no-store',headers,signal});
+    if(!response.ok)throw Error('HTTP '+response.status+(response.status===401||response.status===403?' — wymagane uprawnienia administratora':response.status===404?' — sprawdź wersję wtyczki i restart serwera':''));
     const result=await response.json();
-    const current=window.ApiClient||window.ConnectionManager?.getApiClient?.();
-    const currentToken=typeof current?.accessToken==='function'?current.accessToken():current?.accessToken;
-    if(current!==api||currentToken!==token)throw Error('Zmieniono sesję Jellyfin');
+    if(getApi()!==api||getToken(api)!==token)throw Error('Zmieniono sesję Jellyfin');
+    if(typeof result?.enabled!=='boolean'||!Array.isArray(result.metrics))throw Error('Nieprawidłowa odpowiedź API diagnostyki');
     return result;
    }
    function paint(server){
@@ -292,22 +295,38 @@
     return {schemaVersion:1,server,browser};
    }
    async function run(action){
-    if(busy)return;busy=true;buttons.forEach(b=>b.disabled=true);
+    // A passive refresh must not swallow an explicit click. Cancel it and
+    // ignore its stale response; never overlap two state-changing requests.
+    if(active){
+     if(active.action!=='refresh'||action==='refresh')return;
+     active.controller.abort();
+    }
+    const controller=new AbortController(), request={action,controller};
+    active=request;
+    const mutating=action==='on'||action==='off'||action==='reset';
+    buttons.forEach(b=>b.disabled=action!=='refresh');
+    status.textContent=({on:'Włączanie diagnostyki…',off:'Wyłączanie diagnostyki…',reset:'Zerowanie pomiarów…',export:'Przygotowanie eksportu…',refresh:'Pobieranie stanu diagnostyki…'})[action];
+    let timedOut=false;
+    const timeout=setTimeout(()=>{timedOut=true;controller.abort();},12000);
     try{
      const path=action==='on'?'/enable?enabled=true':action==='off'?'/enable?enabled=false':action==='reset'?'/reset':'';
-     const server=await query(path,path?'POST':'GET');
+     const server=await query(path,mutating?'POST':'GET',controller.signal);
+     if(active!==request)return;
      const session=window.MisioFlixDiagnosticSession;
-     if(action==='on'||action==='off')session?.setEnabled(action==='on');
+     if(action==='on'||action==='off')session?.setEnabled(server.enabled);
      if(action==='reset')session?.reset();
      const report=paint(server);
+     if(action==='on'&&!server.enabled)status.textContent+=' · Serwer nie potwierdził włączenia.';
+     if(action==='off'&&server.enabled)status.textContent+=' · Serwer nie potwierdził wyłączenia.';
+     if(action==='on'&&server.enabled&&!report.browser?.enabled)status.textContent+=' · Pomiary tej karty nieaktywne: odśwież Jellyfin Web i włącz ponownie.';
      if(action==='export'){
       const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));
       const link=document.createElement('a');link.href=url;link.download='MisioFlix-diagnostics.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
      }
-    }catch(e){tbody.replaceChildren();cache.textContent='';status.textContent='Diagnostyka niedostępna: '+e.message;}
-    finally{busy=false;buttons.forEach(b=>b.disabled=false);}
+    }catch(e){if(active===request){tbody.replaceChildren();cache.textContent='';status.textContent=timedOut?'Brak odpowiedzi po 12 s. Odśwież wyniki, aby sprawdzić stan serwera.':'Diagnostyka niedostępna: '+e.message;}}
+    finally{clearTimeout(timeout);if(active===request){active=null;buttons.forEach(b=>b.disabled=false);}}
    }
-   for(const action of ['on','off','refresh','reset','export'])panel.querySelector('#mf-diag-'+action).addEventListener('click',()=>void run(action));
+   for(const action of ['on','off','refresh','reset','export'])panel.querySelector('#mf-diag-'+action).addEventListener('click',e=>{e.preventDefault();void run(action);});
    panel.addEventListener('toggle',()=>{if(panel.open)void run('refresh');});
    return {activate(){if(panel.open)void run('refresh');}};
   })();

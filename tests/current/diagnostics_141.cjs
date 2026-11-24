@@ -24,3 +24,10 @@ test('browser session disabled on user/server change and old timers discarded', 
   const late=d.start('catalog');user='b';assert.equal(d.isEnabled(),false);d.setEnabled(true);late();assert.equal(d.snapshot().metrics.length,0);
   server='y';assert.equal(d.isEnabled(),false);d.setEnabled(true);token='';assert.equal(d.isEnabled(),false);
 });
+
+test('session supports Jellyfin client with current server fallback',()=>{
+ const fs=require('node:fs'),vm=require('node:vm');
+ const src=fs.readFileSync(require.resolve('../../src/Jellyfin.Plugin.MisioFlix/Web/diagnostics.js'),'utf8');
+ let sid='server-a';const ctx={ApiClient:{getCurrentUserId:()=> 'user',accessToken:()=> 'token'},ConnectionManager:{getCurrentServer:()=>({Id:sid})},performance:{now:()=>0},addEventListener(){}};ctx.window=ctx;vm.createContext(ctx);vm.runInContext(src,ctx);
+ const d=ctx.MisioFlixDiagnosticSession;d.setEnabled(true);assert.equal(d.isEnabled(),true);sid='server-b';assert.equal(d.isEnabled(),false);
+});

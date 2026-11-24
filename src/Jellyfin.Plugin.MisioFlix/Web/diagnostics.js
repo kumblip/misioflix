@@ -1,4 +1,4 @@
-/* MisioFlix 0.4.141.0 candidate: local diagnostics core, no automatic instrumentation. */
+/* MisioFlix 0.4.142.0 candidate: local diagnostics core, no automatic instrumentation. */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.MisioFlixDiagnostics = factory();
@@ -51,9 +51,9 @@ if (typeof window !== 'undefined' && window.MisioFlixDiagnostics && !window.Misi
     let owner = '';
     function scope() {
       try {
-        const api = window.ApiClient || window.ConnectionManager?.getApiClient?.();
+        const api = typeof ApiClient !== 'undefined' && ApiClient ? ApiClient : window.ApiClient || window.ConnectionManager?.getApiClient?.();
         const uid = api?.getCurrentUserId?.();
-        const sid = typeof api?.serverId === 'function' ? api.serverId() : api?.serverId;
+        const sid = (typeof api?.serverId === 'function' ? api.serverId() : api?.serverId) || window.ConnectionManager?.getCurrentServer?.()?.Id || (typeof api?.serverAddress === 'function' ? api.serverAddress() : api?.serverAddress);
         const token = typeof api?.accessToken === 'function' ? api.accessToken() : api?.accessToken;
         return uid && sid && token ? JSON.stringify([sid, uid]) : '';
       } catch { return ''; }

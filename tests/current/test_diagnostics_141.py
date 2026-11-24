@@ -26,4 +26,6 @@ class Diagnostics141(unittest.TestCase):
         self.assertIn('id="mf-diagnostics-panel"',code)
         self.assertIn('if(panel.open)void run(\'refresh\')',code)
         self.assertIn('MisioFlix-diagnostics.json',code)
-        self.assertIn("headers:{'X-Emby-Token':token}",code)
+        self.assertIn("api.getUrl('MisioFlix/api/diagnostics'+path)",code)
+        self.assertIn('DeviceId="misioflix-diagnostics"',code)
+        self.assertIn('active.controller.abort()',code)
