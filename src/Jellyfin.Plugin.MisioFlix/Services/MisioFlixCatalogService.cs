@@ -2345,17 +2345,19 @@ public sealed class MisioFlixCatalogService
     private static string WatchStatus(JsonElement item)
     {
         var data = Get(item, "UserData");
+        var played = Get(data, "Played").ValueKind == JsonValueKind.True;
         var total = PositiveInt(Get(item, "RecursiveItemCount"));
-        // Jellyfin's per-series Played flag may be inconsistent; when episode counts
-        // are available, prefer the actual watched/unwatched episode aggregation.
+        // Jellyfin's per-series Played flag may be inconsistent, but a completed
+        // item should never fall into "started" only because auxiliary counts or
+        // resume metadata remain populated. Prefer an explicit Played flag first.
+        if (played) return "completed";
         if (total.HasValue && Get(data, "UnplayedItemCount").ValueKind == JsonValueKind.Number)
         {
             var count = Number(Get(data, "UnplayedItemCount"));
-            if (count <= 0) return "watched";
+            if (count <= 0) return "completed";
             if (count < total.Value) return "started";
             return "unwatched";
         }
-        if (Get(data, "Played").ValueKind == JsonValueKind.True) return "watched";
         if (Progress(item) > 0 || Number(Get(data, "PlayedPercentage")) > 0
             || !string.IsNullOrWhiteSpace(Text(Get(data, "LastPlayedDate")))) return "started";
         return "unwatched";

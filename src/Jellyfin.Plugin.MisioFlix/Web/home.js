@@ -2073,6 +2073,10 @@
     return recommendationSubtitlesMode==='pl' ? item?.pl_subtitles===true : item?.en_subtitles===true;
   }
   // The watch filter is separate from search and from MAL/SIMKL writes.
+  function normalizeRecommendationWatchStatus(status){
+    const value=String(status||'').toLowerCase();
+    return value==='watched'?'completed':value;
+  }
   function recommendationWatchToggle(){
     const control=own('div','mf-home-libraries-control mf-home-watch-control');
     const button=own('button','mf-home-libraries-toggle mf-home-watch-toggle');
@@ -2080,19 +2084,25 @@
     const track=own('span','mf-home-libraries-track');track.setAttribute('aria-hidden','true');
     const label=own('span','mf-home-libraries-label');
     append(button,track,label);
-    const titles={all:'Wszystkie',unwatched:'Nieobejrzane',started:'Rozpoczęte'};
+    const titles={
+      all:'📹 Wszystkie',
+      unwatched:'Stan: Nierozpoczęte',
+      started:'Stan: Rozpoczęte',
+      completed:'Stan: Zakończone'
+    };
     function showState(){
       const mode=recommendationWatchMode;
       button.dataset.mfWatchMode=mode;
       button.setAttribute('aria-label','Status oglądania: '+titles[mode]+'. Kliknij, aby zmienić filtr.');
       button.setAttribute('aria-pressed',String(mode!=='all'));
-      button.title='Status oglądania w propozycjach: '+titles[mode];
+      button.title='Status oglądania w propozycjach: '+titles[mode]+'. Kolejność: wszystkie → nierozpoczęte → rozpoczęte → zakończone.';
       label.textContent=titles[mode];
     }
     showState();
     button.addEventListener('click',()=>{
       const previous=recommendationWatchMode;
-      recommendationWatchMode=previous==='all'?'unwatched':previous==='unwatched'?'started':'all';
+      recommendationWatchMode=previous==='all'?'unwatched':
+        previous==='unwatched'?'started':previous==='started'?'completed':'all';
       showState();
       if(recommendationWatchMode!=='all' && (previous==='all'||!recommendationWatchSnapshot))
         void refreshRecommendationWatchStatuses();
@@ -2101,7 +2111,9 @@
     control.appendChild(button);return control;
   }
   function recommendationHasRequestedWatchStatus(item){
-    return recommendationWatchMode==='all' || recommendationWatchSnapshot?.get(compactId(item.id))===recommendationWatchMode;
+    if(recommendationWatchMode==='all')return true;
+    const status=normalizeRecommendationWatchStatus(recommendationWatchSnapshot?.get(compactId(item.id)));
+    return status===recommendationWatchMode;
   }
   function resetRecommendationWatchStatuses(){
     recommendationWatchSnapshot=null;recommendationWatchPending=null;recommendationWatchError=false;
@@ -2119,7 +2131,7 @@
       if(!isCurrent(serial)||recommendationWatchPending!==pending)return;
       if(!data||typeof data!=='object'||Array.isArray(data))throw Error('Nieprawidłowe statusy');
       recommendationWatchSnapshot=new Map(Object.entries(data).filter(([id,status])=>
-        validId(id)&&['watched','unwatched','started'].includes(status)).map(([id,status])=>[compactId(id),status]));
+        validId(id)&&['watched','unwatched','started','completed'].includes(normalizeRecommendationWatchStatus(status))).map(([id,status])=>[compactId(id),normalizeRecommendationWatchStatus(status)]));
     }catch(error){
       if(!isCurrent(serial)||recommendationWatchPending!==pending)return;
       recommendationWatchError=true;
@@ -2749,7 +2761,7 @@
     }
     if(homeRoot && homeRoot.isConnected && homeHost===host){syncCollectionsPage();maybeOpenLinkedGenre();return;}
     homeRoot?.remove();
-    window.MisioFlixDiagnosticSession?.homeMounted?.('0.4.143.0');
+    window.MisioFlixDiagnosticSession?.homeMounted?.('0.4.151.0');
     mount(host);
   }
   let queued=false;

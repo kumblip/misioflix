@@ -2680,6 +2680,15 @@ html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="started"]{
   --mf-home-switch-track:#dc9335;
 }
 
+/* PURPLE: zakończone propozycje. */
+html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="completed"]{
+  --mf-home-switch-bg:rgba(116,76,166,.36);
+  --mf-home-switch-hover:rgba(132,88,189,.50);
+  --mf-home-switch-border:#b084f5;
+  --mf-home-switch-ink:#f6efff;
+  --mf-home-switch-track:#9f6df0;
+}
+
 /* Overrides of the historical, state-specific styles above. Keep sizing,
    labels, icons, accessibility, click handling and animation intact. */
 html.misioflix-skin .mf-home-switches .mf-home-libraries-toggle{
@@ -2715,13 +2724,15 @@ html.misioflix-skin .mf-home-switches .mf-home-subtitles-toggle[data-mf-subtitle
   }
 }
 
-/* v0.4.150: proposal watch status uses the existing 3-position palette. */
-html.misioflix-skin .mf-home-watch-toggle .mf-home-libraries-track{width:48px}
-html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="all"] .mf-home-libraries-track::after{transform:translateX(28px)}
+/* v0.4.151: proposal watch status now has four positions and full-text labels. */
+html.misioflix-skin .mf-home-watch-toggle .mf-home-libraries-track{width:64px}
+html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="all"] .mf-home-libraries-track::after{transform:translateX(42px)}
+html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="completed"] .mf-home-libraries-track::after{transform:translateX(28px)}
 html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="unwatched"] .mf-home-libraries-track::after{transform:translateX(14px)}
 html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="started"] .mf-home-libraries-track::after{transform:translateX(0)}
 @media(max-width:560px){
-  html.misioflix-skin .mf-home-switches .mf-home-watch-toggle .mf-home-libraries-track{width:44px}
-  html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="all"] .mf-home-libraries-track::after{transform:translateX(26px)}
-  html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="unwatched"] .mf-home-libraries-track::after{transform:translateX(13px)}
+  html.misioflix-skin .mf-home-switches .mf-home-watch-toggle .mf-home-libraries-track{width:56px}
+  html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="all"] .mf-home-libraries-track::after{transform:translateX(34px)}
+  html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="completed"] .mf-home-libraries-track::after{transform:translateX(22px)}
+  html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="unwatched"] .mf-home-libraries-track::after{transform:translateX(11px)}
 }
