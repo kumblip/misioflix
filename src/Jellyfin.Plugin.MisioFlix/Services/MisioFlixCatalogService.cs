@@ -2192,24 +2192,41 @@ public sealed class MisioFlixCatalogService
         var config = Plugin.Instance?.Configuration;
         if (config?.LibraryPathsConfigured != true || string.IsNullOrWhiteSpace(mediaPath))
             return string.Empty;
+        // Saved Jellyfin roots are the actual library locations, independent of
+        // manually overridden/old MisioFlix paths. Match the most specific root;
+        // on equal roots prefer the real Jellyfin location over a custom alias.
         var bestLength = -1;
-        var matchedRole = string.Empty;
+        var bestLive = false;
+        var roles = new HashSet<string>(StringComparer.Ordinal);
         foreach (var entry in config.LibraryPaths ?? new())
         {
-            foreach (var path in entry.Paths ?? new())
+            void Consider(string? path, bool live)
             {
-                if (string.IsNullOrWhiteSpace(path)) continue;
+                if (string.IsNullOrWhiteSpace(path)) return;
                 try
                 {
-                    var fullRoot = Path.GetFullPath(path);
-                    if (fullRoot.Length <= bestLength || !IsBelowRoot(mediaPath, fullRoot)) continue;
-                    bestLength = fullRoot.Length;
-                    matchedRole = entry.Role;
+                    var fullRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+                    if (!IsBelowRoot(mediaPath, fullRoot) || fullRoot.Length < bestLength ||
+                        (fullRoot.Length == bestLength && bestLive && !live)) return;
+                    if (fullRoot.Length > bestLength || (live && !bestLive))
+                    {
+                        bestLength = fullRoot.Length;
+                        bestLive = live;
+                        roles.Clear();
+                    }
+                    roles.Add(entry.Role);
                 }
                 catch (ArgumentException) { /* Ignore invalid administrator paths. */ }
             }
+            foreach (var path in entry.JellyfinPaths ?? new()) Consider(path, true);
+            foreach (var path in entry.Paths ?? new()) Consider(path, false);
         }
-        return matchedRole;
+        // Conflicting equal roots must not silently route a title to a provider.
+        if (roles.Contains("simkl") || roles.Contains("other"))
+            return roles.All(role => role is "simkl" or "other") ? "simkl" : string.Empty;
+        if (roles.Contains("anime_both") || (roles.Contains("anime_pl") && roles.Contains("anime_eng")))
+            return "anime_both";
+        return roles.Count == 1 ? roles.First() : string.Empty;
     }
 
     // Catalog/search/proposals use the SAME stable Jellyfin library IDs as Home.

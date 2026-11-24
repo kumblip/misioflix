@@ -117,6 +117,8 @@
     <p><strong>Rola całej biblioteki</strong> — wybierz Simkl (filmy/seriale), Anime PL, Anime ENG albo Anime PL+ENG. Wszystkie tytuły z biblioteki anime korzystają z NFO + MAL; nie trzeba odczytywać tagu Anime osobno przy synchronizacji. Biblioteka PL+ENG będzie widoczna przy obu filtrach języka w wyszukiwarce anime.</p>
     </details>
     <button type="button" class="raised emby-button" id="mf-library-reload">Odśwież listę bibliotek z Jellyfina</button>
+    <button type="button" class="raised button-submit emby-button" id="mf-library-save-top">Zapisz ścieżki i role w MisioFlixie</button>
+    <p id="mf-library-save-state" role="status" aria-live="polite">Sprawdzanie zapisanych ról…</p>
     <div id="mf-library-list" aria-label="Wykryte biblioteki"></div>
     <button type="button" class="raised button-submit emby-button" id="mf-library-save">Zapisz ścieżki i role w MisioFlixie</button>
     <p id="mf-library-status" role="status" aria-live="polite">Odczytywanie bibliotek…</p>
@@ -1298,6 +1300,11 @@
    const status=panel.querySelector('#mf-library-status');
    const reload=panel.querySelector('#mf-library-reload');
    const save=panel.querySelector('#mf-library-save');
+   const saveTop=panel.querySelector('#mf-library-save-top');
+   const saveState=panel.querySelector('#mf-library-save-state');
+   function setSaveDisabled(value){save.disabled=value;saveTop.disabled=value;}
+   function setStatus(text){status.textContent=text;saveState.textContent=text;}
+   function markDirty(row, marker){row.confirmed=false;marker.textContent='Rola/ścieżki: niezapisane zmiany';setStatus('Niezapisane zmiany — kliknij Zapisz ścieżki i role.');}
    const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
    const equalPaths=(a,b)=>JSON.stringify(a||[])===JSON.stringify(b||[]);
    const cleanPaths=value=>String(value||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
@@ -1339,37 +1346,39 @@
      title.append(name,right);box.append(title);
      const meta=el('div','ID: '+row.id+' | Typ Jellyfin: '+row.kind);
      meta.className='mf-lib-meta';box.append(meta);
+     const marker=el('div',row.confirmed?'Rola i ścieżki: zapisane na serwerze':'Rola i ścieżki: propozycja / niezapisane zmiany');
+     marker.className='mf-lib-meta';box.append(marker);
      const fields=el('div');fields.className='mf-lib-fields';
      const roleLabel=el('label','Typ w MisioFlix');
      const role=el('select');role.className='emby-select';
      for(const [value,caption] of [['simkl','Simkl — filmy i seriale'],['anime_pl','Anime PL — NFO + MAL'],['anime_eng','Anime ENG — NFO + MAL'],['anime_both','Anime PL+ENG — NFO + MAL']]){
       const option=el('option',caption);option.value=value;role.append(option);
      }
-     role.value=row.role;role.addEventListener('change',()=>{row.role=role.value;right.textContent=row.role.replace('anime_','Anime ').toUpperCase()+' · '+(row.paths[0]||'brak ścieżki');});
+     role.value=row.role;role.addEventListener('change',()=>{row.role=role.value;markDirty(row,marker);right.textContent=row.role.replace('anime_','Anime ').toUpperCase()+' · '+(row.paths[0]||'brak ścieżki');});
      roleLabel.append(role);fields.append(roleLabel);
      const audioLabel=el('label','Jedna ścieżka bez języka — domyślnie');
      const audio=el('select');audio.className='emby-select';
      for(const [value,caption] of [['auto','Wykryj z nazwy biblioteki'],['pl','Polski'],['en','Angielski']]){
       const option=el('option',caption);option.value=value;audio.append(option);
      }
-     audio.value=row.audio;audio.addEventListener('change',()=>{row.audio=audio.value;});
+     audio.value=row.audio;audio.addEventListener('change',()=>{row.audio=audio.value;markDirty(row,marker);});
      audioLabel.append(audio);fields.append(audioLabel);box.append(fields);
      const pathLabel=el('label','Ścieżki używane przez MisioFlix (po jednej w wierszu)');
      pathLabel.className='mf-lib-path-label';
      const input=el('textarea');input.className='emby-input';input.value=row.paths.join('\n');
-     input.addEventListener('input',()=>{row.paths=cleanPaths(input.value);right.textContent=row.role.replace('anime_','Anime ').toUpperCase()+' · '+(row.paths[0]||'brak ścieżki');right.title=row.paths.join(' | ');});
+     input.addEventListener('input',()=>{row.paths=cleanPaths(input.value);markDirty(row,marker);right.textContent=row.role.replace('anime_','Anime ').toUpperCase()+' · '+(row.paths[0]||'brak ścieżki');right.title=row.paths.join(' | ');});
      pathLabel.append(input);box.append(pathLabel);
      const expected=el('div','Aktualne ścieżki Jellyfina: '+(row.livePaths.length?row.livePaths.join(' | '):'brak'));
      expected.className='mf-lib-meta';box.append(expected);
      const restore=el('button','Użyj ścieżek Jellyfina');restore.type='button';restore.className='emby-button raised';
-     restore.addEventListener('click',()=>{row.paths=[...row.livePaths];input.value=row.paths.join('\n');right.textContent=row.role.replace('anime_','Anime ').toUpperCase()+' · '+(row.paths[0]||'brak ścieżki');right.title=row.paths.join(' | ');});
+     restore.addEventListener('click',()=>{row.paths=[...row.livePaths];markDirty(row,marker);input.value=row.paths.join('\n');right.textContent=row.role.replace('anime_','Anime ').toUpperCase()+' · '+(row.paths[0]||'brak ścieżki');right.title=row.paths.join(' | ');});
      box.append(restore);list.append(box);
     }
    }
    async function load(){
     if(busy)return;
-    busy=true;reload.disabled=true;save.disabled=true;
-    status.textContent='Odczytywanie wszystkich bibliotek Jellyfina…';
+    busy=true;reload.disabled=true;setSaveDisabled(true);
+    setStatus('Odczytywanie wszystkich bibliotek Jellyfina…');
     try{
      const [config,libraries]=await Promise.all([ApiClient.getPluginConfiguration(pluginId),discover()]);
      // Save an explicitly customized path until the admin uses "Użyj ścieżek Jellyfina".
@@ -1383,15 +1392,15 @@
       const paths=saved&&savedPaths.length&&!equalPaths(savedPaths,oldLivePaths)?savedPaths:livePaths;
       const name=String(lib.Name||id);
       return {id,name,kind:String(lib.CollectionType||'mixed'),livePaths,
-        paths:[...paths],role:String(saved?.Role==='other'?'simkl':saved?.Role||guessRole(name)),
+        paths:[...paths],confirmed:config.LibraryPathsConfigured===true&&Boolean(saved)&&equalPaths(paths,savedPaths)&&equalPaths(livePaths,oldLivePaths),role:String(saved?.Role==='other'?'simkl':saved?.Role||guessRole(name)),
         audio:String(saved?.AudioLanguage||guessAudio(name))};
      }).sort((a,b)=>a.name.localeCompare(b.name,'pl'));
      loaded=true;render();
-     status.textContent=(config.LibraryPathsConfigured
-      ? 'Odczytano '+rows.length+' bibliotek. Role i ścieżki są zapisane; po zmianach ponownie kliknij „Zapisz ścieżki i role”.'
-      : 'UWAGA: Odczytano '+rows.length+' bibliotek, ale ich role i ścieżki są na razie tylko propozycjami! Kliknij „Zapisz ścieżki i role”, aby MisioFlix przestał korzystać ze starych ścieżek anime.');
-    }catch(e){loaded=false;status.textContent='Błąd: '+e.message+'. Nic nie zapisano.';}
-    finally{busy=false;reload.disabled=false;save.disabled=!loaded;}
+     setStatus(rows.every(row=>row.confirmed)&&config.LibraryPathsConfigured===true
+      ? 'Odczytano '+rows.length+' bibliotek. Role i ścieżki są zapisane na serwerze.'
+      : 'UWAGA: Są niezapisane role lub zmienione ścieżki. Kliknij „Zapisz ścieżki i role”, aby aktywować aktualne przypisania.');
+    }catch(e){loaded=false;setStatus('Błąd: '+e.message+'. Nic nie zapisano.');}
+    finally{busy=false;reload.disabled=false;setSaveDisabled(!loaded);}
    }
    async function store(){
     if(!loaded||busy)return;
@@ -1400,15 +1409,15 @@
      if(row.paths.length>16)problems.push(row.name+': maks. 16 ścieżek');
      if(row.paths.some(p=>!validRoot(p)))problems.push(row.name+': nieprawidłowa ścieżka kontenera');
      if(!['simkl','anime_pl','anime_eng','anime_both'].includes(row.role))problems.push(row.name+': nieznana rola');
-     if(!row.paths.length)problems.push(row.name+': przypisanie wymaga ścieżki');
+     // Virtual libraries may have no physical roots. Their role is still keyed by ID.
      for(const path of row.paths){
       if(assigned.has(path)&&assigned.get(path)!==row.role)problems.push('Niejednoznaczna ścieżka '+path);
       assigned.set(path,row.role);
      }
     }
-    if(problems.length){status.textContent='Nie zapisano: '+problems.join('; ');return;}
-    busy=true;save.disabled=true;reload.disabled=true;
-    status.textContent='Zapisywanie ustawień MisioFlixa…';
+    if(problems.length){setStatus('Nie zapisano: '+problems.join('; '));return;}
+    busy=true;setSaveDisabled(true);reload.disabled=true;
+    setStatus('Zapisywanie ustawień MisioFlixa…');
     try{
      const config=await ApiClient.getPluginConfiguration(pluginId);
      // Do not overwrite independent MAL, Simkl, update or recommendation settings.
@@ -1422,12 +1431,22 @@
      config.AnimeRoot=pl?pl.paths[0]:'';
      config.AnimeOriginalRoot=en?en.paths[0]:'';
      await ApiClient.updatePluginConfiguration(pluginId,config);
-     status.textContent='Zapisano '+rows.length+' bibliotek. Odśwież MisioFlix; indeks wyszukiwarki dostanie nową rewizję. NFO anime nadal dostarczają tytułów i gatunków.';
-    }catch(e){status.textContent='Błąd zapisu: '+e.message;}
-    finally{busy=false;save.disabled=false;reload.disabled=false;}
+     const verified=await ApiClient.getPluginConfiguration(pluginId);
+     const savedMap=new Map((verified.LibraryPaths||[]).map(row=>[normalizedId(row.LibraryId),row]));
+     for(const row of rows){
+      const actual=savedMap.get(row.id);
+      row.confirmed=verified.LibraryPathsConfigured===true&&actual?.Role===row.role&&
+       actual?.AudioLanguage===row.audio&&equalPaths(actual?.Paths,row.paths)&&equalPaths(actual?.JellyfinPaths,row.livePaths);
+     }
+     render();
+     if(!rows.every(row=>row.confirmed))throw Error('Serwer nie potwierdził wszystkich przypisań bibliotek.');
+     setStatus('Zapisano i potwierdzono '+rows.length+' bibliotek na serwerze. Odśwież MisioFlix.');
+    }catch(e){setStatus('Błąd zapisu lub potwierdzenia: '+e.message);}
+    finally{busy=false;setSaveDisabled(false);reload.disabled=false;}
    }
    reload.addEventListener('click',()=>{void load();});
    save.addEventListener('click',()=>{void store();});
+   saveTop.addEventListener('click',()=>{void store();});
    return {activate(){void load();}};
   })();
 

@@ -42,7 +42,7 @@ class FullCatalog144(unittest.TestCase):
         self.assertLess(CATALOG.index('!seen.Add(guid)'), CATALOG.index('_library.GetItemById(guid)'))
 
     def test_old_truncated_cache_is_invalidated_with_identity_scope_unchanged(self):
-        self.assertIn("catalogSchemaVersion = 'v9-anime-mal-library-role'", HOME)
+        self.assertIn("catalogSchemaVersion = 'v10-confirmed-library-roles'", HOME)
         self.assertIn("compactId(serverId) + ':' + compactId(userId) + ':' + catalogSchemaVersion + ':' + libraryPathsRevision", HOME)
         self.assertIn("capturedToken===currentToken() && fullKey===catalogFullKey(libraryId)", HOME)
         self.assertIn('const data=await getCatalogForSearch()', HOME)

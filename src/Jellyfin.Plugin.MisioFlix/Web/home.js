@@ -58,7 +58,7 @@
   const SEARCH_CATALOG_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
   const SEARCH_CATALOG_DB = 'misioflix-search-catalog-v1';
   let catalogDatabasePromise = null;
-  const catalogSchemaVersion = 'v9-anime-mal-library-role'; // Bust stale classifications and audio flags.
+  const catalogSchemaVersion = 'v10-confirmed-library-roles'; // Bust stale classifications and audio flags.
   let libraryPathsRevision = ''; // Reported by the authenticated server on /home/libraries.
   function catalogScope(){
     const client = window.ApiClient || window.ConnectionManager?.getApiClient?.();

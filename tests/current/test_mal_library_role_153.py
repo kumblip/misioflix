@@ -37,7 +37,7 @@ class MalLibraryRole153(unittest.TestCase):
             section=S.split(method+'(',1)[1].split(end+'(',1)[0]
             self.assertIn(f'AnimeSourceForItem(_library, {item})',section)
         self.assertIn('var anime = AnimeSourceForItem(_library, libItem).Length > 0;',S)
-        self.assertIn('v9-anime-mal-library-role',W)
+        self.assertIn('v10-confirmed-library-roles',W)
 
     def test_simkl_guard_uses_same_roles_and_excludes_unknown(self):
         guard=S.split('internal static bool IsSimklAnime(',1)[1].split('private SimklMediaTarget MakeSimklTarget',1)[0]
