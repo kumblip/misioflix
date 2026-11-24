@@ -90,11 +90,17 @@ public sealed class MisioFlixCatalogService
         var animeLibraryIds = allowed.Where(view => view.category == "anime")
             .Select(view => view.id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var includeAnimeFolders = false;
+        var scopedAnimeSource = string.Empty;
         if (libraryId.HasValue)
         {
             var selected = allowed.FirstOrDefault(view => view.id.Equals(libraryId.Value.ToString("N"), StringComparison.OrdinalIgnoreCase));
             if (selected is null) throw new UnauthorizedAccessException("Requested library is not accessible");
             includeAnimeFolders = selected.category == "anime";
+            // The authenticated ParentId scope is itself authoritative. A Season
+            // or mixed Folder can have incomplete/ambiguous CollectionFolder membership.
+            // A configured PL/ENG role for this exact view takes precedence over it.
+            if (includeAnimeFolders)
+                scopedAnimeSource = AnimeSourceForLibraryMembership(new[] { selected.id }, null);
         }
         var result = new List<CatalogItem>();
         const int pageSize = 400;
@@ -139,7 +145,10 @@ public sealed class MisioFlixCatalogService
                 // The authoritative membership is the same view ID used by Home.
                 // A library rename/move must not reclassify anime as Simkl media.
                 var inAnimeLibrary = libraryIds.Any(animeLibraryIds.Contains);
-                var animeSource = AnimeSourceForLibraryMembership(libraryIds, mediaPath);
+                if (includeAnimeFolders) inAnimeLibrary = true;
+                var animeSource = scopedAnimeSource.Length != 0
+                    ? scopedAnimeSource
+                    : AnimeSourceForLibraryMembership(libraryIds, mediaPath);
                 var isAnime = inAnimeLibrary || animeSource.Length != 0;
                 if (inAnimeLibrary && animeSource.Length == 0)
                     animeSource = "both"; // Anime is known, audio type is not: never guess PL.

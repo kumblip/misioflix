@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.144: pełny katalog bez limitu i sprawniejsze przygotowanie propozycji",
+  "description": "MisioFlix 0.4.145: poprawka filtrowania języka anime w katalogach bibliotek",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.144.0",
+  "version": "0.4.145.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

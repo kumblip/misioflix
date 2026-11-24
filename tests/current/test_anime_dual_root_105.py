@@ -14,7 +14,7 @@ class DualAnimeSource105(unittest.TestCase):
         self.assertIn('AnimeOriginalRoot { get; set; } = "/media/raid/anime"',cfg)
         self.assertIn('IsBelowRoot(mediaPath, Path.GetFullPath(config.AnimeRoot))) return "lektor"',service)
         self.assertIn('IsBelowRoot(mediaPath, Path.GetFullPath(config.AnimeOriginalRoot))) return "original"',service)
-        self.assertIn('var animeSource = AnimeSourceForLibraryMembership(libraryIds, mediaPath)',service)
+        self.assertIn('AnimeSourceForLibraryMembership(libraryIds, mediaPath)',service)
         self.assertIn('anime_source = animeSource',service)
         self.assertIn('var animeSource = local is null ? string.Empty : AnimeSource(local.Path)',service)
         self.assertIn('AnimeSource(firstLocal.Path) == animeSource',service)
@@ -29,7 +29,7 @@ class DualAnimeSource105(unittest.TestCase):
         self.assertIn("state.lektor?.value||'lektor'",home)
         self.assertIn("lektor.value='lektor'",home)
         self.assertIn('displaySearchCatalog(state,data,force && state.pool.length>0)',home)
-        self.assertIn("const catalogSchemaVersion = 'v6-full-catalog-library-id-anime-audio-confidence'",home)
+        self.assertIn("const catalogSchemaVersion = 'v7-full-catalog-scoped-anime-source'",home)
         self.assertIn('const previousScroll=preserveFilters?state.scroller.scrollTop:0',home)
         self.assertIn('state.genreStates.set(genre,mode)',home)
 
