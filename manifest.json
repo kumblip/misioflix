@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/kumblip/misioflix/main/src/Jellyfin.Plugin.MisioFlix/Web/assets/mark.png",
     "versions": [
       {
+        "version": "0.4.146.0",
+        "changelog": "MisioFlix 0.4.146.0 dla Jellyfin 12.4.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://github.com/kumblip/misioflix/releases/download/v0.4.146.0/MisioFlix_0.4.146.0_JF12.4.zip",
+        "checksum": "ec8725a16bffa14b847b2b8a037e1640",
+        "timestamp": "2026-11-24T13:06:04Z"
+      },
+      {
         "version": "0.4.145.0",
         "changelog": "MisioFlix 0.4.145.0 dla Jellyfin 12.4.",
         "targetAbi": "12.4.0.0",
