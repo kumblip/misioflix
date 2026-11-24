@@ -42,6 +42,7 @@ public sealed class MisioFlixController : ControllerBase
         var (resource, contentType) = filename switch
         {
             "client.js" => ("Web.client.js", "text/javascript; charset=utf-8"),
+            "diagnostics.js" => ("Web.diagnostics.js", "text/javascript; charset=utf-8"),
             "home.js" => ("Web.home.js", "text/javascript; charset=utf-8"),
             "details.js" => ("Web.details.js", "text/javascript; charset=utf-8"),
             "library-scroll.js" => ("Web.library-scroll.js", "text/javascript; charset=utf-8"),
@@ -133,6 +134,7 @@ public sealed class MisioFlixController : ControllerBase
     // Original Jellyfin home only. These endpoints return small user-authorized
     // content rows and do not create a parallel Jellyfin app or catalogue.
     [HttpGet("api/home/libraries")]
+    [MisioFlixMeasure("libraries")]
     [Authorize]
     public async Task<IActionResult> HomeLibraries(CancellationToken cancel)
     {
@@ -159,6 +161,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/home/shelf")]
+    [MisioFlixMeasure("shelf")]
     [Authorize]
     public async Task<IActionResult> HomeShelf([FromQuery] Guid libraryId,
         [FromQuery] string? mode, [FromQuery] int startIndex=0,
@@ -178,6 +181,7 @@ public sealed class MisioFlixController : ControllerBase
     // v0.4.140: first pages of several visible Home carousels in one request.
     // The catalog service verifies the caller and their /Views once per request.
     [HttpGet("api/home/shelves")]
+    [MisioFlixMeasure("shelves")]
     [Authorize]
     public async Task<IActionResult> HomeShelves([FromQuery] string? ids, CancellationToken cancel)
     {
@@ -198,6 +202,7 @@ public sealed class MisioFlixController : ControllerBase
     // Public to authenticated Home users: genre labels and boolean match mode,
     // NEVER any admin credentials or private MAL/Simkl configuration.
     [HttpGet("api/home/recommendation-genres")]
+    [MisioFlixMeasure("recommendationGenres")]
     [Authorize]
     public IActionResult HomeRecommendationGenres()
     {
@@ -250,6 +255,7 @@ public sealed class MisioFlixController : ControllerBase
     // Turn small catalog-ID pages into EXACT home tiles with MAL/Simkl isolation,
     // permissions and original posters/paws. No arbitrary paths or NFO writes.
     [HttpGet("api/home/recommendation-cards")]
+    [MisioFlixMeasure("recommendationCards")]
     [Authorize]
     public async Task<IActionResult> HomeRecommendationCards([FromQuery] string? ids, CancellationToken cancel)
     {
@@ -265,6 +271,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/home/collections")]
+    [MisioFlixMeasure("collections")]
     [Authorize]
     public async Task<IActionResult> HomeCollections([FromQuery] string? mode,
         [FromQuery] int startIndex=0, [FromQuery] int limit=12,
@@ -280,6 +287,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/home/resume")]
+    [MisioFlixMeasure("resume")]
     [Authorize]
     public async Task<IActionResult> HomeResume(CancellationToken cancel)
     {
@@ -291,6 +299,7 @@ public sealed class MisioFlixController : ControllerBase
     }
 
     [HttpGet("api/catalog")]
+    [MisioFlixMeasure("catalog")]
     [Authorize]
     public async Task<IActionResult> Catalog([FromQuery] Guid? libraryId, CancellationToken cancellationToken)
     {

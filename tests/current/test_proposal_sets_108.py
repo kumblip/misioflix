@@ -73,11 +73,11 @@ class ProposalSets108(unittest.TestCase):
         document = _ConfigCollapseParser()
         document.feed(ADMIN)
         document.close()
-        self.assertEqual(len(document.groups), 9)
+        self.assertEqual(len(document.groups), 10)
         self.assertTrue(all(group['direct_summaries'] == 1 for group in document.groups))
         self.assertTrue(all(not group['open'] for group in document.groups))
         names = ['mf-config-form', 'mf-library-list', 'mf-carousel-list', 'mf-simkl-config-form', 'mf-language-index-refresh', 'mf-nfo-collections-panel',
-                 'mf-native-cover-panel', 'mf-recommendation-config', 'mf-updates-panel']
+                 'mf-native-cover-panel', 'mf-recommendation-config', 'mf-updates-panel', 'mf-diag-status']
         for index, name in enumerate(names):
             self.assertEqual(document.parent_group_by_id.get(name), index, name)
         self.assertIn('mf-proposal-genre-toggle',ADMIN)

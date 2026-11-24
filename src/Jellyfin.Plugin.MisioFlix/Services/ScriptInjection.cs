@@ -75,6 +75,7 @@ public sealed class MisioFlixStartupFilter : IStartupFilter
                     var version = typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "0.0.0.0";
                     var inject = "<link data-misioflix=\"skin\" rel=\"stylesheet\" href=\"../MisioFlix/assets/theme.css?v=" + version + "\">" +
                         "<script data-misioflix=\"skin\" defer src=\"../MisioFlix/assets/client.js?v=" + version + "\"></script>" +
+                        "<script data-misioflix=\"diagnostics\" defer src=\"../MisioFlix/assets/diagnostics.js?v=" + version + "\"></script>" +
                         "<script data-misioflix=\"home\" defer src=\"../MisioFlix/assets/home.js?v=" + version + "\"></script>" +
                         "<script data-misioflix=\"details\" defer src=\"../MisioFlix/assets/details.js?v=" + version + "\"></script>" +
                         "<script data-misioflix=\"library-scroll\" defer src=\"../MisioFlix/assets/library-scroll.js?v=" + version + "\"></script>" +

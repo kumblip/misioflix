@@ -232,6 +232,22 @@
    <p><small>Instalacja odbywa się wyłącznie przez mechanizm Jellyfina, z repozytorium MisioFlix. Nie jest możliwa, dopóki odpowiednia zgodna wersja nie pojawi się w jego katalogu. Po instalacji może być wymagany restart serwera.</small></p>
   </section>
   </details>
+ <details class="mf-config-collapse" id="mf-diagnostics-panel">
+  <summary>Diagnostyka wydajności</summary>
+  <p>Domyślnie wyłączona. Dane zbiorcze serwera do restartu; dane przeglądarki tylko w tej karcie. Bez zapisu tytułów, tokenów ani adresów. Pomiary ostatnich 256 próbek na metrykę.</p>
+  <p>Włącz, przejdź na Home, wykonaj testy i wróć tutaj bez odświeżania strony.</p>
+  <div style="display:flex;flex-wrap:wrap;gap:8px">
+   <button type="button" id="mf-diag-on" class="raised button-submit">Włącz</button>
+   <button type="button" id="mf-diag-off" class="raised">Wyłącz i wyczyść</button>
+   <button type="button" id="mf-diag-refresh" class="raised">Odśwież wyniki</button>
+   <button type="button" id="mf-diag-reset" class="raised">Wyzeruj</button>
+   <button type="button" id="mf-diag-export" class="raised">Eksport JSON</button>
+  </div>
+  <p id="mf-diag-status" role="status" aria-live="polite">Otwórz panel, aby pobrać stan.</p>
+  <div style="overflow-x:auto"><table style="width:100%;text-align:left"><thead><tr><th>Metryka</th><th>Próbki / łącznie</th><th>Śr. ms</th><th>P95 ms</th><th>Maks. ms</th></tr></thead><tbody id="mf-diag-metrics"></tbody></table></div>
+  <p id="mf-diag-cache"></p>
+  <p><small>Filtr: synchroniczna aktualizacja DOM, nie czas pobrania plakatów. Play: przekazanie do natywnego przycisku, nie pierwsza klatka. Katalog klienta: sieć i JSON; serwer: czas akcji API, bez serializacji. Cache: wyłącznie karty propozycji (zimny: brak kart w cache; ciepły: wszystkie karty w cache; mieszany: nieokreślony).</small></p>
+ </details>
  <div class="mf-plugin-overview-navigation">
   <a id="mf-plugin-overview-return" class="mf-plugin-overview-return" href="#/dashboard/plugins/97d15b37b868492b83daeb67b16a0d44?name=MisioFlix">← Wróć do MisioFlix — widok ogólny wtyczki</a>
  </div>
@@ -240,6 +256,62 @@
  (()=>{
   const view=document.querySelector('#misioflixConfigPage');
   const pluginId='97d15b37-b868-492b-83da-eb67b16a0d44';
+  const diagnostics=(()=>{
+   const panel=view.querySelector('#mf-diagnostics-panel');
+   if(!panel || typeof panel.querySelector!=='function')return {activate(){}};
+   const status=panel.querySelector('#mf-diag-status'), tbody=panel.querySelector('#mf-diag-metrics'), cache=panel.querySelector('#mf-diag-cache');
+   const names={catalog:'Katalog',shelf:'Biblioteka',shelves:'Biblioteki (batch)',recommendationCards:'Karty propozycji',recommendationGenres:'Gatunki',resume:'Oglądaj dalej',libraries:'Lista bibliotek',collections:'Kolekcje',recommendations:'Przygotowanie propozycji',carouselRender:'Renderowanie karuzeli',filterChange:'Zmiana filtra',playHandoff:'Play / Resume'};
+   const buttons=[...panel.querySelectorAll('button')];
+   let busy=false;
+   async function query(path='',method='GET'){
+    const api=window.ApiClient||window.ConnectionManager?.getApiClient?.();
+    const token=typeof api?.accessToken==='function'?api.accessToken():api?.accessToken;
+    if(!token)throw Error('Brak sesji administratora');
+    const response=await fetch('/MisioFlix/api/diagnostics'+path,{method,cache:'no-store',headers:{'X-Emby-Token':token}});
+    if(!response.ok)throw Error('HTTP '+response.status);
+    const result=await response.json();
+    const current=window.ApiClient||window.ConnectionManager?.getApiClient?.();
+    const currentToken=typeof current?.accessToken==='function'?current.accessToken():current?.accessToken;
+    if(current!==api||currentToken!==token)throw Error('Zmieniono sesję Jellyfin');
+    return result;
+   }
+   function paint(server){
+    const browser=window.MisioFlixDiagnosticSession?.snapshot()||null;
+    status.textContent='Serwer: '+(server.enabled?'włączona':'wyłączona')+' · ta karta: '+(browser?.enabled?'włączona':'wyłączona');
+    tbody.replaceChildren();
+    for(const [source,data] of [['Serwer',server],['Przeglądarka',browser]]){
+     for(const m of data?.metrics||[]){
+      const tr=document.createElement('tr');
+      for(const value of [source+' — '+(names[m.operation]||m.operation)+(m.cache==='warm'?' (ciepły)':m.cache==='cold'?' (zimny)':''),m.sampleCount+' / '+m.totalCount,...[m.meanMs,m.p95Ms,m.maxMs].map(n=>Number.isFinite(n)?n.toFixed(1):'—')]){
+       const td=document.createElement('td');td.textContent=value;tr.appendChild(td);
+      }tbody.appendChild(tr);
+     }
+    }
+    const c=browser?.cache;
+    cache.textContent='Cache kart: '+(c?c.hits+' trafień / '+c.misses+' chybień'+(c.hitRate===null?'': ' ('+(100*c.hitRate).toFixed(1)+'%)'):'brak danych')+' · błędy API: serwer '+server.apiErrors+', przeglądarka '+(browser?.apiErrors??'—');
+    return {schemaVersion:1,server,browser};
+   }
+   async function run(action){
+    if(busy)return;busy=true;buttons.forEach(b=>b.disabled=true);
+    try{
+     const path=action==='on'?'/enable?enabled=true':action==='off'?'/enable?enabled=false':action==='reset'?'/reset':'';
+     const server=await query(path,path?'POST':'GET');
+     const session=window.MisioFlixDiagnosticSession;
+     if(action==='on'||action==='off')session?.setEnabled(action==='on');
+     if(action==='reset')session?.reset();
+     const report=paint(server);
+     if(action==='export'){
+      const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));
+      const link=document.createElement('a');link.href=url;link.download='MisioFlix-diagnostics.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+     }
+    }catch(e){tbody.replaceChildren();cache.textContent='';status.textContent='Diagnostyka niedostępna: '+e.message;}
+    finally{busy=false;buttons.forEach(b=>b.disabled=false);}
+   }
+   for(const action of ['on','off','refresh','reset','export'])panel.querySelector('#mf-diag-'+action).addEventListener('click',()=>void run(action));
+   panel.addEventListener('toggle',()=>{if(panel.open)void run('refresh');});
+   return {activate(){if(panel.open)void run('refresh');}};
+  })();
+
   // Independent status. Install/scheduled task operations go through
   // Jellyfin's NATIVE admin-protected endpoints with user's own API token.
   const updates=(function(){
@@ -1274,6 +1346,7 @@
 
   view.addEventListener('pageshow',async()=>{
    updates.activate();
+   diagnostics.activate();
    void languageIndex.activate();
    void recommendations.activate();
    void homeCarousels.activate();

@@ -175,6 +175,8 @@
   const isCurrent = serial => homeRoot?.isConnected && epoch === serial && homeRoute() && currentToken() === owner;
   const authHeader = () => ({Authorization: `MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-home", Version="0.4.29", Token="${owner.replace(/["\r\n]/g, '')}"`});
   async function request(path, method='GET', payload, timeoutMs=18000) {
+    const diagOwner = owner;
+    const diagEnd = path.split('?')[0]==='/catalog' ? globalThis.window?.MisioFlixDiagnosticSession?.start('catalog','unknown') : null;
     const control = new AbortController();
     const timeout = window.setTimeout(() => control.abort(), timeoutMs);
     try {
@@ -184,7 +186,12 @@
         ...(payload ? {body:JSON.stringify(payload)} : {})
       });
       if (!result.ok) throw new Error(`HTTP ${result.status}`);
-      return await result.json();
+      const data = await result.json();
+      if(diagOwner===owner && diagOwner===currentToken())diagEnd?.();
+      return data;
+    } catch(error) {
+      if(diagOwner===owner && diagOwner===currentToken())globalThis.window?.MisioFlixDiagnosticSession?.apiError();
+      throw error;
     } finally { window.clearTimeout(timeout); }
   }
   function paw(color) {
@@ -655,7 +662,7 @@
       for(const row of batched){
         if(!row.section.isConnected)continue;
         const data=returned.get(compactId(row.lib.id));
-        if(data)acceptShelfResponse(row,data,'latest',0);
+        if(data){const diagEnd=globalThis.window?.MisioFlixDiagnosticSession?.start('carouselRender');acceptShelfResponse(row,data,'latest',0);diagEnd?.();}
         else fallback.push(row); // e.g. permissions were changed during load
       }
     }catch(error){
@@ -692,6 +699,7 @@
       const data=await request(endpoint+
         `mode=${mode}&startIndex=${start}&limit=${mode==='random'?RANDOM_LIMIT:(reset?SHELF_LIMIT:SHELF_MORE_LIMIT)}`);
       if(!isCurrent(serial)||!row.section.isConnected)return;
+      const diagEnd=globalThis.window?.MisioFlixDiagnosticSession?.start('carouselRender');
       if(reset)acceptShelfResponse(row,data,mode,start);
       else {
         const list=Array.isArray(data.items)?data.items:[];
@@ -701,6 +709,7 @@
         row.hasMore=Boolean(data.hasMore)&&list.length>0;
         row.mode=mode;
       }
+      diagEnd?.();
     }catch(e){
       if(!isCurrent(serial))return;
       const msg=own('p','mf-home-empty','Nie udało się pobrać biblioteki. ');
@@ -723,8 +732,10 @@
     const serial=++resumePlaySerial;
     const nativePlay=window.MisioFlixPlayItem;
     if(typeof nativePlay==='function'){
+      const diagEnd=globalThis.window?.MisioFlixDiagnosticSession?.start('playHandoff');
       try{
         const started=await nativePlay(entry.resumeId);
+        if(started&&serial===resumePlaySerial)diagEnd?.();
         if(started||serial!==resumePlaySerial)return;
       }catch(error){console.warn('[MisioFlix] Native playback failed',error);}
     }
@@ -1948,7 +1959,9 @@
     button.addEventListener('click',()=>{
       recommendationIncludeAnime=!recommendationIncludeAnime;
       button.setAttribute('aria-checked',String(recommendationIncludeAnime));
+      const diagEnd=globalThis.window?.MisioFlixDiagnosticSession?.start('filterChange');
       if(recommendationInitialized&&recommendationCandidates.length)paintRecommendationSets();
+      diagEnd?.();
     });
     control.appendChild(button);return control;
   }
@@ -1979,7 +1992,9 @@
       recommendationAudioMode=recommendationAudioMode==='pl'?'original':
         recommendationAudioMode==='original'?'all':'pl';
       showState();
+      const diagEnd=globalThis.window?.MisioFlixDiagnosticSession?.start('filterChange');
       if(recommendationInitialized && recommendationCandidates.length)paintRecommendationSets();
+      diagEnd?.();
     });
     control.appendChild(button);
     return control;
@@ -2015,7 +2030,9 @@
       recommendationSubtitlesMode=recommendationSubtitlesMode==='all'?'pl':
         recommendationSubtitlesMode==='pl'?'en':'all';
       showState();
+      const diagEnd=globalThis.window?.MisioFlixDiagnosticSession?.start('filterChange');
       if(recommendationInitialized && recommendationCandidates.length)paintRecommendationSets();
+      diagEnd?.();
     });
     control.appendChild(button);
     return control;
@@ -2045,6 +2062,14 @@
       const saved=recommendationCardCache.get(id);
       return !saved||now-saved.at>=RECOMMENDATION_CARD_TTL_MS;
     });
+    const diag=globalThis.window?.MisioFlixDiagnosticSession;
+    const diagGeneration=recommendationCardGeneration;
+    const diagCache=!missing.length?'warm':missing.length===requested.length&&!recommendationCardInFlight.has(missing.join(','))?'cold':'unknown';
+    const diagEnd=diag?.start('recommendationCards',diagCache);
+    if(diag?.isEnabled()){
+      for(let i=0;i<requested.length-missing.length;i++)diag.cacheResult(true);
+      for(let i=0;i<missing.length;i++)diag.cacheResult(false);
+    }
     if(missing.length){
       const requestKey=missing.join(',');
       let pending=recommendationCardInFlight.get(requestKey);
@@ -2071,6 +2096,7 @@
       await pending;
     }
     const current=Date.now();
+    if(diagGeneration===recommendationCardGeneration)diagEnd?.();
     return requested.map(id=>recommendationCardCache.get(id))
       .filter(entry=>entry&&current-entry.at<RECOMMENDATION_CARD_TTL_MS)
       .map(entry=>entry.item);
@@ -2224,12 +2250,14 @@
         try{list=await recommendationCards(batch);}
         catch(error){row.offset=pageStart;throw error;} // retry the SAME page
         if(!isCurrent(serial)||!row.section.isConnected)return;
+        const diagEnd=globalThis.window?.MisioFlixDiagnosticSession?.start('carouselRender');
         if(reset){row.scroll.replaceChildren();reset=false;}
         for(const item of (Array.isArray(list)?list:[])){
           const card=makeCard(item);card.classList.add('mf-home-genre-card');
           card.querySelector('.mf-home-card-desc')?.remove(); // No descriptions, no empty placeholder.
           row.scroll.appendChild(card);added++;
         }
+        diagEnd?.();
       }
       row.hasMore=row.offset<row.ordered.length;
       if(reset)row.scroll.replaceChildren(); // No candidates: remove the loading placeholder.
@@ -2330,6 +2358,7 @@
   async function initializeRecommendations(serial){
     const area=homeRoot?.querySelector('#mf-home-recommendations');
     if(!area||recommendationInitialized)return;
+    const diagEnd=globalThis.window?.MisioFlixDiagnosticSession?.start('recommendations');
     recommendationInitialized=true;
     area.replaceChildren(own('p','mf-home-empty','Wczytywanie propozycji…'));
     try{
@@ -2375,6 +2404,7 @@
         return [compactId(item.id),genres];
       }));
       paintRecommendationSets();
+      diagEnd?.();
     }catch(e){
       if(!isCurrent(serial))return;
       recommendationInitialized=false;recommendationCandidates=[];recommendationPresets=[];
