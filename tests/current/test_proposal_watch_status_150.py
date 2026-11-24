@@ -10,17 +10,16 @@ class ProposalWatchStatus150(unittest.TestCase):
   a=API.split('[HttpGet("api/home/recommendation-watch-status")]',1)[1].split('[HttpGet(',1)[0]
   self.assertIn('[Authorize]',a); self.assertIn('private, no-store',a);self.assertIn('ReadRecommendationWatchStatusesAsync(Request, cancel)',a)
   b=SVC.split('ReadRecommendationWatchStatusesAsync(',1)[1].split('public async Task<HomeResumeResponse>',1)[0]
-  for term in ('AuthenticatedUserAsync(caller, cancel)','EnableUserData=true','EnableTotalRecordCount=false','while (true)','offset += count','seen.Count == before','IncludeItemTypes=Movie,Series','Filters=IsResumable','PlaybackPositionTicks','RecommendationWatchStatus(item)'): self.assertIn(term,b)
-  for term in ('ReadNfo','PostAsync','PutAsync','File.','16000'): self.assertNotIn(term,b)
+  for term in ('AuthenticatedUserAsync(caller, cancel)','EnableUserData=true','EnableTotalRecordCount=false','while (true)','offset += count','seen.Count == before','IncludeItemTypes=Movie,Series','!x.next_up && x.position_ticks > 0','WatchStatus(item)','MakeSimklTarget(id, item','_simklLocal.ReadAsync(userId, cancel)','FirstSeasonMalId(local.Path)'): self.assertIn(term,b)
+  for term in ('PostAsync','PutAsync','File.','16000'): self.assertNotIn(term,b)
  def test_no_search_or_provider_write(self):
   b=HOME.split('function recommendationWatchToggle(){',1)[1].split('function randomizeRecommendations(',1)[0]
   self.assertIn('/home/recommendation-watch-status',b);self.assertIn('isCurrent(serial)',b);self.assertNotIn('getCatalogForSearch',b);self.assertNotIn('localStorage',b);self.assertNotIn('/mal/',b);self.assertNotIn('/simkl/',b)
 
  def test_existing_card_status_contract_and_proposal_isolation(self):
-  shared=SVC.split('private static string WatchStatus(JsonElement item)',1)[1].split('private static string RecommendationWatchStatus',1)[0]
+  shared=SVC.split('private static string WatchStatus(JsonElement item)',1)[1].split('private static bool HasPrimaryImage',1)[0]
   self.assertIn('return "watched"',shared);self.assertNotIn('return "completed"',shared)
-  proposal=SVC.split('private static string RecommendationWatchStatus',1)[1].split('private static bool HasPrimaryImage',1)[0]
-  self.assertIn('JsonValueKind.True) return "watched"',proposal)
-  self.assertIn('PlaybackPositionTicks',proposal);self.assertIn('PlayedPercentage',proposal)
-  self.assertLess(proposal.index('return "watched"'),proposal.index('return "started"'))
-  self.assertIn("value==='watched'?'completed':value",HOME)
+  self.assertNotIn('private static string RecommendationWatchStatus(',SVC)
+  self.assertIn("value==='watched'?'completed':value==='mixed'?'started':value",HOME)
+  self.assertIn('MisioFlixMalProposalFrames',HOME);self.assertIn('MisioFlixSimklProposalFrame',HOME)
+  self.assertIn('const status=normalizeRecommendationWatchStatus(recommendationFrameStatus',HOME)

@@ -2075,7 +2075,14 @@
   // The watch filter is separate from search and from MAL/SIMKL writes.
   function normalizeRecommendationWatchStatus(status){
     const value=String(status||'').toLowerCase();
-    return value==='watched'?'completed':value;
+    return value==='watched'?'completed':value==='mixed'?'started':value;
+  }
+  function recommendationFrameStatus(id,input,malFrame,simklFrame){
+    if(!input||typeof input!=='object')return 'unknown';
+    if(input.anime)return malFrame?malFrame(id,input.malId,input.resuming===true):'unknown';
+    if(input.simklEligible&&simklFrame)
+      return simklFrame({status:input.simklStatus,watchedEpisodes:input.watchedEpisodes},input.watchStatus,input.resuming===true);
+    return input.watchStatus; // native pink/gold/green when SIMKL is disabled/excluded
   }
   function recommendationWatchToggle(){
     const control=own('div','mf-home-libraries-control mf-home-watch-control');
@@ -2130,8 +2137,15 @@
       const data=await pending;
       if(!isCurrent(serial)||recommendationWatchPending!==pending)return;
       if(!data||typeof data!=='object'||Array.isArray(data))throw Error('Nieprawidłowe statusy');
-      recommendationWatchSnapshot=new Map(Object.entries(data).filter(([id,status])=>
-        validId(id)&&['unwatched','started','completed'].includes(normalizeRecommendationWatchStatus(status))).map(([id,status])=>[compactId(id),normalizeRecommendationWatchStatus(status)]));
+      const malFrame=globalThis.window?.MisioFlixMalProposalFrames?.();
+      const simklFrame=globalThis.window?.MisioFlixSimklProposalFrame;
+      const snapshot=new Map();
+      for(const [id,input] of Object.entries(data)){
+        if(!validId(id))continue;
+        const status=normalizeRecommendationWatchStatus(recommendationFrameStatus(id,input,malFrame,simklFrame));
+        if(['unwatched','started','completed'].includes(status))snapshot.set(compactId(id),status);
+      }
+      recommendationWatchSnapshot=snapshot;
     }catch(error){
       if(!isCurrent(serial)||recommendationWatchPending!==pending)return;
       recommendationWatchError=true;
@@ -2496,11 +2510,11 @@
       if(current!==section)area.insertBefore(section,current||null);
     });
     if(!recommendationRows.size){
-      if((recommendationAudioMode!=='all' && recommendationCandidates.some(item=>item.pl_audio==null)) ||
+      if(recommendationWatchMode!=='all')area.appendChild(own('p','mf-home-empty','Brak propozycji dla wybranego stanu oglądania i aktywnych filtrów.'));
+      else if((recommendationAudioMode!=='all' && recommendationCandidates.some(item=>item.pl_audio==null)) ||
          (recommendationSubtitlesMode!=='all' && recommendationCandidates.some(item=>item.pl_subtitles==null || item.en_subtitles==null)))
         area.appendChild(own('p','mf-home-empty',
           'Brak propozycji z potwierdzonymi ścieżkami audio lub napisami. Odśwież bazę języków w ustawieniach MisioFlixa albo wybierz „Wszystkie”.'));
-      else if(recommendationWatchMode!=='all')area.appendChild(own('p','mf-home-empty','Brak propozycji dla wybranego statusu oglądania.'));
       return;
     }
     // Hydrate only new/changed rows. Old queued callbacks cannot load a new row.
@@ -2804,8 +2818,14 @@
   });
   // MAL changes can also occur without leaving Home. The next filter redraw
   // must use fresh personalized user state, not a previously hydrated tile.
-  window.addEventListener('misioflix-mal-cache-changed',clearRecommendationCardCache);
+  window.addEventListener('misioflix-mal-cache-changed',()=>{
+    clearRecommendationCardCache();
+    if(homeRoot?.isConnected&&isCurrent(epoch)&&recommendationWatchMode!=='all')void refreshRecommendationWatchStatuses();
+  });
   window.addEventListener('misioflix-mal-cards-updated',clearRecommendationCardCache);
+  window.addEventListener('misioflix-simkl-cache-changed',()=>{
+    if(homeRoot?.isConnected&&isCurrent(epoch)&&recommendationWatchMode!=='all')void refreshRecommendationWatchStatuses();
+  });
   function start(){
     if(!normalizeLibraryRoute())reconcile();
     document.addEventListener('keydown',event=>{

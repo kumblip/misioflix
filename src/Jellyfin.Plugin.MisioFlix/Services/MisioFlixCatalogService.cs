@@ -31,6 +31,7 @@ public sealed class MisioFlixCatalogService
     private readonly ILibraryManager _library;
     private readonly ICollectionManager _collections;
     private readonly IUserManager _users;
+    private readonly MisioFlixSimklLocalStore _simklLocal;
     // Only successfully parsed NFO is cached, and only while file metadata is unchanged.
     // No user state, access tokens, watched statuses or collection memberships live here.
     private static readonly ConcurrentDictionary<string, NfoCacheEntry> ParsedNfoCache = new(
@@ -41,11 +42,12 @@ public sealed class MisioFlixCatalogService
     private static readonly SemaphoreSlim HiddenGate = new(1, 1);
 
     public MisioFlixCatalogService(HttpClient client, ILibraryManager library, IApplicationPaths applicationPaths,
-        ICollectionManager collections, IUserManager users)
+        ICollectionManager collections, IUserManager users, MisioFlixSimklLocalStore simklLocal)
     {
         _client = client;
         _library = library;
         _collections = collections;
+        _simklLocal = simklLocal;
         _users = users;
         // Separate JSON state, never the Jellyfin database, media or NFO files.
         _hiddenResumePath = Path.Combine(applicationPaths.DataPath, "misioflix", "hidden-resume.json");
@@ -715,13 +717,30 @@ public sealed class MisioFlixCatalogService
         return requested.Where(found.ContainsKey).Select(id => found[id]).ToList();
     }
 
-    // Live, user-scoped playback data only. The long-lived search catalog is
-    // intentionally not used for this filter. No local NFO or image access.
-    public async Task<Dictionary<string, string>> ReadRecommendationWatchStatusesAsync(
+    // Same inputs as the poster decorators, for the complete authorized pool.
+    // No remote MAL/SIMKL calls; the local SIMKL archive is read once.
+    public async Task<Dictionary<string, RecommendationFrameInput>> ReadRecommendationWatchStatusesAsync(
         HttpRequest caller, CancellationToken cancel)
     {
         var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, RecommendationFrameInput>(StringComparer.OrdinalIgnoreCase);
+        var simklEnabled = Plugin.Instance?.Configuration.WebSimklEnabled != false;
+        var malEnabled = Plugin.Instance?.Configuration.WebMalEnabled != false;
+        var snapshot = simklEnabled ? (await _simklLocal.ReadAsync(userId, cancel).ConfigureAwait(false)).Snapshot : null;
+        var index = new Dictionary<(string Kind, string Provider, string Value), List<MisioFlixSimklService.SimklEntry>>();
+        if (snapshot is not null)
+            foreach (var entry in snapshot.Items.Values)
+                foreach (var pair in entry.Ids)
+                {
+                    var key = (entry.Kind, pair.Key, pair.Value.ToUpperInvariant());
+                    if (!index.TryGetValue(key, out var entries)) index[key] = entries = new();
+                    entries.Add(entry);
+                }
+        // Exactly the visible Resume entries used by both frame decorators.
+        var resume = await ReadResumeForAuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        var resuming = resume.items.Where(x => !x.next_up && x.position_ticks > 0)
+            .Select(x => Guid.TryParse(x.catalog_id, out var id) ? id.ToString("N") : x.catalog_id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         const int pageSize = 400;
         async Task ReadPages(string filters, Action<JsonElement, Guid> consume)
         {
@@ -751,20 +770,38 @@ public sealed class MisioFlixCatalogService
                 if (count < pageSize) break;
             }
         }
-        await ReadPages("&IncludeItemTypes=Movie,Series&CollapseBoxSetItems=false&Fields=RecursiveItemCount", (item, id) =>
+        await ReadPages("&IncludeItemTypes=Movie,Series&CollapseBoxSetItems=false&Fields=RecursiveItemCount,ProviderIds,Tags", (item, id) =>
         {
-            if (Get(item, "UserData").ValueKind != JsonValueKind.Object) return;
-            result[id.ToString("N")] = RecommendationWatchStatus(item);
-        }).ConfigureAwait(false);
-        // A partly played first episode does not decrement UnplayedItemCount.
-        // Use the native resumable episode list to recognize those series too.
-        await ReadPages("&IncludeItemTypes=Episode&Filters=IsResumable&Fields=SeriesId", (item, id) =>
-        {
-            if (!Guid.TryParse(Text(Get(item, "SeriesId")), out var parent)) return;
-            var key = parent.ToString("N");
-            if (result.TryGetValue(key, out var state) && state == "unwatched" &&
-                Number(Get(Get(item, "UserData"), "PlaybackPositionTicks")) > 0)
-                result[key] = "started";
+            var local = _library.GetItemById(id);
+            if (local is null) return;
+            var type = Text(Get(item, "Type"));
+            if (type != "Movie" && type != "Series") return;
+            var key = id.ToString("N");
+            var anime = AnimeSource(local.Path).Length != 0;
+            // Same MAL identity as MakeHomeTile, including its first-season fallback.
+            int? malId = anime && malEnabled ? ReadNfo(local.Path, type)?.MalId ?? FirstSeasonMalId(local.Path) : null;
+            var fallback = WatchStatus(item);
+            var eligible = false;
+            MisioFlixSimklService.SimklEntry? matched = null;
+            if (!anime && simklEnabled)
+            {
+                SimklMediaTarget target;
+                try { target = MakeSimklTarget(id, item, type == "Movie" ? "movies" : "shows", null); }
+                catch (UnauthorizedAccessException) { return; }
+                eligible = target.Relevant;
+                if (eligible)
+                {
+                    // Same unique match by kind + provider IDs as card-scores.
+                    var matches = new List<MisioFlixSimklService.SimklEntry>();
+                    foreach (var pair in target.Ids)
+                        if (index.TryGetValue((target.Kind, pair.Key, pair.Value.ToUpperInvariant()), out var entries))
+                            matches.AddRange(entries);
+                    var unique = matches.GroupBy(x => x.Id).ToArray();
+                    if (unique.Length == 1) matched = unique[0].First();
+                }
+            }
+            result[key] = new RecommendationFrameInput(anime, malId, fallback, eligible,
+                matched?.Status, matched?.WatchedEpisodes, resuming.Contains(key));
         }).ConfigureAwait(false);
         return result;
     }
@@ -2361,30 +2398,6 @@ public sealed class MisioFlixCatalogService
         return "unwatched";
     }
 
-    // Proposal-only classification. Keep the shared catalog/card contract unchanged.
-    private static string RecommendationWatchStatus(JsonElement item)
-    {
-        var data = Get(item, "UserData");
-        if (Get(data, "Played").ValueKind == JsonValueKind.True) return "watched";
-        var percentage = Number(Get(data, "PlayedPercentage"));
-        if (percentage >= 100) return "watched";
-        var position = Number(Get(data, "PlaybackPositionTicks"));
-        if (position > 0 || percentage > 0) return "started";
-        var total = PositiveInt(Get(item, "RecursiveItemCount"));
-        if (total.HasValue && Get(data, "UnplayedItemCount").ValueKind == JsonValueKind.Number)
-        {
-            var count = Number(Get(data, "UnplayedItemCount"));
-            if (count >= 0 && count <= total.Value)
-            {
-                if (count == 0) return "watched";
-                if (count < total.Value) return "started";
-            }
-        }
-        if (Number(Get(data, "PlayCount")) > 0 ||
-            !string.IsNullOrWhiteSpace(Text(Get(data, "LastPlayedDate")))) return "started";
-        return "unwatched";
-    }
-
     private static bool HasPrimaryImage(JsonElement item)
     {
         var tags = Get(item, "ImageTags");
@@ -2559,3 +2572,6 @@ public sealed record HomeResumeResponse(List<HomeResumeTile> items, List<HomeRes
 // Separate media identity for Simkl; no MAL IDs or NFO content are transferred.
 public sealed record SimklMediaTarget(bool Relevant, string Kind, int? SeasonNumber,
     Dictionary<string,string> Ids, string Title,int? Year=null);
+
+public sealed record RecommendationFrameInput(bool anime, int? malId, string watchStatus,
+    bool simklEligible, string? simklStatus, int? watchedEpisodes, bool resuming);

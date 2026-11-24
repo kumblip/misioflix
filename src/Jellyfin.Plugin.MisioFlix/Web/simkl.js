@@ -98,6 +98,7 @@
       (Number(entry?.watchedEpisodes)>0&&status!=='completed'))return 'started';
     return 'unwatched';
   }
+  window.MisioFlixSimklProposalFrame=simklFrame;
   function clearDetailFrames(){
     document.querySelectorAll('#itemDetailPage.mf-simkl-detail-ready').forEach(page=>{
       page.classList.remove('mf-simkl-detail-ready');
@@ -752,6 +753,7 @@
   function resetCardScores(){
     cardScores.clear();cardStates.clear();simklEligibleCards.clear();pendingScoreIds.clear();scoreRetryAfter=0;
     invalidateSeasonProgress();
+    window.dispatchEvent?.(new Event('misioflix-simkl-cache-changed'));
     document.querySelectorAll('.mf-simkl-home-score,.mf-simkl-native-score').forEach(node=>node.remove());
     document.querySelectorAll('[data-mf-simkl-score]').forEach(node=>node.removeAttribute('data-mf-simkl-score'));
     schedule();

@@ -287,19 +287,31 @@
     foot.setAttribute('fill','currentColor');svg.appendChild(foot);
     return svg;
   }
+  function malCardStatus(uid, snapshot, bindings, mediaId, suppliedMalId){
+    const malId=Number(suppliedMalId||bindings[mediaId]||0);
+    const entry=malId>0?snapshot.entries[malId]||loadCache(uid,malId)?.entry:null;
+    const state=entry?statusState(entry):(malId>0&&snapshot.full?'unwatched':'unknown');
+    return {malId,entry,state};
+  }
+  // Proposal filtering reads exactly the same local, user-scoped MAL index as posters.
+  window.MisioFlixMalProposalFrames=()=>{
+    const uid=compact(userId());
+    if(!valid(uid)||!token())return ()=> 'unknown';
+    const snapshot=indexState(uid),bindings=loadBindings(uid);
+    return (id,malId,resuming)=>{
+      const {state}=malCardStatus(uid,snapshot,bindings,compact(id),malId);
+      // Mixed CSS on Home requires an actual data-mf-mal-id on the poster.
+      return state==='watched'&&Number(malId)>0&&resuming?'mixed':state;
+    };
+  };
   function decorateMalCards(){
     const uid=currentUser;if(!valid(uid))return;
-    const snapshot=indexState(uid),entries=snapshot.entries,bindings=loadBindings(uid);
+    const snapshot=indexState(uid),bindings=loadBindings(uid);
     let overlayChanged=false;
     for(const card of document.querySelectorAll('.mf-home-poster[data-mf-item-id], .card[data-mf-card="1"][data-mf-anime="1"]')){
       const isHome=card.classList.contains('mf-home-poster');
       const mediaId=compact(isHome?card.dataset.mfItemId:card.getAttribute('data-id'));
-      const malId=Number((isHome?card.dataset.mfMalId:card.dataset.mfMalId)||bindings[mediaId]||0);
-      const entry=malId>0?entries[malId]||loadCache(uid,malId)?.entry:null;
-      // Only a COMPLETE personal MAL index can establish that a linked title is
-      // absent from the user's list. A missing item then means not yet watched;
-      // incomplete/offline data must stay unknown, not borrow Jellyfin play-state.
-      const state=entry?statusState(entry):(malId>0&&snapshot.full?'unwatched':'unknown');
+      const {entry,state}=malCardStatus(uid,snapshot,bindings,mediaId,card.dataset.mfMalId);
       if(card.getAttribute('data-mf-watch')!==state){card.setAttribute('data-mf-watch',state);overlayChanged=true;}
       markMalCardFrame(card,state,mediaId);
       if(!isHome){
