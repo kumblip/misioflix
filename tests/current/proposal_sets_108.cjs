@@ -16,6 +16,7 @@ const items=[
  {id:id(4),anime:false,type:'Movie',genres:['Akcja','Komedia']},
  {id:id(5),anime:true,type:'Movie',genres:['Horror']}
 ];
+const {treeMethods,mockRow}=require('./dom_fixture_147.js');treeMethods(El);
 const area=new El();
 const created=[];const hydrated=[];
 const ctx={
@@ -35,10 +36,11 @@ const ctx={
   normalized:x=>String(x).toLocaleLowerCase('pl'),compactId:x=>x,
   own:(t,c='',v='')=>new El(t,c,v),
   append:(p,...children)=>{for(const kid of children)p.appendChild(kid)},
-  recommendationShelf:(genre,matching)=>{
-    const row={section:new El(),genre,matching};created.push(row);return row;
+  recommendationShelf:(genre,matching,full)=>{
+    const row=mockRow(El,genre,matching,full);created.push(row);return row;
   },
-  loadRecommendationPage:async(row,reset)=>{hydrated.push([row.genre,reset])},
+  loadRecommendationPage:async(row,reset)=>{row.needsLoad=false;hydrated.push([row.genre,reset])},
+  recommendationCardCache:new Map(),RECOMMENDATION_CARD_TTL_MS:45000,SHELF_LIMIT:10,
   IntersectionObserver:undefined
 };
 ctx.recommendationAnimeIds=new Set();
@@ -57,7 +59,7 @@ vm.runInContext(src.slice(a,b),ctx);
 ctx.paintRecommendationSets();
 assert.equal(ctx.recommendationRows.size,3);
 assert.equal(ctx.recommendationRows.size,3);
-assert.deepEqual(created.slice(-3).map(x=>x.matching.map(y=>y.id)),[[id(1),id(4)],[id(1),id(2),id(4),id(5)],[id(1)]]);
+assert.deepEqual(Array.from(ctx.recommendationRows.values(),x=>x.matching.map(y=>y.id)),[[id(1),id(4)],[id(1),id(2),id(4),id(5)],[id(1)]]);
 const t1=src.indexOf('  function recommendationAnimeToggle(){');
 const t2=src.indexOf('  function randomizeRecommendations(',t1);
 vm.runInContext(src.slice(t1,t2),ctx);
@@ -66,12 +68,13 @@ assert.equal(switcher.attrs['aria-checked'],'true');
 switcher.listeners.click();
 assert.equal(switcher.attrs['aria-checked'],'false');
 assert.equal(ctx.recommendationRows.size,2);
-assert.deepEqual(created.slice(-2).map(x=>x.matching.map(y=>y.id)),[[id(4)],[id(2),id(4)]]);
+assert.deepEqual(Array.from(ctx.recommendationRows.values(),x=>x.matching.map(y=>y.id)),[[id(4)],[id(2),id(4)]]);
 switcher.listeners.click();
 assert.equal(switcher.attrs['aria-checked'],'true');
 assert.equal(ctx.recommendationRows.size,3);
-assert.deepEqual(created.slice(-3).map(x=>x.matching.map(y=>y.id)),[[id(1),id(4)],[id(1),id(2),id(4),id(5)],[id(1)]]);
+assert.deepEqual(Array.from(ctx.recommendationRows.values(),x=>x.matching.map(y=>y.id)),[[id(1),id(4)],[id(1),id(2),id(4),id(5)],[id(1)]]);
 assert.equal(hydrated.length,8);
+assert.equal(created.length,4,"only the row that disappeared is created again");
 assert.deepEqual(created.slice(0,3).map(x=>x.genre),['Akcja + Komedia','Akcja / Horror','Akcja + Fantasy']);
 assert(!created.some(x=>x.genre.includes('Propozycja')));
 // Actual recommendationShelf begins in shuffled (not latest) mode, with the

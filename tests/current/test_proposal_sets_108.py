@@ -98,8 +98,8 @@ class ProposalSets108(unittest.TestCase):
         self.assertIn("button.setAttribute('aria-checked','true')",HOME.split('function recommendationAnimeToggle(){',1)[1].split('function randomizeRecommendations(',1)[0])
         shelf=HOME.split('  function recommendationShelf(',1)[1].split('  async function loadRecommendationPage(',1)[0]
         self.assertIn("mode:'random'",shelf)
-        self.assertIn('ordered:randomizeRecommendations(base)',shelf)
-        self.assertIn('randomizeRecommendations(row.base)',shelf)
+        self.assertIn('ordered:randomPool.filter(',shelf)
+        self.assertIn('randomizeRecommendations(row.randomPool)',shelf)
         self.assertIn("mode==='latest'",shelf)
         self.assertIn("row.mode==='random'",HOME.replace("row.shuffle.classList.toggle('mf-home-view-active',mode==='random')","row.mode==='random'"))
         self.assertIn('preset.matchAll?selected.every(g=>genres.has(g)):selected.some(g=>genres.has(g))',HOME)

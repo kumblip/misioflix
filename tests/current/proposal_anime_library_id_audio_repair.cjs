@@ -15,6 +15,7 @@ class El{
   addEventListener(evt,fn){this.listeners[evt]=fn;}
   setAttribute(k,v){this.attrs[k]=String(v);}
 }
+const {treeMethods,mockRow}=require('./dom_fixture_147.js');treeMethods(El);
 const area=new El(),seen=[];
 const ctx={
   librariesCache:[{id:animeId,category:'anime',name:'Anime PL'},
@@ -32,8 +33,9 @@ const ctx={
   homeRoot:{querySelector:q=>q==='#mf-home-recommendations'?area:null},
   own:(...x)=>new El(...x),append:(p,...children)=>children.forEach(v=>p.appendChild(v)),
   normalized:x=>String(x).toLowerCase(),compactId:x=>String(x).toLowerCase(),
-  recommendationShelf:(title,matching)=>{seen.push(matching.map(item=>item.id));return {section:new El()};},
-  loadRecommendationPage:async()=>{},IntersectionObserver:undefined
+  recommendationShelf:(title,matching,full)=>mockRow(El,title,matching,full),
+  loadRecommendationPage:async row=>{row.needsLoad=false;},IntersectionObserver:undefined,
+  recommendationCardCache:new Map(),RECOMMENDATION_CARD_TTL_MS:45000,SHELF_LIMIT:10
 };
 ctx.recommendationAnimeIds=new Set([animeId]);
 ctx.recommendationGenresById=new Map(ctx.recommendationCandidates.map(item=>[item.id,new Set(['isekai'])]));
@@ -46,15 +48,15 @@ const q=src.indexOf('  async function initializeRecommendations(serial){',p);
 vm.runInContext(src.slice(p,q),ctx);
 const animeToggle=ctx.recommendationAnimeToggle().children[0];
 ctx.paintRecommendationSets();
-assert.deepEqual(seen.pop(),[id(1),id(2),id(3)]);
+assert.deepEqual(Array.from(ctx.recommendationRows.values())[0].matching.map(i=>i.id),[id(1),id(2),id(3)]);
 animeToggle.listeners.click();
 assert.equal(animeToggle.attrs['aria-checked'],'false');
-assert.deepEqual(seen.pop(),[id(3)],'the misclassified Anime PL ID must be filtered out');
+assert.deepEqual(Array.from(ctx.recommendationRows.values())[0].matching.map(i=>i.id),[id(3)],'the misclassified Anime PL ID must be filtered out');
 const audioToggle=ctx.recommendationAudioToggle().children[0];
 audioToggle.listeners.click(); // PL -> non-PL, with anime hidden
 assert.equal(audioToggle.dataset.mfAudioMode,'original');
 assert.equal(ctx.recommendationRows.size,0,'the non-PL anime must remain hidden');
 animeToggle.listeners.click();
 assert.equal(animeToggle.attrs['aria-checked'],'true');
-assert.deepEqual(seen.pop(),[id(4)],'anime comes back only when requested');
+assert.deepEqual(Array.from(ctx.recommendationRows.values())[0].matching.map(i=>i.id),[id(4)],'anime comes back only when requested');
 console.log('PASS: anime exclusion based on live library ID + independent Polish/non-Polish audio');

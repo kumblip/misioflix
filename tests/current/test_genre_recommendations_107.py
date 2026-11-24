@@ -51,7 +51,7 @@ class GenreRecommendations107(unittest.TestCase):
         self.assertIn('librariesReadyPromise=loadLibraries(serial)',mount)
         self.assertIn("button.setAttribute('aria-checked','true')",HOME.split('function homeContentModeToggle(){',1)[1].split('function randomizeRecommendations(',1)[0])
         self.assertIn("row.isGenre || row.mode==='latest'",HOME)
-        self.assertIn('randomizeRecommendations(row.base)',HOME)
+        self.assertIn('randomizeRecommendations(row.randomPool)',HOME)
         self.assertIn('SHELF_LIMIT',HOME.split('async function loadRecommendationPage(',1)[1].split('function paintRecommendationSets(',1)[0])
         self.assertNotIn('RANDOM_LIMIT',HOME.split('async function loadRecommendationPage(',1)[1].split('function paintRecommendationSets(',1)[0])
 

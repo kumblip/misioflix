@@ -22,6 +22,7 @@ class El {
   setAttribute(name,value){this.attrs[name]=String(value);}
   getAttribute(name){return this.attrs[name]??null;}
 }
+const {treeMethods,mockRow}=require('./dom_fixture_147.js');treeMethods(El);
 const area=new El(),matches=[];
 const ctx={
   recommendationAudioMode:'pl',recommendationSubtitlesMode:'all',recommendationIncludeAnime:true,
@@ -30,8 +31,9 @@ const ctx={
   homeRoot:{querySelector:q=>q==='#mf-home-recommendations'?area:null},
   own:(t,c='',v='')=>new El(t,c,v),append:(p,...x)=>x.forEach(c=>p.appendChild(c)),
   normalized:x=>String(x).toLocaleLowerCase('pl'),compactId:x=>x,
-  recommendationShelf:(title,pool)=>{matches.push(pool.map(i=>i.id));return {section:new El('section'),genre:title}},
-  loadRecommendationPage:async()=>{},IntersectionObserver:undefined
+  recommendationShelf:(title,pool,full)=>mockRow(El,title,pool,full),
+  loadRecommendationPage:async row=>{row.needsLoad=false;},IntersectionObserver:undefined,
+  recommendationCardCache:new Map(),RECOMMENDATION_CARD_TTL_MS:45000,SHELF_LIMIT:10
 };
 ctx.recommendationAnimeIds=new Set();
 ctx.recommendationGenresById=new Map(candidates.map(item=>[item.id,new Set(['akcja'])]));
@@ -50,32 +52,32 @@ function expect(mode, ids, subtitleLabel){
   assert.equal(subtitleButton.dataset.mfSubtitlesMode,mode);
   assert.equal(subtitleButton.children[1].textContent,subtitleLabel);
   ctx.paintRecommendationSets();
-  assert.deepEqual(matches.pop(),ids.map(id),'both independent filters applied');
+  assert.deepEqual(Array.from(ctx.recommendationRows.values())[0].matching.map(i=>i.id),ids.map(id),'both independent filters applied');
 }
 assert.equal(ctx.recommendationAudioMode,'pl');
 assert.equal(audioButton.children[1].textContent,'Audio PL');
 expect('all',[1,3,6],'Wszystkie');
 subtitleButton.listeners.click();
 assert.equal(ctx.recommendationSubtitlesMode,'pl');
-assert.deepEqual(matches.pop(),[id(1)]);
+assert.deepEqual(Array.from(ctx.recommendationRows.values())[0].matching.map(i=>i.id),[id(1)]);
 expect('pl',[1],'Napisy PL');
 subtitleButton.listeners.click();
 assert.equal(ctx.recommendationSubtitlesMode,'en');
-assert.deepEqual(matches.pop(),[id(3)]);
+assert.deepEqual(Array.from(ctx.recommendationRows.values())[0].matching.map(i=>i.id),[id(3)]);
 expect('en',[3],'Napisy EN');
 // Non-PL audio AND EN subtitles, independent filter state.
 audioButton.listeners.click();
 assert.equal(ctx.recommendationAudioMode,'original');
-assert.deepEqual(matches.pop(),[id(2),id(4)]);
+assert.deepEqual(Array.from(ctx.recommendationRows.values())[0].matching.map(i=>i.id),[id(2),id(4)]);
 expect('en',[2,4],'Napisy EN');
 // ALL subtitles must include unknown subs, but audio filter still applies.
 subtitleButton.listeners.click();
 assert.equal(ctx.recommendationSubtitlesMode,'all');
-assert.deepEqual(matches.pop(),[id(2),id(4)]);
+assert.deepEqual(Array.from(ctx.recommendationRows.values())[0].matching.map(i=>i.id),[id(2),id(4)]);
 // ALL audio + ALL subtitles allows even unknown indexed media.
 audioButton.listeners.click();
 assert.equal(ctx.recommendationAudioMode,'all');
-assert.deepEqual(matches.pop(),candidates.map(item=>item.id));
+assert.deepEqual(Array.from(ctx.recommendationRows.values())[0].matching.map(i=>i.id),candidates.map(item=>item.id));
 assert(css.includes('mf-home-subtitles-toggle[data-mf-subtitles-mode="all"]'));
 assert(css.includes('mf-home-subtitles-toggle[data-mf-subtitles-mode="all"] .mf-home-libraries-label::before'));
 assert(css.includes('content:"CC"'));

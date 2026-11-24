@@ -17,6 +17,7 @@ class DummyNode {
   remove(){this._removed=true;}
   addEventListener(type,fn){this.listeners[type]=fn;}
 }
+require('./dom_fixture_147.js').treeMethods(DummyNode);
 const guid=i=>i.toString(16).padStart(32,'0');
 const items=Array.from({length:37},(_,i)=>({id:guid(i+1)}));
 let calls=0, fail=false;
@@ -57,6 +58,6 @@ function row(data){return {busy:false,hasMore:true,mode:'random',offset:0,ordere
   fail=true;await ctx.loadRecommendationPage(failed,true);
   assert.equal(failed.offset,0,'network failure must not skip the failed batch');
   await ctx.loadRecommendationPage(failed,false);
-  assert.equal(failed.offset,25,'retry starts at the same candidate page');
+  assert.equal(failed.offset,10,'retry starts at the same initial ten-item page');
   console.log('PASS v0.4.107: 37 randomized items paginated 10+25+2, empty rows, retry without gaps');
 })().catch(e=>{console.error(e);process.exitCode=1;});

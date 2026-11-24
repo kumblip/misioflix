@@ -20,6 +20,7 @@ class El {
   setAttribute(name,value){this.attrs[name]=String(value);}
   getAttribute(name){return this.attrs[name]??null;}
 }
+const {treeMethods,mockRow}=require('./dom_fixture_147.js');treeMethods(El);
 const area=new El();
 const matches=[];
 const context={
@@ -29,8 +30,9 @@ const context={
   homeRoot:{querySelector:q=>q==='#mf-home-recommendations'?area:null},
   own:(t,c='',v='')=>new El(t,c,v),append:(p,...x)=>x.forEach(c=>p.appendChild(c)),
   normalized:x=>String(x).toLowerCase(),compactId:x=>x,
-  recommendationShelf:(title,pool)=>{matches.push(pool.map(i=>i.id));return {section:new El('section'),genre:title}},
-  loadRecommendationPage:async()=>{},IntersectionObserver:undefined
+  recommendationShelf:(title,pool,full)=>mockRow(El,title,pool,full),
+  loadRecommendationPage:async row=>{row.needsLoad=false;},IntersectionObserver:undefined,
+  recommendationCardCache:new Map(),RECOMMENDATION_CARD_TTL_MS:45000,SHELF_LIMIT:10
 };
 context.recommendationAnimeIds=new Set();
 context.recommendationGenresById=new Map(testItems.map(item=>[item.id,new Set(['isekai'])]));
@@ -47,18 +49,18 @@ const button=context.recommendationAudioToggle().children[0];
 assert.equal(button.dataset.mfAudioMode,'pl');
 assert.equal(button.children[1].textContent,'Audio PL');
 context.paintRecommendationSets();
-assert.deepEqual(matches.pop(),[id(1),id(4)],'Polish audio only, exclude unknown and non-PL');
+assert.deepEqual(Array.from(context.recommendationRows.values())[0].matching.map(i=>i.id),[id(1),id(4)],'Polish audio only, exclude unknown and non-PL');
 button.listeners.click();
 assert.equal(button.dataset.mfAudioMode,'original');
 assert.equal(button.children[1].textContent,'Audio nie-PL');
-assert.deepEqual(matches.pop(),[id(2)],'original means verified lack of Polish audio');
+assert.deepEqual(Array.from(context.recommendationRows.values())[0].matching.map(i=>i.id),[id(2)],'original means verified lack of Polish audio');
 button.listeners.click();
 assert.equal(button.dataset.mfAudioMode,'all');
 assert.equal(button.children[1].textContent,'Wszystkie');
-assert.deepEqual(matches.pop(),testItems.map(i=>i.id),'all includes unknown audio');
+assert.deepEqual(Array.from(context.recommendationRows.values())[0].matching.map(i=>i.id),testItems.map(i=>i.id),'all includes unknown audio');
 button.listeners.click();
 assert.equal(button.dataset.mfAudioMode,'pl');
-assert.deepEqual(matches.pop(),[id(1),id(4)]);
+assert.deepEqual(Array.from(context.recommendationRows.values())[0].matching.map(i=>i.id),[id(1),id(4)]);
 assert(css.includes('mf-home-audio-toggle[data-mf-audio-mode="original"]'));
 assert(css.includes('mf-home-audio-toggle[data-mf-audio-mode="all"]'));
 assert(css.includes('mf-home-audio-toggle[data-mf-audio-mode="pl"]'));

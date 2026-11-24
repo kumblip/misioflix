@@ -18,6 +18,7 @@ class El {
   remove(){this.isConnected=false}
   get childElementCount(){return this.children.length}
 }
+require('./dom_fixture_147.js').treeMethods(El);
 const own=(tag,klass='',label='')=>new El(tag,klass,label);
 const area=new El();
 const ctx={

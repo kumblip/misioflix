@@ -2214,7 +2214,7 @@
     }
     void next();
   }
-  function recommendationShelf(genre,items){
+  function recommendationShelf(genre,items,fullPool=items){
     const section=own('section','mf-home-shelf mf-home-genre-shelf');
     section.dataset.mfGenre=genre;
     const top=own('div','mf-home-shelf-heading');
@@ -2234,14 +2234,22 @@
     scroll.appendChild(own('p','mf-home-empty','Wczytywanie pozycji…'));
     append(section,top,scroll);
     const base=[...items].sort((a,b)=>String(b.date_added||'').localeCompare(String(a.date_added||'')));
+    // Shuffle the complete preset, then restrict that order to the active filters.
+    // The relative order of surviving titles remains stable until explicit shuffle.
+    const eligible=new Set(items.map(item=>compactId(item.id)));
+    const randomPool=randomizeRecommendations(fullPool);
     const row={isGenre:true,genre,section,scroll,shuffle,reset,prev,next,
-      base,ordered:randomizeRecommendations(base),mode:'random',offset:0,hasMore:base.length>0,busy:false};
+      matching:items,randomPool,base,ordered:randomPool.filter(item=>eligible.has(compactId(item.id))),
+      mode:'random',offset:0,hasMore:base.length>0,busy:false,generation:0,needsLoad:true,renderedCards:new Map()};
     enableShelfDrag(scroll,row);
     headingButton.addEventListener('click',()=>openRecommendationListing(row));
     const swap=mode=>{
       if(row.busy)return;
-      row.mode=mode;row.ordered=mode==='random'?randomizeRecommendations(row.base):row.base;
-      row.offset=0;row.hasMore=row.ordered.length>0;
+      row.mode=mode;
+      if(mode==='random')row.randomPool=randomizeRecommendations(row.randomPool);
+      const eligible=new Set(row.base.map(item=>compactId(item.id)));
+      row.ordered=mode==='random'?row.randomPool.filter(item=>eligible.has(compactId(item.id))):row.base;
+      row.offset=0;row.hasMore=row.ordered.length>0;row.needsLoad=true;
       row.reset.classList.toggle('mf-home-view-active',mode==='latest');
       row.shuffle.classList.toggle('mf-home-view-active',mode==='random');
       void loadRecommendationPage(row,true);
@@ -2257,14 +2265,24 @@
     return row;
   }
   async function loadRecommendationPage(row,reset){
-    if(row.busy||!homeRoot?.isConnected)return;
+    if(row.busy||!homeRoot?.isConnected||!row.section.isConnected)return;
+    reset=reset||row.needsLoad===true;
     row.busy=true;
-    const serial=epoch;
+    const serial=epoch,generation=row.generation;
+    const alive=()=>isCurrent(serial)&&row.section.isConnected&&row.generation===generation;
+    row.renderedCards??=new Map();
     row.shuffle.disabled=true;row.reset.disabled=true;
-    if(reset){row.scroll.replaceChildren(own('p','mf-home-empty','Ładowanie…'));row.scroll.scrollLeft=0;}
+    if(reset){
+      row.section.hidden=false;row.scroll.scrollLeft=0;
+      // Only keep nodes in the requested first page while the API revalidates.
+      const wanted=new Set(row.ordered.slice(0,SHELF_LIMIT).map(item=>compactId(item.id)));
+      for(const [id,entry] of row.renderedCards){
+        if(!wanted.has(id)){entry.node.remove();row.renderedCards.delete(id);}
+      }
+      if(!row.renderedCards.size)row.scroll.replaceChildren(own('p','mf-home-empty','Ładowanie…'));
+    }
     try{
-      // Ten items on first render, 25 on each later infinity-scroll event.
-      // Removed/inaccessible titles must not leak data or break pagination.
+      // Ten initially, 25 afterwards; the full eligible pool remains available.
       const batchLimit=reset?SHELF_LIMIT:SHELF_MORE_LIMIT;
       let added=0,tries=0;
       while(row.offset<row.ordered.length&&added===0&&tries<5){
@@ -2274,37 +2292,54 @@
         row.offset+=batch.length;tries++;
         let list;
         try{list=await recommendationCards(batch);}
-        catch(error){row.offset=pageStart;throw error;} // retry the SAME page
-        if(!isCurrent(serial)||!row.section.isConnected)return;
+        catch(error){if(alive())row.offset=pageStart;throw error;}
+        if(!alive())return;
         const diagEnd=globalThis.window?.MisioFlixDiagnosticSession?.start('carouselRender');
-        if(reset){row.scroll.replaceChildren();reset=false;}
+        const nodes=[],nextCards=new Map();
         for(const item of (Array.isArray(list)?list:[])){
-          const card=makeCard(item);card.classList.add('mf-home-genre-card');
-          card.querySelector('.mf-home-card-desc')?.remove(); // No descriptions, no empty placeholder.
-          row.scroll.appendChild(card);added++;
+          const id=compactId(item.id);
+          if(nextCards.has(id)||(!reset&&row.renderedCards.has(id)))continue;
+          const previous=row.renderedCards.get(id);
+          // Reuse only the same authorized, still-current cached tile object.
+          let card=previous?.item===item?previous.node:null;
+          if(!card){
+            card=makeCard(item);card.classList.add('mf-home-genre-card');
+            card.querySelector('.mf-home-card-desc')?.remove();
+          }
+          nextCards.set(id,{item,node:card});nodes.push(card);added++;
+        }
+        if(reset){
+          // Move only nodes whose position changes; keep the other DOM nodes,
+          // their images, metadata decorators and event handlers intact.
+          const keep=new Set(nodes);
+          for(const child of Array.from(row.scroll.children))if(!keep.has(child))child.remove();
+          nodes.forEach((card,index)=>{
+            const current=row.scroll.children[index];
+            if(current!==card)row.scroll.insertBefore(card,current||null);
+          });
+          row.renderedCards=nextCards;
+          if(added){reset=false;row.needsLoad=false;}
+        }else{
+          for(const [id,entry] of nextCards){row.scroll.appendChild(entry.node);row.renderedCards.set(id,entry);}
         }
         diagEnd?.();
       }
       row.hasMore=row.offset<row.ordered.length;
-      if(reset)row.scroll.replaceChildren(); // No candidates: remove the loading placeholder.
-      // Remove previous retry errors after a successful page, but keep tiles.
+      if(reset){row.scroll.replaceChildren();row.renderedCards.clear();}
+      row.needsLoad=false;
       for(const stale of row.scroll.querySelectorAll('.mf-home-empty'))stale.remove();
-      // No valid/accessible tiles remain after exhausting the candidate pool:
-      // hide the entire genre section, not just an empty rail under its title.
-      // A temporary network failure is handled separately below (retry stays).
-      if(!row.scroll.querySelector('.mf-home-card') && !row.hasMore){
-        row.section.hidden=true;
-      }
-      // On very wide screens the first page may not fill the row. Load the
-      // next page only on demand via a normal scroll or the right arrow.
+      if(!row.scroll.querySelector('.mf-home-card') && !row.hasMore)row.section.hidden=true;
     }catch(e){
-      if(!isCurrent(serial))return;
+      if(!alive())return;
       const msg=own('p','mf-home-empty','Nie udało się wczytać propozycji. ');
       const again=own('button','mf-home-button','Spróbuj ponownie');again.type='button';
-      again.addEventListener('click',()=>loadRecommendationPage(row,false));
+      again.addEventListener('click',()=>loadRecommendationPage(row,row.needsLoad===true));
       msg.appendChild(again);
-      if(reset)row.scroll.replaceChildren(msg);else row.scroll.appendChild(msg);
-    }finally{row.busy=false;row.shuffle.disabled=false;row.reset.disabled=false;}
+      if(reset){row.scroll.replaceChildren(msg);row.renderedCards.clear();row.needsLoad=true;}
+      else row.scroll.appendChild(msg);
+    }finally{
+      if(alive()){row.busy=false;row.shuffle.disabled=false;row.reset.disabled=false;}
+    }
   }
   // Home's own role-based library list is authoritative, including after
   // rename/move. Also guards against a stale authorized catalog snapshot.
@@ -2319,65 +2354,108 @@
     const area=homeRoot?.querySelector('#mf-home-recommendations');
     if(!area||!recommendationInitialized)return;
     recommendationObserver?.disconnect();recommendationObserver=null;
-    area.replaceChildren();recommendationRows.clear();
-    // Keep the toggle correct even if a previously cached row said anime=false.
-    // Home's own ID-based view categories take precedence over old paths.
+    // Evaluate the three personal filters once, not once per configured preset.
     const isAnime=item=>item?.anime===true ||
       (Array.isArray(item?.library_ids) && item.library_ids.some(id=>recommendationAnimeIds.has(compactId(id))));
+    const eligible=new Set(recommendationCandidates.filter(item=>{
+      if(!recommendationIncludeAnime&&isAnime(item))return false;
+      if(!recommendationHasRequestedAudio(item))return false;
+      if(!recommendationHasRequestedSubtitles(item))return false;
+      return true;
+    }));
+    const nextRows=new Map();
     let index=0;
     for(const preset of recommendationPresets){
       index++;
       const selected=preset.normalizedGenres;
       if(!selected.length)continue;
-      const allowed=preset.allLibraries===false?new Set(preset.libraryIds):null;
-      const excluded=preset.allLibraries!==false&&preset.excludedLibraryIds.length
-        ?new Set(preset.excludedLibraryIds):null;
-      const matching=recommendationCandidates.filter(item=>{
-        if(!recommendationIncludeAnime&&isAnime(item))return false;
-        if(!recommendationHasRequestedAudio(item))return false;
-        if(!recommendationHasRequestedSubtitles(item))return false;
-        // Opt-out only: every current/future library is included unless
-        // ALL known memberships of this item are manually excluded.
-        // Preserve legacy allowlists until an admin opens and saves the new selector.
-        if(allowed){
-          if(!Array.isArray(item.library_ids)||!item.library_ids.some(id=>allowed.has(compactId(id))))return false;
-        }else if(excluded&&Array.isArray(item.library_ids)&&item.library_ids.length){
-          if(item.library_ids.every(id=>excluded.has(compactId(id))))return false;
-        }
-        const genres=recommendationGenresById.get(compactId(item.id));
-        if(!genres)return false;
-        return preset.matchAll?selected.every(g=>genres.has(g)):selected.some(g=>genres.has(g));
-      });
-      // A configured proposal is not necessarily a visible row. Omit empty
-      // sets entirely, including their heading and vertical spacing.
+      // Genre/library rules are immutable for the lifetime of this catalog.
+      // Compute their intersection once; only personal filters change on Home.
+      if(!preset.candidatePool){
+        const allowed=preset.allLibraries===false?new Set(preset.libraryIds):null;
+        const excluded=preset.allLibraries!==false&&preset.excludedLibraryIds.length
+          ?new Set(preset.excludedLibraryIds):null;
+        preset.candidatePool=recommendationCandidates.filter(item=>{
+          if(allowed){
+            if(!Array.isArray(item.library_ids)||!item.library_ids.some(id=>allowed.has(compactId(id))))return false;
+          }else if(excluded&&Array.isArray(item.library_ids)&&item.library_ids.length){
+            if(item.library_ids.every(id=>excluded.has(compactId(id))))return false;
+          }
+          const genres=recommendationGenresById.get(compactId(item.id));
+          if(!genres)return false;
+          return preset.matchAll?selected.every(g=>genres.has(g)):selected.some(g=>genres.has(g));
+        });
+      }
+      const matching=preset.candidatePool.filter(item=>eligible.has(item));
       if(!matching.length)continue;
       const heading=preset.genres.join(preset.matchAll?' + ':' / ');
-      const row=recommendationShelf(heading,matching);
       const id='proposal-'+index;
+      let row=recommendationRows.get(id);
+      if(row)updateRecommendationRow(row,matching);
+      else row=recommendationShelf(heading,matching,preset.candidatePool);
       row.section.dataset.mfGenreKey=id;
-      recommendationRows.set(id,row);
-      area.appendChild(row.section);
+      nextRows.set(id,row);
     }
+    for(const [id,row] of recommendationRows){
+      if(!nextRows.has(id)){row.generation++;row.hasMore=false;row.section.remove();}
+    }
+    recommendationRows=nextRows;
+    const sections=Array.from(nextRows.values(),row=>row.section);
+    const keep=new Set(sections);
+    for(const child of Array.from(area.children))if(!keep.has(child))child.remove();
+    sections.forEach((section,i)=>{
+      const current=area.children[i];
+      if(current!==section)area.insertBefore(section,current||null);
+    });
     if(!recommendationRows.size){
       if((recommendationAudioMode!=='all' && recommendationCandidates.some(item=>item.pl_audio==null)) ||
          (recommendationSubtitlesMode!=='all' && recommendationCandidates.some(item=>item.pl_subtitles==null || item.en_subtitles==null)))
         area.appendChild(own('p','mf-home-empty',
           'Brak propozycji z potwierdzonymi ścieżkami audio lub napisami. Odśwież bazę języków w ustawieniach MisioFlixa albo wybierz „Wszystkie”.'));
       return;
-    } // No configured set matches this user's catalog.
-    // Only hydrate visible rows. Each row loads 10 initially then 25 per further scroll,
-    // unlimited shuffle and identical existing cards minus descriptions.
+    }
+    // Hydrate only new/changed rows. Old queued callbacks cannot load a new row.
     if(typeof IntersectionObserver==='function'){
-      recommendationObserver=new IntersectionObserver(entries=>{
+      const observer=new IntersectionObserver(entries=>{
+        if(recommendationObserver!==observer)return;
         for(const entry of entries){
           if(!entry.isIntersecting)continue;
-          recommendationObserver?.unobserve(entry.target);
+          observer.unobserve(entry.target);
           const row=recommendationRows.get(entry.target.dataset.mfGenreKey);
-          if(row)void loadRecommendationPage(row,true);
+          if(row?.section===entry.target&&row.needsLoad&&!row.busy)void loadRecommendationPage(row,true);
         }
       },{rootMargin:'400px 0px'});
-      for(const row of recommendationRows.values())recommendationObserver.observe(row.section);
-    }else for(const row of recommendationRows.values())void loadRecommendationPage(row,true);
+      recommendationObserver=observer;
+      for(const row of recommendationRows.values())if(row.needsLoad&&!row.busy)observer.observe(row.section);
+    }else for(const row of recommendationRows.values())if(row.needsLoad&&!row.busy)void loadRecommendationPage(row,true);
+  }
+  function updateRecommendationRow(row,matching){
+    // An unchanged candidate set needs no re-render unless its authorization
+    // cache has expired or been explicitly invalidated (e.g. MAL update).
+    const now=Date.now();
+    const fresh=(id,entry)=>{
+      const cached=recommendationCardCache.get(id);
+      return cached?.item===entry.item&&now-cached.at<RECOMMENDATION_CARD_TTL_MS;
+    };
+    if(row.matching.length===matching.length&&row.matching.every((item,i)=>item===matching[i])&&
+      !row.section.hidden&&Array.from(row.renderedCards).every(([id,entry])=>fresh(id,entry)))return;
+    row.matching=matching;
+    row.generation++; // invalidate ANY in-flight page before touching its state
+    row.busy=false;row.needsLoad=true;row.shuffle.disabled=false;row.reset.disabled=false;
+    row.base=[...matching].sort((a,b)=>String(b.date_added||'').localeCompare(String(a.date_added||'')));
+    const eligible=new Set(matching.map(item=>compactId(item.id)));
+    row.ordered=row.mode==='random'?row.randomPool.filter(item=>eligible.has(compactId(item.id))):row.base;
+    row.offset=0;row.hasMore=row.ordered.length>0;row.section.hidden=false;row.scroll.scrollLeft=0;
+    const wanted=new Set(row.ordered.slice(0,SHELF_LIMIT).map(item=>compactId(item.id)));
+    // Remove nonmatching and expired tiles synchronously, even for offscreen rows.
+    // Reuse visible nodes only while their authorization cache entry is current.
+    for(const [id,entry] of row.renderedCards){
+      if(!wanted.has(id)||!fresh(id,entry)){
+        entry.node.remove();row.renderedCards.delete(id);
+      }
+    }
+    for(const stale of row.scroll.querySelectorAll('.mf-home-empty'))stale.remove();
+    if(!row.renderedCards.size)row.scroll.appendChild(own('p','mf-home-empty','Ładowanie…'));
   }
   async function initializeRecommendations(serial){
     const area=homeRoot?.querySelector('#mf-home-recommendations');
