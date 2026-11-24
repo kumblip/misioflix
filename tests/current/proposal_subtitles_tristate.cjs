@@ -25,7 +25,7 @@ class El {
 const {treeMethods,mockRow}=require('./dom_fixture_147.js');treeMethods(El);
 const area=new El(),matches=[];
 const ctx={
-  recommendationAudioMode:'pl',recommendationSubtitlesMode:'all',recommendationIncludeAnime:true,
+  recommendationAudioMode:'pl',recommendationSubtitlesMode:'all',recommendationWatchMode:'all',recommendationHasRequestedWatchStatus:()=>true,recommendationIncludeAnime:true,
   recommendationInitialized:true,recommendationCandidates:candidates,recommendationPresets:[{genres:['Akcja'],normalizedGenres:['akcja'],matchAll:false,allLibraries:true,excludedLibraryIds:[]}],
   recommendationSeasonGenres:new Map(),recommendationRows:new Map(),recommendationObserver:null,
   homeRoot:{querySelector:q=>q==='#mf-home-recommendations'?area:null},

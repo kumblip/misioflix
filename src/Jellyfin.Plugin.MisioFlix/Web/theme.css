@@ -2647,7 +2647,8 @@ html.misioflix-skin .mf-home-switches{
 html.misioflix-skin .mf-home-content-mode-toggle[data-mf-home-mode="recommendations"],
 html.misioflix-skin .mf-home-anime-toggle[aria-checked="true"],
 html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="pl"],
-html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="all"]{
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="all"],
+html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="all"]{
   --mf-home-switch-bg:rgba(34,108,70,.38);
   --mf-home-switch-hover:rgba(38,135,84,.50);
   --mf-home-switch-border:#45b879;
@@ -2659,7 +2660,8 @@ html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="all"]{
 html.misioflix-skin .mf-home-content-mode-toggle[data-mf-home-mode="libraries"],
 html.misioflix-skin .mf-home-anime-toggle[aria-checked="false"],
 html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="original"],
-html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="pl"]{
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="pl"],
+html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="unwatched"]{
   --mf-home-switch-bg:rgba(30,100,163,.40);
   --mf-home-switch-hover:rgba(33,116,186,.54);
   --mf-home-switch-border:#56b6ef;
@@ -2669,7 +2671,8 @@ html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="pl"]{
 
 /* ORANGE: Audio Wszystkie, Napisy EN. */
 html.misioflix-skin .mf-home-audio-toggle[data-mf-audio-mode="all"],
-html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="en"]{
+html.misioflix-skin .mf-home-subtitles-toggle[data-mf-subtitles-mode="en"],
+html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="started"]{
   --mf-home-switch-bg:rgba(171,102,28,.36);
   --mf-home-switch-hover:rgba(196,118,31,.48);
   --mf-home-switch-border:#f0a14a;
@@ -2710,4 +2713,15 @@ html.misioflix-skin .mf-home-switches .mf-home-subtitles-toggle[data-mf-subtitle
   html.misioflix-skin .mf-home-switches .mf-home-subtitles-toggle[data-mf-subtitles-mode="all"] .mf-home-libraries-track::after{
     transform:translateX(26px);
   }
+}
+
+/* v0.4.150: proposal watch status uses the existing 3-position palette. */
+html.misioflix-skin .mf-home-watch-toggle .mf-home-libraries-track{width:48px}
+html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="all"] .mf-home-libraries-track::after{transform:translateX(28px)}
+html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="unwatched"] .mf-home-libraries-track::after{transform:translateX(14px)}
+html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="started"] .mf-home-libraries-track::after{transform:translateX(0)}
+@media(max-width:560px){
+  html.misioflix-skin .mf-home-switches .mf-home-watch-toggle .mf-home-libraries-track{width:44px}
+  html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="all"] .mf-home-libraries-track::after{transform:translateX(26px)}
+  html.misioflix-skin .mf-home-watch-toggle[data-mf-watch-mode="unwatched"] .mf-home-libraries-track::after{transform:translateX(13px)}
 }

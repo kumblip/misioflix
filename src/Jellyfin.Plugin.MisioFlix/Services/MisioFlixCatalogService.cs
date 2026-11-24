@@ -715,6 +715,60 @@ public sealed class MisioFlixCatalogService
         return requested.Where(found.ContainsKey).Select(id => found[id]).ToList();
     }
 
+    // Live, user-scoped playback data only. The long-lived search catalog is
+    // intentionally not used for this filter. No local NFO or image access.
+    public async Task<Dictionary<string, string>> ReadRecommendationWatchStatusesAsync(
+        HttpRequest caller, CancellationToken cancel)
+    {
+        var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        const int pageSize = 400;
+        async Task ReadPages(string filters, Action<JsonElement, Guid> consume)
+        {
+            var seen = new HashSet<Guid>();
+            var offset = 0;
+            while (true)
+            {
+                cancel.ThrowIfCancellationRequested();
+                var path = $"Items?UserId={Uri.EscapeDataString(userId)}&Recursive=true" + filters +
+                    "&EnableUserData=true&EnableTotalRecordCount=false&EnableImages=false" +
+                    "&SortBy=SortName&SortOrder=Ascending" + $"&StartIndex={offset}&Limit={pageSize}";
+                using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
+                var items = Get(doc.RootElement, "Items");
+                if (items.ValueKind != JsonValueKind.Array)
+                    throw new HttpRequestException("Invalid playback status page.");
+                var count = items.GetArrayLength();
+                if (count == 0) break;
+                var before = seen.Count;
+                foreach (var item in items.EnumerateArray())
+                {
+                    cancel.ThrowIfCancellationRequested();
+                    if (Guid.TryParse(Text(Get(item, "Id")), out var id) && seen.Add(id))
+                        consume(item, id);
+                }
+                if (seen.Count == before) throw new HttpRequestException("Repeated playback status page.");
+                offset += count;
+                if (count < pageSize) break;
+            }
+        }
+        await ReadPages("&IncludeItemTypes=Movie,Series&CollapseBoxSetItems=false&Fields=RecursiveItemCount", (item, id) =>
+        {
+            if (Get(item, "UserData").ValueKind != JsonValueKind.Object) return;
+            result[id.ToString("N")] = WatchStatus(item);
+        }).ConfigureAwait(false);
+        // A partly played first episode does not decrement UnplayedItemCount.
+        // Use the native resumable episode list to recognize those series too.
+        await ReadPages("&IncludeItemTypes=Episode&Filters=IsResumable&Fields=SeriesId", (item, id) =>
+        {
+            if (!Guid.TryParse(Text(Get(item, "SeriesId")), out var parent)) return;
+            var key = parent.ToString("N");
+            if (result.TryGetValue(key, out var state) && state == "unwatched" &&
+                Number(Get(Get(item, "UserData"), "PlaybackPositionTicks")) > 0)
+                result[key] = "started";
+        }).ConfigureAwait(false);
+        return result;
+    }
+
     public async Task<HomeResumeResponse> ReadHomeResumeAsync(HttpRequest caller, CancellationToken cancel)
     {
         var (origin, auth, userId) = await AuthenticatedUserAsync(caller, cancel).ConfigureAwait(false);

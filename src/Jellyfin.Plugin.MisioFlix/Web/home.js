@@ -26,6 +26,10 @@
   let recommendationIncludeAnime = true;
   let recommendationAudioMode = 'pl'; // pl -> original -> all, per Home mount; no persistent account writes.
   let recommendationSubtitlesMode = 'all'; // all -> pl -> en -> all; uses the SAME language-flags index.
+  let recommendationWatchMode = 'all';
+  let recommendationWatchSnapshot = null;
+  let recommendationWatchPending = null;
+  let recommendationWatchError = false;
   let librariesReadyPromise = null;
   let recommendationPresets = [];
   let recommendationCandidates = [];
@@ -2068,6 +2072,64 @@
     // Missing/partial index results must not be treated as verified subtitles.
     return recommendationSubtitlesMode==='pl' ? item?.pl_subtitles===true : item?.en_subtitles===true;
   }
+  // The watch filter is separate from search and from MAL/SIMKL writes.
+  function recommendationWatchToggle(){
+    const control=own('div','mf-home-libraries-control mf-home-watch-control');
+    const button=own('button','mf-home-libraries-toggle mf-home-watch-toggle');
+    button.type='button';
+    const track=own('span','mf-home-libraries-track');track.setAttribute('aria-hidden','true');
+    const label=own('span','mf-home-libraries-label');
+    append(button,track,label);
+    const titles={all:'Wszystkie',unwatched:'Nieobejrzane',started:'Rozpoczęte'};
+    function showState(){
+      const mode=recommendationWatchMode;
+      button.dataset.mfWatchMode=mode;
+      button.setAttribute('aria-label','Status oglądania: '+titles[mode]+'. Kliknij, aby zmienić filtr.');
+      button.setAttribute('aria-pressed',String(mode!=='all'));
+      button.title='Status oglądania w propozycjach: '+titles[mode];
+      label.textContent=titles[mode];
+    }
+    showState();
+    button.addEventListener('click',()=>{
+      const previous=recommendationWatchMode;
+      recommendationWatchMode=previous==='all'?'unwatched':previous==='unwatched'?'started':'all';
+      showState();
+      if(recommendationWatchMode!=='all' && (previous==='all'||!recommendationWatchSnapshot))
+        void refreshRecommendationWatchStatuses();
+      else if(recommendationInitialized&&recommendationCandidates.length)paintRecommendationSets();
+    });
+    control.appendChild(button);return control;
+  }
+  function recommendationHasRequestedWatchStatus(item){
+    return recommendationWatchMode==='all' || recommendationWatchSnapshot?.get(compactId(item.id))===recommendationWatchMode;
+  }
+  function resetRecommendationWatchStatuses(){
+    recommendationWatchSnapshot=null;recommendationWatchPending=null;recommendationWatchError=false;
+  }
+  async function refreshRecommendationWatchStatuses(){
+    if(recommendationWatchMode==='all'||recommendationWatchPending)return;
+    const serial=epoch;
+    // Never filter against the potentially 14-day-old catalog snapshot.
+    recommendationWatchError=false;recommendationWatchSnapshot=null;
+    const pending=request('/home/recommendation-watch-status','GET',undefined,90000);
+    recommendationWatchPending=pending;
+    if(recommendationInitialized&&recommendationCandidates.length)paintRecommendationSets();
+    try{
+      const data=await pending;
+      if(!isCurrent(serial)||recommendationWatchPending!==pending)return;
+      if(!data||typeof data!=='object'||Array.isArray(data))throw Error('Nieprawidłowe statusy');
+      recommendationWatchSnapshot=new Map(Object.entries(data).filter(([id,status])=>
+        validId(id)&&['watched','unwatched','started'].includes(status)).map(([id,status])=>[compactId(id),status]));
+    }catch(error){
+      if(!isCurrent(serial)||recommendationWatchPending!==pending)return;
+      recommendationWatchError=true;
+    }finally{
+      if(isCurrent(serial)&&recommendationWatchPending===pending){
+        recommendationWatchPending=null;
+        if(recommendationWatchMode!=='all'&&recommendationInitialized&&recommendationCandidates.length)paintRecommendationSets();
+      }
+    }
+  }
   function randomizeRecommendations(pool){
     // Fisher–Yates over the ENTIRE eligible list: no five-item random limit.
     const result=[...pool];
@@ -2349,18 +2411,32 @@
     return item.library_ids.some(id=>recommendationAnimeIds.has(compactId(id)));
   }
   // Filter the existing authorized catalog for each independently configured
-  // AND/OR proposal. No extra calls and no change to library / search cache.
+  // AND/OR proposal. Status snapshot is fetched separately; no library/search cache changes.
   function paintRecommendationSets(){
     const area=homeRoot?.querySelector('#mf-home-recommendations');
     if(!area||!recommendationInitialized)return;
     recommendationObserver?.disconnect();recommendationObserver=null;
-    // Evaluate the three personal filters once, not once per configured preset.
+    if(recommendationWatchMode!=='all'&&!recommendationWatchSnapshot){
+      // Keep the existing DOM for keyed reuse, but never display an unverified result.
+      for(const row of recommendationRows.values())row.section.hidden=true;
+      const sections=new Set(Array.from(recommendationRows.values(),row=>row.section));
+      for(const child of Array.from(area.children))if(!sections.has(child))child.remove();
+      const message=own('p','mf-home-empty',recommendationWatchError
+          ?'Nie udało się odczytać statusów oglądania. ':'Wczytywanie statusów oglądania…');
+      if(recommendationWatchError){
+        const retry=own('button','mf-home-button','Ponów');retry.type='button';
+        retry.addEventListener('click',()=>void refreshRecommendationWatchStatuses());message.appendChild(retry);
+      }
+      area.appendChild(message);return;
+    }
+    // Evaluate all personal filters once, not once per configured preset.
     const isAnime=item=>item?.anime===true ||
       (Array.isArray(item?.library_ids) && item.library_ids.some(id=>recommendationAnimeIds.has(compactId(id))));
     const eligible=new Set(recommendationCandidates.filter(item=>{
       if(!recommendationIncludeAnime&&isAnime(item))return false;
       if(!recommendationHasRequestedAudio(item))return false;
       if(!recommendationHasRequestedSubtitles(item))return false;
+      if(!recommendationHasRequestedWatchStatus(item))return false;
       return true;
     }));
     const nextRows=new Map();
@@ -2412,6 +2488,7 @@
          (recommendationSubtitlesMode!=='all' && recommendationCandidates.some(item=>item.pl_subtitles==null || item.en_subtitles==null)))
         area.appendChild(own('p','mf-home-empty',
           'Brak propozycji z potwierdzonymi ścieżkami audio lub napisami. Odśwież bazę języków w ustawieniach MisioFlixa albo wybierz „Wszystkie”.'));
+      else if(recommendationWatchMode!=='all')area.appendChild(own('p','mf-home-empty','Brak propozycji dla wybranego statusu oglądania.'));
       return;
     }
     // Hydrate only new/changed rows. Old queued callbacks cannot load a new row.
@@ -2604,10 +2681,12 @@
       recommendationIncludeAnime=true; // ON by default on every Home mount.
       recommendationAudioMode='pl'; // First mode: only confirmed Polish audio.
       recommendationSubtitlesMode='all'; // Subtitles are unfiltered by default.
+      recommendationWatchMode='all';resetRecommendationWatchStatuses();
       const switches=own('div','mf-home-switches');
       append(switches,homeContentModeToggle(),recommendationAnimeToggle());
       switches.appendChild(recommendationAudioToggle());
       switches.appendChild(recommendationSubtitlesToggle());
+      switches.appendChild(recommendationWatchToggle());
       homeRoot.appendChild(switches);
       collectionsPage=createCollectionsPage();
       collectionsLoad={busy:false,loaded:false,offset:0,hasMore:true,requestId:0};
@@ -2638,7 +2717,7 @@
       closeSearch();collectionsPage?.observer?.disconnect();
       recommendationObserver?.disconnect();recommendationObserver=null;
       recommendationInitialized=false;recommendationRows.clear();
-      recommendationCandidates=[];recommendationPresets=[];recommendationSeasonGenres.clear();
+      recommendationCandidates=[];recommendationPresets=[];recommendationSeasonGenres.clear();resetRecommendationWatchStatuses();
       recommendationGenresById.clear();recommendationAnimeIds.clear();clearRecommendationCardCache();
       homeRoot.remove();homeRoot=null;homeHost=null;
       librariesReadyPromise=null;
@@ -2664,7 +2743,7 @@
     if(owner!==token){
       owner=token;epoch++;
       closeSearch();recommendationObserver?.disconnect();recommendationObserver=null;recommendationRows.clear();recommendationInitialized=false;
-      recommendationCandidates=[];recommendationPresets=[];recommendationSeasonGenres.clear();
+      recommendationCandidates=[];recommendationPresets=[];recommendationSeasonGenres.clear();resetRecommendationWatchStatuses();
       recommendationGenresById.clear();recommendationAnimeIds.clear();clearRecommendationCardCache();
       homeRoot?.remove();homeRoot=null;homeHost=null;discoveryRefs=null;collectionsPage=null;collectionsLoad.requestId++;rows.clear();resumeData={items:[],hidden:[]};librariesCache=[];catalogCache.clear();catalogFetchedAt.clear();
     }
@@ -2706,7 +2785,10 @@
   // A user may have rated/watched items in another tab; never keep that
   // personalized state after the document has been in the background.
   document.addEventListener('visibilitychange',()=>{
-    if(!document.hidden)clearRecommendationCardCache();
+    if(!document.hidden){
+      clearRecommendationCardCache();
+      if(homeRoot?.isConnected&&isCurrent(epoch)&&recommendationWatchMode!=='all')void refreshRecommendationWatchStatuses();
+    }
   });
   // MAL changes can also occur without leaving Home. The next filter redraw
   // must use fresh personalized user state, not a previously hydrated tile.

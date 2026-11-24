@@ -22,7 +22,7 @@ const created=[];const hydrated=[];
 const ctx={
   homeRoot:{querySelector:q=>q==='#mf-home-recommendations'?area:null},
   recommendationAudioMode:'all',recommendationHasRequestedAudio:()=>true,
-  recommendationSubtitlesMode:'all',recommendationHasRequestedSubtitles:()=>true,
+  recommendationSubtitlesMode:'all',recommendationWatchMode:'all',recommendationHasRequestedWatchStatus:()=>true,recommendationHasRequestedSubtitles:()=>true,
   recommendationInitialized:true,recommendationIncludeAnime:true,
   recommendationPresets:[
     {genres:['Akcja','Komedia'],matchAll:true},

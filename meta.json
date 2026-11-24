@@ -1,11 +1,11 @@
 {
   "guid": "97d15b37-b868-492b-83da-eb67b16a0d44",
   "name": "MisioFlix",
-  "description": "MisioFlix 0.4.149: kompatybilność modułów Web na bazie 147",
+  "description": "MisioFlix 0.4.150: status oglądania w propozycjach",
   "overview": "Native Jellyfin 12.4 skin, native cards, NFO anime overlays and personalized ratings",
   "owner": "kumblip",
   "category": "General",
-  "version": "0.4.149.0",
+  "version": "0.4.150.0",
   "targetAbi": "12.4.0.0",
   "status": "Active",
   "autoUpdate": false,

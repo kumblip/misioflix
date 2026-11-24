@@ -270,6 +270,18 @@ public sealed class MisioFlixController : ControllerBase
         catch (InvalidOperationException) { return StatusCode(503, new { error = "Niedostępne dane" }); }
     }
 
+    [HttpGet("api/home/recommendation-watch-status")]
+    [Authorize]
+    public async Task<IActionResult> HomeRecommendationWatchStatus(CancellationToken cancel)
+    {
+        if (Plugin.Instance?.Configuration.Enabled != true) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        try { return Ok(await _catalog.ReadRecommendationWatchStatusesAsync(Request, cancel).ConfigureAwait(false)); }
+        catch (UnauthorizedAccessException) { return Unauthorized(); }
+        catch (HttpRequestException) { return StatusCode(502, new { error = "Nie można odczytać statusów oglądania" }); }
+        catch (InvalidOperationException) { return StatusCode(503, new { error = "Niedostępne dane" }); }
+    }
+
     [HttpGet("api/home/collections")]
     [MisioFlixMeasure("collections")]
     [Authorize]

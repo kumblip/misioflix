@@ -23,7 +23,7 @@ function harness(withObserver=false){
   class Observer{constructor(fn){this.fn=fn;this.targets=new Set();observers.push(this);}observe(target){this.targets.add(target);}unobserve(t){this.targets.delete(t);}disconnect(){this.targets.clear();}}
   const cache=new Map();
   const ctx={homeRoot:{isConnected:true,querySelector:()=>area},epoch:1,isCurrent:s=>s===1,
-    recommendationInitialized:true,recommendationIncludeAnime:true,recommendationAudioMode:'all',recommendationSubtitlesMode:'all',
+    recommendationInitialized:true,recommendationIncludeAnime:true,recommendationAudioMode:'all',recommendationSubtitlesMode:'all',recommendationWatchMode:'all',recommendationHasRequestedWatchStatus:()=>true,
     recommendationPresets:[preset('A'),preset('B')],recommendationCandidates:items,
     recommendationAnimeIds:new Set(),recommendationGenresById:new Map(items.map(i=>[i.id,new Set(i.genres)])),
     recommendationRows:new Map(),recommendationObserver:null,

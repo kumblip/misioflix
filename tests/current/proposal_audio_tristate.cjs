@@ -24,7 +24,7 @@ const {treeMethods,mockRow}=require('./dom_fixture_147.js');treeMethods(El);
 const area=new El();
 const matches=[];
 const context={
-  recommendationAudioMode:'pl',recommendationSubtitlesMode:'all',recommendationIncludeAnime:true,recommendationInitialized:true,
+  recommendationAudioMode:'pl',recommendationSubtitlesMode:'all',recommendationWatchMode:'all',recommendationHasRequestedWatchStatus:()=>true,recommendationIncludeAnime:true,recommendationInitialized:true,
   recommendationCandidates:testItems,recommendationPresets:[{genres:['Isekai'],normalizedGenres:['isekai'],matchAll:false,allLibraries:true,excludedLibraryIds:[]}],
   recommendationSeasonGenres:new Map(),recommendationRows:new Map(),recommendationObserver:null,
   homeRoot:{querySelector:q=>q==='#mf-home-recommendations'?area:null},

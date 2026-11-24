@@ -20,7 +20,7 @@ const area=new El(),seen=[];
 const ctx={
   librariesCache:[{id:animeId,category:'anime',name:'Anime PL'},
                   {id:mediaId,category:'series',name:'Seriale PL'}],
-  recommendationIncludeAnime:true,recommendationAudioMode:'pl',recommendationSubtitlesMode:'all',
+  recommendationIncludeAnime:true,recommendationAudioMode:'pl',recommendationSubtitlesMode:'all',recommendationWatchMode:'all',recommendationHasRequestedWatchStatus:()=>true,
   recommendationInitialized:true,
   recommendationCandidates:[
     {id:id(1),anime:false,library_ids:[animeId],type:'Series',genres:['Isekai'],pl_audio:true},
