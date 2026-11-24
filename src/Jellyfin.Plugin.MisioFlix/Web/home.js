@@ -306,90 +306,6 @@
       ? `/Items/${compactId(item.id)}/Images/Primary?maxHeight=480&quality=84`
       : '';
   }
-  // v0.4.148: only MisioFlix-owned artwork. No changes to native Jellyfin
-  // cards, recommendation eligibility, image authorization or CSS geometry.
-  const POSTER_MAX_ACTIVE=6;
-  const POSTER_HEIGHTS=[320,480,640]; // A small fixed set protects Jellyfin's resized-image cache.
-  const posterWaiting=new Map(),posterActive=new Map();
-  let posterObserver=null;
-  function posterSizedUrl(url,rect,dpr){
-    const h=Math.max(Number(rect?.height)||0,(Number(rect?.width)||0)*1.5);
-    if(h<=0)return url;
-    const needed=h*Math.max(1,Number(dpr)||1);
-    const size=POSTER_HEIGHTS.find(value=>value>=needed)||POSTER_HEIGHTS[POSTER_HEIGHTS.length-1];
-    return url.replace(/([?&]maxHeight=)\d+/,(_match,prefix)=>prefix+size);
-  }
-  function posterDistance(img,rect){
-    // Visible items outrank speculative items, including horizontally clipped rails.
-    const rail=img.closest?.('.mf-home-shelf-scroll,.mf-home-resume-items');
-    const clip=rail?.getBoundingClientRect();
-    const left=Math.max(0,clip?.left??0),right=Math.min(window.innerWidth,clip?.right??window.innerWidth);
-    const top=Math.max(0,clip?.top??0),bottom=Math.min(window.innerHeight,clip?.bottom??window.innerHeight);
-    return Math.max(0,left-rect.right,rect.left-right)+Math.max(0,top-rect.bottom,rect.top-bottom);
-  }
-  function finishPoster(img,cancel=false){
-    const task=posterActive.get(img);
-    if(!task)return;
-    posterActive.delete(img);
-    window.clearTimeout(task.timer);
-    img.removeEventListener('load',task.done);img.removeEventListener('error',task.done);
-    if(cancel)img.removeAttribute('src');
-    drainPosterQueue();
-  }
-  function drainPosterQueue(){
-    if(posterActive.size>=POSTER_MAX_ACTIVE)return;
-    const ready=[];
-    for(const [img,task] of posterWaiting){
-      if(!task.near||!img.isConnected)continue;
-      const rect=img.getBoundingClientRect();
-      ready.push({img,task,rect,distance:posterDistance(img,rect)});
-    }
-    ready.sort((a,b)=>a.distance-b.distance);
-    for(const {img,task,rect} of ready){
-      if(posterActive.size>=POSTER_MAX_ACTIVE)break;
-      if(!posterWaiting.has(img)||!img.isConnected)continue;
-      posterWaiting.delete(img);posterObserver?.unobserve(img);
-      task.done=()=>finishPoster(img);
-      posterActive.set(img,task);
-      img.addEventListener('load',task.done);img.addEventListener('error',task.done);
-      // A stalled image must not hold a slot forever. Preserve the normal error fallback.
-      task.timer=window.setTimeout(()=>{
-        finishPoster(img,true);
-        if(img.isConnected)img.dispatchEvent(new Event('error'));
-      },60000);
-      img.loading='eager'; // The observer, not native lazy loading, admits the request.
-      img.src=posterSizedUrl(task.url,rect,window.devicePixelRatio);
-      // Cached resources still emit load/error; listeners were installed first.
-    }
-  }
-  function queuePoster(img,url){
-    if(typeof IntersectionObserver!=='function'||typeof window==='undefined'){
-      img.loading='lazy';img.src=url;return;
-    }
-    if(!posterObserver){
-      try{
-        posterObserver=new IntersectionObserver(entries=>{
-          for(const entry of entries){
-            const task=posterWaiting.get(entry.target);
-            if(task)task.near=entry.isIntersecting;
-          }
-          drainPosterQueue();
-        },{rootMargin:'180px 0px',scrollMargin:'0px 640px'});
-      }catch{
-        img.loading='lazy';img.src=url;return;
-      }
-    }
-    posterWaiting.set(img,{url,near:false});
-    posterObserver.observe(img);
-  }
-  function prunePosterQueue(){
-    // Called after actual DOM removals. A moved/reused card still connected
-    // at the end of the mutation batch keeps its request and image node.
-    for(const img of posterWaiting.keys())if(!img.isConnected){
-      posterWaiting.delete(img);posterObserver?.unobserve(img);
-    }
-    for(const img of posterActive.keys())if(!img.isConnected)finishPoster(img,true);
-  }
   function ensureHomeCollectionPreviewObserver(){
     if(homeCollectionPreviewObserver || typeof IntersectionObserver!=='function')return;
     homeCollectionPreviewObserver=new IntersectionObserver(entries=>{
@@ -482,6 +398,7 @@
     for(const id of ids){
       const img=own('img','');
       img.loading='lazy';img.decoding='async';img.alt='';
+      img.src='/Items/'+encodeURIComponent(id)+'/Images/Primary?maxHeight=480&quality=82';
       img.addEventListener('error',()=>{
         img.remove();
         if(!grid.childElementCount){
@@ -490,7 +407,6 @@
         }else grid.dataset.count=String(grid.childElementCount);
       },{once:true});
       grid.appendChild(img);
-      queuePoster(img,'/Items/'+encodeURIComponent(id)+'/Images/Primary?maxHeight=480&quality=82');
     }
     grid.dataset.count=String(grid.childElementCount);
     link.insertBefore(grid,link.firstChild);
@@ -514,13 +430,13 @@
       img.setAttribute('alt','');
       img.setAttribute('loading','lazy');
       img.setAttribute('decoding','async');
+      img.src=imgUrl;
       img.addEventListener('error',()=>{
         img.remove();
         link.classList.add('mf-home-no-cover');
         if(item.type==='BoxSet' && validId(item.id))queueHomeCollectionPreview(link,item.id);
       },{once:true});
       link.appendChild(img);
-      queuePoster(img,imgUrl);
     }else{
       link.classList.add('mf-home-no-cover');
       if(item.type==='BoxSet' && validId(item.id))queueHomeCollectionPreview(link,item.id);
@@ -841,7 +757,7 @@
     const link=own('button','mf-home-resume-poster');link.type='button';
     link.setAttribute('aria-label','Odtwarzaj: '+(item.title||''));
     const image=imageFor(item);
-    if(image){const img=own('img','');img.loading='lazy';img.decoding='async';img.alt='';link.appendChild(img);queuePoster(img,image);}
+    if(image){const img=own('img','');img.src=image;img.loading='lazy';img.alt='';link.appendChild(img);}
     const body=own('div','mf-home-resume-content');
     append(body,own('span','mf-home-resume-title',item.title||''));
     const label=entry.season!=null&&entry.episode!=null?`S${entry.season}:E${entry.episode}`:entry.nextUp?'Następny odcinek':'Film';
@@ -982,7 +898,7 @@
     const description=own('p','mf-home-card-info-description',
       (typeof item.description==='string'&&item.description.trim())?item.description.trim():'Brak opisu.');
     append(details,genreLabel,genres,descriptionLabel,description);
-    // Use the same authenticated Jellyfin primary-poster endpoint as the tile;
+    // Reuse the SAME authenticated Jellyfin primary-poster URL as the tile;
     // never fetch MAL/Simkl or a second catalogue for the read-only preview.
     const layout=own('div','mf-home-card-info-layout');
     const posterWrap=own('div','mf-home-card-info-poster-wrap');
@@ -2831,7 +2747,6 @@
     window.addEventListener('pageshow',schedule);
     document.addEventListener('viewshow',schedule);
     const observer=new MutationObserver(mutations=>{
-      if((posterWaiting.size||posterActive.size)&&mutations.some(m=>m.removedNodes.length))prunePosterQueue();
       // The native error boundary is outside MisioFlix's home route. Only
       // inspect it on /mixed; do not alter a functioning scroll component.
       if(mixedRoute())checkMixedScrollerError();

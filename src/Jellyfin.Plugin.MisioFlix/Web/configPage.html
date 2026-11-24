@@ -234,8 +234,8 @@
   </details>
  <details class="mf-config-collapse" id="mf-diagnostics-panel">
   <summary>Diagnostyka wydajności</summary>
-  <p>Domyślnie wyłączona. Dane zbiorcze serwera do restartu; dane przeglądarki tylko w tej karcie. Bez zapisu tytułów, tokenów ani adresów. Pomiary ostatnich 256 próbek na metrykę.</p>
-  <p>Włącz, przejdź na Home, wykonaj testy i wróć tutaj bez odświeżania strony.</p>
+  <p>Domyślnie wyłączona. Dane zbiorcze serwera do restartu; dane przeglądarki tylko w tej karcie (do godziny, również po przeładowaniu). Bez zapisu tytułów, tokenów ani adresów. Pomiary ostatnich 256 próbek na metrykę.</p>
+  <p>Włącz, przejdź na Home, wykonaj testy i wróć tutaj.</p>
   <div style="display:flex;flex-wrap:wrap;gap:8px">
    <button type="button" id="mf-diag-on" class="raised button-submit">Włącz</button>
    <button type="button" id="mf-diag-off" class="raised">Wyłącz i wyczyść</button>
@@ -248,6 +248,29 @@
   <p id="mf-diag-cache"></p>
   <p><small>Filtr: synchroniczna aktualizacja DOM, nie czas pobrania plakatów. Play: przekazanie do natywnego przycisku, nie pierwsza klatka. Katalog klienta: sieć i JSON; serwer: czas akcji API, bez serializacji. Cache: wyłącznie karty propozycji (zimny: brak kart w cache; ciepły: wszystkie karty w cache; mieszany: nieokreślony).</small></p>
  </details>
+ <details class="mf-config-collapse" id="mf-compatibility-panel">
+  <summary>Kompatybilność z innymi wtyczkami — moduły Web</summary>
+  <p>Wyłącz tylko moduł, który koliduje z inną wtyczką. Ustawienie dotyczy wszystkich klientów Jellyfin Web. Zapisz i odśwież całe okno (Ctrl+F5); nie wystarczy przejście do innej zakładki Jellyfin.</p>
+  <p>Motyw jest wspólną bazą wizualną. Jego wyłączenie wstrzymuje też Home, układ szczegółów, doładowywanie bibliotek, interfejsy MAL/SIMKL i flagi. Ustawienia podrzędne zostają zachowane. Wyłączenie samego układu szczegółów nie wyłącza Play/Resume na Home. Wyłączanie Home przywraca natywne widoki Jellyfina (sekcje ustawiasz w preferencjach użytkownika).</p>
+  <p>Te ustawienia dotyczą wyłącznie skryptów i stylów Web; zadania serwerowe MAL/SIMKL, NFO i diagnostyka pozostają bez zmian.</p>
+  <form id="mf-compatibility-form">
+   <div class="checkboxContainer"><label><input type="checkbox" data-mf-web-module="WebSkinEnabled" checked /> <span>Motyw CSS i dekoracje natywnych kart</span></label></div>
+   <div class="checkboxContainer"><label><input type="checkbox" data-mf-web-module="WebHomeEnabled" checked /> <span>Strona główna, karuzele i wyszukiwarka</span></label></div>
+   <div class="checkboxContainer"><label><input type="checkbox" data-mf-web-module="WebDetailsEnabled" checked /> <span>Rozszerzony układ szczegółów</span></label></div>
+   <div class="checkboxContainer"><label><input type="checkbox" data-mf-web-module="WebLibraryScrollEnabled" checked /> <span>Doładowywanie natywnych bibliotek</span></label></div>
+   <div class="checkboxContainer"><label><input type="checkbox" data-mf-web-module="WebNextWatchEnabled" checked /> <span>Oznaczanie poprzedniego odcinka po kliknięciu Dalej</span></label></div>
+   <div class="checkboxContainer"><label><input type="checkbox" data-mf-web-module="WebPlayerBackEnabled" checked /> <span>Powrót z odtwarzacza do sezonu</span></label></div>
+   <div class="checkboxContainer"><label><input type="checkbox" data-mf-web-module="WebMalEnabled" checked /> <span>Interfejs MyAnimeList</span></label></div>
+   <div class="checkboxContainer"><label><input type="checkbox" data-mf-web-module="WebSimklEnabled" checked /> <span>Interfejs SIMKL</span></label></div>
+   <div class="checkboxContainer"><label><input type="checkbox" data-mf-web-module="WebLanguageFlagsEnabled" checked /> <span>Flagi audio i napisów</span></label></div>
+   <div style="display:flex;flex-wrap:wrap;gap:8px">
+    <button type="submit" class="raised button-submit" id="mf-compatibility-save" disabled>Zapisz moduły</button>
+    <button type="button" class="raised" id="mf-compatibility-reset" disabled>Włącz wszystkie</button>
+    <button type="button" class="raised" id="mf-compatibility-reload">Wczytaj ustawienia</button>
+   </div>
+   <p id="mf-compatibility-status" role="status" aria-live="polite">Otwórz panel, aby wczytać ustawienia.</p>
+  </form>
+ </details>
  <div class="mf-plugin-overview-navigation">
   <a id="mf-plugin-overview-return" class="mf-plugin-overview-return" href="#/dashboard/plugins/97d15b37b868492b83daeb67b16a0d44?name=MisioFlix">← Wróć do MisioFlix — widok ogólny wtyczki</a>
  </div>
@@ -256,6 +279,49 @@
  (()=>{
   const view=document.querySelector('#misioflixConfigPage');
   const pluginId='97d15b37-b868-492b-83da-eb67b16a0d44';
+  const compatibility=(()=>{
+   const panel=view.querySelector('#mf-compatibility-panel');
+   if(!panel || typeof panel.querySelectorAll!=='function')return {activate(){}};
+   const form=panel.querySelector('#mf-compatibility-form');
+   const status=panel.querySelector('#mf-compatibility-status');
+   const save=panel.querySelector('#mf-compatibility-save');
+   const reset=panel.querySelector('#mf-compatibility-reset');
+   const reload=panel.querySelector('#mf-compatibility-reload');
+   const fields=Array.from(panel.querySelectorAll('[data-mf-web-module]'));
+   let busy=false,loaded=false;
+   function controls(){
+    save.disabled=reset.disabled=busy||!loaded;
+    reload.disabled=busy;
+    for(const field of fields)field.disabled=busy||!loaded;
+   }
+   async function load(){
+    if(busy)return;
+    busy=true;loaded=false;controls();status.textContent='Wczytywanie ustawień…';
+    try{
+     const config=await ApiClient.getPluginConfiguration(pluginId);
+     for(const field of fields)field.checked=config[field.dataset.mfWebModule]!==false;
+     loaded=true;status.textContent='Ustawienia wczytane.';
+    }catch(e){status.textContent='Błąd wczytywania: '+e.message;}
+    finally{busy=false;controls();}
+   }
+   async function store(event){
+    event.preventDefault();if(busy||!loaded)return;
+    busy=true;controls();status.textContent='Zapisywanie…';
+    try{
+     const config=await ApiClient.getPluginConfiguration(pluginId);
+     for(const field of fields)config[field.dataset.mfWebModule]=field.checked;
+     await ApiClient.updatePluginConfiguration(pluginId,config);
+     status.textContent='Zapisano. Odśwież całe okno Jellyfin (Ctrl+F5), aby zastosować zmiany.';
+    }catch(e){status.textContent='Błąd zapisu: '+e.message;}
+    finally{busy=false;controls();}
+   }
+   form.addEventListener('submit',store);
+   reset.addEventListener('click',()=>{if(!busy&&loaded){for(const field of fields)field.checked=true;status.textContent='Włączono wszystkie pola. Zapisz, aby zastosować.';}});
+   reload.addEventListener('click',()=>void load());
+   panel.addEventListener('toggle',()=>{if(panel.open&&!loaded)void load();});
+   controls();
+   return {activate(){if(panel.open)void load();}};
+  })();
   const diagnostics=(()=>{
    const panel=view.querySelector('#mf-diagnostics-panel');
    if(!panel || typeof panel.querySelector!=='function')return {activate(){}};
@@ -270,7 +336,7 @@
     if(!token)throw Error('Brak aktywnej sesji administratora. Zaloguj się ponownie.');
     if(typeof api?.getUrl!=='function')throw Error('Klient Jellyfin nie jest jeszcze gotowy. Spróbuj ponownie.');
     const url=api.getUrl('MisioFlix/api/diagnostics'+path);
-    const headers={Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-diagnostics", Version="0.4.142", Token="'+String(token).replace(/["\r\n]/g,'')+'"'};
+    const headers={Authorization:'MediaBrowser Client="MisioFlix", Device="Jellyfin Web", DeviceId="misioflix-diagnostics", Version="0.4.143", Token="'+String(token).replace(/["\r\n]/g,'')+'"'};
     const response=await fetch(url,{method,cache:'no-store',headers,signal});
     if(!response.ok)throw Error('HTTP '+response.status+(response.status===401||response.status===403?' — wymagane uprawnienia administratora':response.status===404?' — sprawdź wersję wtyczki i restart serwera':''));
     const result=await response.json();
@@ -281,6 +347,8 @@
    function paint(server){
     const browser=window.MisioFlixDiagnosticSession?.snapshot()||null;
     status.textContent='Serwer: '+(server.enabled?'włączona':'wyłączona')+' · ta karta: '+(browser?.enabled?'włączona':'wyłączona');
+    const runtime=browser?.runtime;
+    if(runtime && browser.enabled)status.textContent+=' · Home: '+(runtime.homeAssetVersion||'brak znacznika')+' · wejścia z pomiarem: '+runtime.homeVisits+' · zapis karty: '+(runtime.storageAvailable?'dostępny':'niedostępny');
     tbody.replaceChildren();
     for(const [source,data] of [['Serwer',server],['Przeglądarka',browser]]){
      for(const m of data?.metrics||[]){
@@ -1366,6 +1434,7 @@
   view.addEventListener('pageshow',async()=>{
    updates.activate();
    diagnostics.activate();
+   compatibility.activate();
    void languageIndex.activate();
    void recommendations.activate();
    void homeCarousels.activate();

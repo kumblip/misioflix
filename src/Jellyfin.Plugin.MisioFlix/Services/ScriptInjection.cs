@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Jellyfin.Plugin.MisioFlix.Services;
+using Jellyfin.Plugin.MisioFlix.Configuration;
 
 namespace Jellyfin.Plugin.MisioFlix.Services;
 
@@ -28,7 +29,8 @@ public sealed class MisioFlixStartupFilter : IStartupFilter
             app.Use(async (ctx, downstream) =>
             {
                 // Keep all other Jellyfin endpoints completely untouched.
-                if (Plugin.Instance?.Configuration.Enabled != true ||
+                var config = Plugin.Instance?.Configuration;
+                if (config is null || !config.Enabled ||
                     ctx.Request.Method != HttpMethods.Get ||
                     !IsIndex(ctx.Request.Path.Value))
                 {
@@ -68,26 +70,13 @@ public sealed class MisioFlixStartupFilter : IStartupFilter
                     return;
                 }
 
-                // Stable marker; actual DLL assembly version controls browser cache-busting.
-                const string marker = "data-misioflix=\"skin\"";
-                if (!input.Contains(marker, StringComparison.Ordinal))
+                // Independent sentinel remains present even with the skin disabled.
+                // Recognize the old marker too, to avoid a second injection into legacy HTML.
+                if (!input.Contains(InjectionMarker, StringComparison.Ordinal) &&
+                    !input.Contains("data-misioflix=\"skin\"", StringComparison.Ordinal))
                 {
                     var version = typeof(Plugin).Assembly.GetName().Version?.ToString() ?? "0.0.0.0";
-                    var inject = "<link data-misioflix=\"skin\" rel=\"stylesheet\" href=\"../MisioFlix/assets/theme.css?v=" + version + "\">" +
-                        "<script data-misioflix=\"skin\" defer src=\"../MisioFlix/assets/client.js?v=" + version + "\"></script>" +
-                        "<script data-misioflix=\"diagnostics\" defer src=\"../MisioFlix/assets/diagnostics.js?v=" + version + "\"></script>" +
-                        "<script data-misioflix=\"home\" defer src=\"../MisioFlix/assets/home.js?v=" + version + "\"></script>" +
-                        "<script data-misioflix=\"details\" defer src=\"../MisioFlix/assets/details.js?v=" + version + "\"></script>" +
-                        "<script data-misioflix=\"library-scroll\" defer src=\"../MisioFlix/assets/library-scroll.js?v=" + version + "\"></script>" +
-                        "<script data-misioflix=\"next-watch\" defer src=\"../MisioFlix/assets/next-episode-watch.js?v=" + version + "\"></script>" +
-                        "<script data-misioflix=\"player-back\" defer src=\"../MisioFlix/assets/player-back.js?v=" + version + "\"></script>" +
-                        "<script data-misioflix=\"mal\" defer src=\"../MisioFlix/assets/mal.js?v=" + version + "\"></script>" +
-                        "<link data-misioflix=\"mal-archive\" rel=\"stylesheet\" href=\"../MisioFlix/assets/mal-archive.css?v=" + version + "\">" +
-                        "<link data-misioflix=\"mal-frames\" rel=\"stylesheet\" href=\"../MisioFlix/assets/mal-frames.css?v=" + version + "\">" +
-                        "<link data-misioflix=\"simkl\" rel=\"stylesheet\" href=\"../MisioFlix/assets/simkl.css?v=" + version + "\">" +
-                        "<script data-misioflix=\"simkl\" defer src=\"../MisioFlix/assets/simkl.js?v=" + version + "\"></script>" +
-                        "<link data-misioflix=\"language-flags-css\" rel=\"stylesheet\" href=\"../MisioFlix/assets/language-flags.css?v=" + version + "\">" +
-                        "<script data-misioflix=\"language-flags\" defer src=\"../MisioFlix/assets/language-flags.js?v=" + version + "\"></script>";
+                    var inject = BuildWebAssets(config, version);
                     var at = input.LastIndexOf("</head>", StringComparison.OrdinalIgnoreCase);
                     input = input.Insert(at, inject);
                 }
@@ -102,6 +91,45 @@ public sealed class MisioFlixStartupFilter : IStartupFilter
             });
             next(app);
         };
+    }
+
+    private const string InjectionMarker = "<!-- misioflix-web-assets -->";
+
+    // No client-side unload or global monkey-patching. A fresh document runs
+    // only selected modules; the legacy skin remains the shared visual base.
+    internal static string BuildWebAssets(PluginConfiguration config, string version)
+    {
+        var inject = new StringBuilder(InjectionMarker);
+        if (config.WebSkinEnabled)
+            inject.Append("<link data-misioflix=\"skin\" rel=\"stylesheet\" href=\"../MisioFlix/assets/theme.css?v=" + version + "\">");
+        if (config.WebSkinEnabled)
+            inject.Append("<script data-misioflix=\"skin\" defer src=\"../MisioFlix/assets/client.js?v=" + version + "\"></script>");
+        inject.Append("<script data-misioflix=\"diagnostics\" defer src=\"../MisioFlix/assets/diagnostics.js?v=" + version + "\"></script>");
+        if (config.WebSkinEnabled && config.WebHomeEnabled)
+            inject.Append("<script data-misioflix=\"home\" defer src=\"../MisioFlix/assets/home.js?v=" + version + "\"></script>");
+        if (config.WebSkinEnabled && (config.WebDetailsEnabled || config.WebHomeEnabled))
+            inject.Append("<script data-misioflix=\"details\" defer " + (config.WebDetailsEnabled ? "" : "data-mf-playback-only=\"true\" ") + "src=\"../MisioFlix/assets/details.js?v=" + version + "\"></script>");
+        if (config.WebSkinEnabled && config.WebLibraryScrollEnabled)
+            inject.Append("<script data-misioflix=\"library-scroll\" defer src=\"../MisioFlix/assets/library-scroll.js?v=" + version + "\"></script>");
+        if (config.WebNextWatchEnabled)
+            inject.Append("<script data-misioflix=\"next-watch\" defer src=\"../MisioFlix/assets/next-episode-watch.js?v=" + version + "\"></script>");
+        if (config.WebPlayerBackEnabled)
+            inject.Append("<script data-misioflix=\"player-back\" defer src=\"../MisioFlix/assets/player-back.js?v=" + version + "\"></script>");
+        if (config.WebSkinEnabled && config.WebMalEnabled)
+            inject.Append("<script data-misioflix=\"mal\" defer src=\"../MisioFlix/assets/mal.js?v=" + version + "\"></script>");
+        if (config.WebSkinEnabled && config.WebMalEnabled)
+            inject.Append("<link data-misioflix=\"mal-archive\" rel=\"stylesheet\" href=\"../MisioFlix/assets/mal-archive.css?v=" + version + "\">");
+        if (config.WebSkinEnabled && config.WebMalEnabled)
+            inject.Append("<link data-misioflix=\"mal-frames\" rel=\"stylesheet\" href=\"../MisioFlix/assets/mal-frames.css?v=" + version + "\">");
+        if (config.WebSkinEnabled && config.WebSimklEnabled)
+            inject.Append("<link data-misioflix=\"simkl\" rel=\"stylesheet\" href=\"../MisioFlix/assets/simkl.css?v=" + version + "\">");
+        if (config.WebSkinEnabled && config.WebSimklEnabled)
+            inject.Append("<script data-misioflix=\"simkl\" defer src=\"../MisioFlix/assets/simkl.js?v=" + version + "\"></script>");
+        if (config.WebSkinEnabled && config.WebLanguageFlagsEnabled)
+            inject.Append("<link data-misioflix=\"language-flags-css\" rel=\"stylesheet\" href=\"../MisioFlix/assets/language-flags.css?v=" + version + "\">");
+        if (config.WebSkinEnabled && config.WebLanguageFlagsEnabled)
+            inject.Append("<script data-misioflix=\"language-flags\" defer src=\"../MisioFlix/assets/language-flags.js?v=" + version + "\"></script>");
+        return inject.ToString();
     }
 
     private static bool IsIndex(string? path)

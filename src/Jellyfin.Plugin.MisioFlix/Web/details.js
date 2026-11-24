@@ -352,6 +352,8 @@
   }
   // Expose the already verified native-button path to the homepage carousel.
   window.MisioFlixPlayItem = playEpisode;
+  // Home still uses the native Play/Resume handoff when the details layout is off.
+  if (document.currentScript?.getAttribute('data-mf-playback-only') === 'true') return;
   async function getItem(id) {
     const api = client();
     const uid = userId();

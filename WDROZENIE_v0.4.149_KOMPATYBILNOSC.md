@@ -1,0 +1,7 @@
+# Wdrożenie 0.4.149.0 — kompatybilność wtyczek
+
+1. Preferowana baza repozytorium: 0.4.147.0. Jeśli wgrano 0.4.148.0, najlepiej wycofać jej commit przed nałożeniem tej paczki. W razie nakładania na 148 plik home.js z archiwum przywróci wersję 147; usuń dodatkowy test plakatów `tests/current/poster_queue_148.cjs` (lub przywróć stan tego pliku z 147, jeśli istniał) i dokumenty wydania 148, jeśli chcesz mieć dokładnie czystą bazę. Nazwy plików 148 są podane w archiwum wydania 148. ZIP nie usuwa plików z repozytorium automatycznie.
+2. Rozpakuj pliki do katalogu głównego repozytorium, nadpisując pliki o tych samych ścieżkach. Nie używaj poprzedniej paczki 149 (sam rollback). Jeśli tag/release 149 został już opublikowany, nie nadpisuj wydania; potrzebny jest nowy numer.
+3. Commit, build, release z hasłem PUBLIKUJ, aktualizacja wtyczki i restart Jellyfina; następnie Ctrl+F5.
+4. Ustawienia MisioFlixa → Kompatybilność z innymi wtyczkami. Domyślnie wszystko włączone. Przy konflikcie wyłącz wybrany moduł, zapisz i odśwież całe okno klienta Web. Ponownie włącz moduł, zapisz i odśwież, aby go przywrócić.
+5. Motyw jest nadrzędny dla modułów wizualnych. Wyłączenie Home może wymagać włączenia natywnych sekcji Home w preferencjach Jellyfina, jeśli uprzednio ustawiono je na Brak. Wyłączenie interfejsu MAL/SIMKL nie zatrzymuje synchronizacji serwerowej. Nie trzeba zmieniać ustawień innych wtyczek ani czyścić cache obrazów.

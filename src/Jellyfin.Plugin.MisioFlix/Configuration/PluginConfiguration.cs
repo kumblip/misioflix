@@ -7,6 +7,16 @@ namespace Jellyfin.Plugin.MisioFlix.Configuration;
 public sealed class PluginConfiguration : BasePluginConfiguration
 {
     public bool Enabled { get; set; } = true;
+    // Web compatibility switches; old configurations keep the original behavior.
+    public bool WebSkinEnabled { get; set; } = true;
+    public bool WebHomeEnabled { get; set; } = true;
+    public bool WebDetailsEnabled { get; set; } = true;
+    public bool WebLibraryScrollEnabled { get; set; } = true;
+    public bool WebNextWatchEnabled { get; set; } = true;
+    public bool WebPlayerBackEnabled { get; set; } = true;
+    public bool WebMalEnabled { get; set; } = true;
+    public bool WebSimklEnabled { get; set; } = true;
+    public bool WebLanguageFlagsEnabled { get; set; } = true;
     // Only CHECK for updates every 15 minutes. Installation always requires admin action.
     public bool AutoCheckUpdates { get; set; } = true;
     // Synchronize native Jellyfin BoxSets bidirectionally from <set> tags; prune only tracked links.
