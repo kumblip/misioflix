@@ -2075,7 +2075,8 @@
   // The watch filter is separate from search and from MAL/SIMKL writes.
   function normalizeRecommendationWatchStatus(status){
     const value=String(status||'').toLowerCase();
-    return value==='watched'?'completed':value==='mixed'?'started':value;
+    // Keep the mixed green/gold frame as its own state: it belongs to both filters.
+    return value==='watched'?'completed':value;
   }
   function recommendationFrameStatus(id,input,malFrame,simklFrame){
     if(!input||typeof input!=='object')return 'unknown';
@@ -2120,7 +2121,8 @@
   function recommendationHasRequestedWatchStatus(item){
     if(recommendationWatchMode==='all')return true;
     const status=normalizeRecommendationWatchStatus(recommendationWatchSnapshot?.get(compactId(item.id)));
-    return status===recommendationWatchMode;
+    return status===recommendationWatchMode || (status==='mixed' &&
+      (recommendationWatchMode==='started'||recommendationWatchMode==='completed'));
   }
   function resetRecommendationWatchStatuses(){
     recommendationWatchSnapshot=null;recommendationWatchPending=null;recommendationWatchError=false;
@@ -2143,7 +2145,7 @@
       for(const [id,input] of Object.entries(data)){
         if(!validId(id))continue;
         const status=normalizeRecommendationWatchStatus(recommendationFrameStatus(id,input,malFrame,simklFrame));
-        if(['unwatched','started','completed'].includes(status))snapshot.set(compactId(id),status);
+        if(['unwatched','started','completed','mixed'].includes(status))snapshot.set(compactId(id),status);
       }
       recommendationWatchSnapshot=snapshot;
     }catch(error){

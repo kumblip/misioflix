@@ -35,7 +35,7 @@ assert.equal(ctx.recommendationFrameStatus(id(1),media('completed','unwatched',t
 assert.equal(ctx.recommendationFrameStatus(id(1),anime(null),malFrame,frameContext.window.MisioFlixSimklProposalFrame),'unknown');
 assert.equal(ctx.recommendationFrameStatus(id(1),anime(1),malFrame,frameContext.window.MisioFlixSimklProposalFrame),'watched');
 assert.equal(ctx.recommendationFrameStatus(id(1),anime(3),malFrame,frameContext.window.MisioFlixSimklProposalFrame),'unwatched');
-assert.equal(ctx.normalizeRecommendationWatchStatus('mixed'),'started');
+assert.equal(ctx.normalizeRecommendationWatchStatus('mixed'),'mixed');
 assert.equal(ctx.recommendationFrameStatus(id(1),media('completed','started'),malFrame,undefined),'started','disabled SIMKL uses native frame');
 assert.equal(ctx.recommendationFrameStatus(id(1),anime(1),undefined,frameContext.window.MisioFlixSimklProposalFrame),'unknown','disabled MAL leaves no frame');
 assert.equal(ctx.recommendationFrameStatus(id(1),{...media('plan_to_watch','unwatched'),watchedEpisodes:2},malFrame,frameContext.window.MisioFlixSimklProposalFrame),'started');
@@ -49,9 +49,12 @@ const row=()=>ctx.recommendationRows.get('proposal-1');const matches=()=>Array.f
   ctx.paintRecommendationSets();assert.equal(pending.length,0);assert.deepEqual(matches(),candidates.map(x=>x.id));const first=row();assert.equal(label(),'📹 Wszystkie');
   click();assert.equal(btn.dataset.mfWatchMode,'unwatched');assert.equal(label(),'Stan: Nierozpoczęte');assert.equal(pending.length,1);assert.equal(row(),first);assert.equal(row().section.hidden,true);
   click();assert.equal(btn.dataset.mfWatchMode,'started');assert.equal(label(),'Stan: Rozpoczęte');assert.equal(pending.length,1);
-  pending[0].resolve({[id(1)]:media('completed','unwatched'),[id(2)]:anime(1,true),[id(3)]:media('plan_to_watch','unwatched'),[id(17001)]:media('watching','unwatched')});await tick();assert.equal(row(),first);assert.deepEqual(matches(),[id(2),id(17001)]);assert.equal(row().section.hidden,false);assert.equal(ctx.recommendationWatchError,false);
-  ctx.recommendationIncludeAnime=false;ctx.paintRecommendationSets();assert.deepEqual(matches(),[id(17001)]);ctx.recommendationIncludeAnime=true;
-  click();assert.equal(btn.dataset.mfWatchMode,'completed');assert.equal(label(),'Stan: Zakończone');assert.deepEqual(matches(),[id(1)]);assert.equal(pending.length,1);
+  pending[0].resolve({[id(1)]:media('completed','unwatched'),[id(2)]:anime(1,true),[id(3)]:media('plan_to_watch','unwatched'),[id(4)]:media('completed','unwatched',true),[id(17001)]:media('watching','unwatched')});await tick();assert.equal(row(),first);assert.deepEqual(matches(),[id(2),id(4),id(17001)]);assert.equal(row().section.hidden,false);assert.equal(ctx.recommendationWatchError,false);
+  ctx.recommendationIncludeAnime=false;ctx.paintRecommendationSets();assert.deepEqual(matches(),[id(4),id(17001)]);ctx.recommendationIncludeAnime=true;
+  click();assert.equal(btn.dataset.mfWatchMode,'completed');assert.equal(label(),'Stan: Zakończone');assert.deepEqual(matches(),[id(1),id(2),id(4)]);
+  assert.equal(ctx.recommendationWatchSnapshot.get(id(2)),'mixed');assert.equal(ctx.recommendationWatchSnapshot.get(id(4)),'mixed');
+  assert.equal(ctx.recommendationHasRequestedWatchStatus({id:id(99999)}),false);
+  ctx.recommendationWatchMode='unwatched';assert.equal(ctx.recommendationHasRequestedWatchStatus({id:id(2)}),false);assert.equal(ctx.recommendationHasRequestedWatchStatus({id:id(4)}),false);ctx.recommendationWatchMode='completed';assert.equal(pending.length,1);
   click();assert.equal(label(),'📹 Wszystkie');assert.deepEqual(matches(),candidates.map(x=>x.id));assert.equal(pending.length,1);
   click();assert.equal(pending.length,2);pending[1].resolve({[id(1)]:native('unwatched'),[id(2)]:anime(2),[id(3)]:media('completed','started'),[id(4)]:native('unwatched'),[id(17001)]:media(null,'unwatched')});await tick();assert.deepEqual(matches(),[id(1),id(4),id(17001)]);
   ctx.recommendationAudioMode='pl';ctx.paintRecommendationSets();assert.deepEqual(matches(),[id(1),id(17001)]);ctx.recommendationAudioMode='all';

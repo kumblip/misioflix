@@ -20,6 +20,9 @@ class ProposalWatchStatus150(unittest.TestCase):
   shared=SVC.split('private static string WatchStatus(JsonElement item)',1)[1].split('private static bool HasPrimaryImage',1)[0]
   self.assertIn('return "watched"',shared);self.assertNotIn('return "completed"',shared)
   self.assertNotIn('private static string RecommendationWatchStatus(',SVC)
-  self.assertIn("value==='watched'?'completed':value==='mixed'?'started':value",HOME)
+  self.assertIn("value==='watched'?'completed':value",HOME)
+  self.assertIn("status==='mixed' &&",HOME)
+  self.assertIn("recommendationWatchMode==='started'||recommendationWatchMode==='completed'",HOME)
+  self.assertIn("['unwatched','started','completed','mixed'].includes(status)",HOME)
   self.assertIn('MisioFlixMalProposalFrames',HOME);self.assertIn('MisioFlixSimklProposalFrame',HOME)
   self.assertIn('const status=normalizeRecommendationWatchStatus(recommendationFrameStatus',HOME)
