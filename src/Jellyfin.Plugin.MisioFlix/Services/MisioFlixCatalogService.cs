@@ -392,7 +392,7 @@ public sealed class MisioFlixCatalogService
             {
                 var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
                     $"&ParentId={collectionId:N}&Recursive=false&CollapseBoxSetItems=false" +
-                    "&EnableTotalRecordCount=true&Limit=1";
+                    "&EnableTotalRecordCount=true&EnableUserData=false&EnableImages=false&Limit=1";
                 using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
                 var total = Get(doc.RootElement, "TotalRecordCount");
                 return total.ValueKind == JsonValueKind.Number && total.TryGetInt32(out var size) && size > 0
@@ -587,7 +587,8 @@ public sealed class MisioFlixCatalogService
         return new HomeShelfResponse("collections", "Kolekcje", random ? "random" : "latest", startIndex, more, tiles);
     }
 
-    private HomeTile? MakeHomeTile(JsonElement item, string category)
+    private HomeTile? MakeHomeTile(JsonElement item, string category, BaseItem? authorizedLocal = null,
+        string[]? libraryIds = null)
     {
         var id = Text(Get(item, "Id"));
         if (!Guid.TryParse(id, out var guid)) return null;
@@ -596,9 +597,9 @@ public sealed class MisioFlixCatalogService
         if (collection ? type != "BoxSet" : type != "Series" && type != "Movie") return null;
         var isAnime = category == "anime";
         LocalNfo? nfo = null;
+        var local = collection ? null : authorizedLocal ?? _library.GetItemById(guid);
         if (isAnime)
         {
-            var local = _library.GetItemById(guid);
             // The authenticated library ID already determines anime membership.
             // A renamed media root must not hide an otherwise valid Jellyfin card.
             if (local is not null) nfo = ReadNfo(local.Path, type);
@@ -626,8 +627,8 @@ public sealed class MisioFlixCatalogService
             userRating = PersonalRating(item),
             watchStatus = WatchStatus(item),
             simklExcluded = isAnime || ((type == "Movie" || type == "Series") &&
-                _library.GetItemById(guid) is { } localSimkl && IsSimklAnime(_library, localSimkl,type,item)),
-            malId = isAnime ? nfo?.MalId ?? FirstSeasonMalId(_library.GetItemById(guid)?.Path) : null
+                local is not null && IsSimklAnime(_library, local,type,item,libraryIds)),
+            malId = isAnime ? nfo?.MalId ?? FirstSeasonMalId(local?.Path) : null
         };
     }
 
@@ -690,7 +691,7 @@ public sealed class MisioFlixCatalogService
         var path = $"Items?UserId={Uri.EscapeDataString(userId)}" +
             $"&Ids={Uri.EscapeDataString(string.Join(",", requested.Select(x => x.ToString("N"))))}" +
             "&IncludeItemTypes=Movie,Series&Recursive=true&CollapseBoxSetItems=false" +
-            "&EnableUserData=true&Fields=Genres,Overview,Tags,ChildCount,RecursiveItemCount" +
+            "&EnableUserData=true&EnableTotalRecordCount=false&Fields=Genres,Overview,Tags,ChildCount,RecursiveItemCount" +
             $"&Limit={requested.Length}";
         using var doc = await GetJsonAsync(origin, path, auth, cancel).ConfigureAwait(false);
         var rows = Get(doc.RootElement, "Items");
@@ -699,11 +700,13 @@ public sealed class MisioFlixCatalogService
         var found = new Dictionary<Guid, HomeTile>();
         foreach (var item in rows.EnumerateArray())
         {
-            if (!Guid.TryParse(Text(Get(item, "Id")), out var id) || !allowed.Contains(id)) continue;
+            if (!Guid.TryParse(Text(Get(item, "Id")), out var id) || !allowed.Contains(id) || found.ContainsKey(id)) continue;
             var media = _library.GetItemById(id);
             if (media is null) continue;
-            var category = AnimeSourceForItem(_library, media).Length != 0 ? "anime" : "movies";
-            var tile = MakeHomeTile(item, category);
+            cancel.ThrowIfCancellationRequested();
+            var libraryIds = CollectionLibraryIds(_library, media).ToArray();
+            var category = AnimeSourceForLibraryMembership(libraryIds, media.Path).Length != 0 ? "anime" : "movies";
+            var tile = MakeHomeTile(item, category, media, libraryIds);
             if (tile is not null) found[id] = tile;
         }
         if (found.Count != 0)
@@ -1894,12 +1897,13 @@ public sealed class MisioFlixCatalogService
     // This check uses the stored paths/IDs, without reading thousands of NFO tags.
     // Unmapped paths are excluded from Simkl until an administrator classifies them.
     // Legacy installs without a saved map retain the old tag-based safety gate.
-    internal static bool IsSimklAnime(ILibraryManager library, BaseItem local, string type, JsonElement item = default)
+    internal static bool IsSimklAnime(ILibraryManager library, BaseItem local, string type, JsonElement item = default,
+        string[]? libraryIds = null)
     {
         var config = Plugin.Instance?.Configuration;
         if (config?.LibraryPathsConfigured == true)
         {
-            var role = ManagedLibraryRoleForMembership(CollectionLibraryIds(library, local));
+            var role = ManagedLibraryRoleForMembership(libraryIds ?? CollectionLibraryIds(library, local));
             if (role.Length == 0) role = ManagedLibraryRoleFromPath(local.Path);
             return role != "simkl" && role != "other";
         }

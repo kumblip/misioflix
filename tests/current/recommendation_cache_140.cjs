@@ -6,7 +6,7 @@ const vm=require('node:vm');
 const src=fs.readFileSync(path.join(__dirname,'../../src/Jellyfin.Plugin.MisioFlix/Web/home.js'),'utf8');
 function between(start,end){const a=src.indexOf(start);assert.ok(a>=0,start);const b=src.indexOf(end,a+start.length);assert.ok(b>=0,end);return src.slice(a,b);}
 const clear=between('  function clearRecommendationCardCache(){','  let processedGenreLink =');
-const code=between('  async function recommendationCards(ids){','  // v0.4.110:');
+const code=between('  let recommendationCardQueue = [];' ,'  // v0.4.110:');
 let now=1, calls=[];
 const token=(n)=>n.toString(16).padStart(32,'0');
 const A=token(1),B=token(2),C=token(3),DENIED=token(99);

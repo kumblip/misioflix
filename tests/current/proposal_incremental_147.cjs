@@ -49,7 +49,7 @@ const ids=r=>Array.from(r.scroll.children).filter(n=>n.item).map(n=>n.item.id);
 (async()=>{
   const h=harness();h.mode('all');await tick();
   const a=h.row(),b=h.row(2),first=a.scroll.children.slice(),other=b.scroll.children.slice();
-  assert.equal(a.offset,10);assert.equal(a.ordered.length,40);assert.equal(h.calls.length,2);
+  assert.equal(a.offset,10);assert.equal(a.ordered.length,40);assert.equal(h.calls.length,1);
   assert.equal(h.created(),13);
   h.mode('pl'); // synchronous removal of any ineligible tiles BEFORE the request resolves
   assert.equal(h.row(),a);assert.equal(h.row(2),b);assert.deepEqual(ids(a),[1,3,5,7,9].map(id));
@@ -57,16 +57,16 @@ const ids=r=>Array.from(r.scroll.children).filter(n=>n.item).map(n=>n.item.id);
   assert.deepEqual(ids(a),[1,3,5,7,9,11,13,15,17,19].map(id));
   for(let i=0;i<5;i++)assert.equal(a.scroll.children[i],first[i*2],'same cached card node reused');
   assert.deepEqual(b.scroll.children,other,'unchanged shelf has no DOM changes');
-  assert.deepEqual(h.calls[2],[11,13,15,17,19].map(id),'only missing tiles are fetched');
-  assert.equal(h.calls.length,3);assert.equal(h.created(),18);
-  h.mode('pl');await tick();assert.equal(h.calls.length,3);assert.equal(h.created(),18);
+  assert.deepEqual(h.calls[1],[11,13,15,17,19].map(id),'only missing tiles are fetched');
+  assert.equal(h.calls.length,2);assert.equal(h.created(),18);
+  h.mode('pl');await tick();assert.equal(h.calls.length,2);assert.equal(h.created(),18);
   await h.ctx.loadRecommendationPage(a,false);assert.equal(a.offset,20);assert.equal(ids(a).length,20);assert.equal(a.hasMore,false);
   // A stale response must not append old cards, overwrite offsets or release a newer request.
-  h.cache.clear();h.setHold(true);h.mode('original');
+  h.cache.clear();h.setHold(true);h.mode('original');await tick();
   const old=h.pending.find(p=>p.ids[0]===id(2));assert(old);
   assert.equal(h.row(2),undefined,'empty row removed');assert.equal(b.section.isConnected,false);
   assert.equal(ids(a).length,0,'stale and nonmatching cards removed immediately');
-  h.mode('pl');const fresh=h.pending.find(p=>p.ids[0]===id(1));assert(fresh);
+  h.mode('pl');await tick();const fresh=h.pending.find(p=>p.ids[0]===id(1));assert(fresh);
   assert.equal(a.busy,true);old.resolve();await tick();
   assert.equal(a.busy,true,'old finally must not release newer request');assert.equal(ids(a).length,0);
   fresh.resolve();for(const p of h.pending)if(p!==old&&p!==fresh)p.resolve();await tick();

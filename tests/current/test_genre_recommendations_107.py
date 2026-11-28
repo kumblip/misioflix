@@ -38,8 +38,8 @@ class GenreRecommendations107(unittest.TestCase):
         self.assertIn('AuthenticatedUserAsync(caller, cancel)',SERVICE)
         self.assertIn('IncludeItemTypes=Movie,Series',SERVICE)
         self.assertIn('allowed.Contains(id)',SERVICE)
-        self.assertIn('MakeHomeTile(item, category)',SERVICE)
-        self.assertIn('AnimeSourceForItem(_library, media)',SERVICE)
+        self.assertIn('MakeHomeTile(item, category, media, libraryIds)',SERVICE)
+        self.assertIn('AnimeSourceForLibraryMembership(libraryIds, media.Path)',SERVICE)
         self.assertNotIn('MalClientSecret',CONTROLLER.split('HomeRecommendationGenres()',1)[1].split('HomeRecommendationOptions(',1)[0])
 
     def test_home_both_switches_and_existing_modes(self):

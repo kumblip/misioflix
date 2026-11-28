@@ -47,6 +47,7 @@
   function clearRecommendationCardCache(){
     recommendationCardGeneration++;
     recommendationCardCache.clear();recommendationCardInFlight.clear();
+    for(const job of recommendationCardQueue.splice(0))job.resolve();
   }
   let processedGenreLink = '';
   const catalogCache = new Map();
@@ -2170,6 +2171,62 @@
   // All tiles are authorized by /home/recommendation-cards BEFORE entering
   // this in-memory cache. Missing/forbidden IDs are never cached, and this
   // cache is cleared on Home teardown, user change and browser return.
+  // Coalesce requests from concurrently visible rails by individual ID, not by
+  // the exact comma-separated list. Keep at most two batches on the wire.
+  let recommendationCardQueue = [];
+  let recommendationCardActive = 0;
+  let recommendationCardFlushScheduled = false;
+  function scheduleRecommendationCardFlush(){
+    if(recommendationCardFlushScheduled)return;
+    recommendationCardFlushScheduled=true;
+    Promise.resolve().then(()=>{
+      recommendationCardFlushScheduled=false;
+      while(recommendationCardActive<2&&recommendationCardQueue.length){
+        const batch=recommendationCardQueue.splice(0,25);
+        const generation=recommendationCardGeneration;
+        const jobs=batch.filter(job=>job.generation===generation);
+        for(const job of batch)if(job.generation!==generation)job.resolve();
+        if(!jobs.length)continue;
+        recommendationCardActive++;
+        void fetchRecommendationCardBatch(jobs,generation);
+      }
+    });
+  }
+  async function fetchRecommendationCardBatch(jobs,generation){
+    const missing=jobs.map(job=>job.id);
+    try{
+      const list=await request('/home/recommendation-cards?ids='+encodeURIComponent(missing.join(',')));
+      if(generation===recommendationCardGeneration){
+        const allowed=new Set(missing);
+        for(const item of (Array.isArray(list)?list:[])){
+          const id=compactId(item?.id);
+          if(!allowed.has(id))continue;
+          recommendationCardCache.delete(id);
+          recommendationCardCache.set(id,{at:Date.now(),item});
+        }
+        while(recommendationCardCache.size>RECOMMENDATION_CARD_CACHE_LIMIT)
+          recommendationCardCache.delete(recommendationCardCache.keys().next().value);
+      }
+      for(const job of jobs)job.resolve();
+    }catch(error){
+      for(const job of jobs)job.reject(error);
+    }finally{
+      for(const job of jobs)if(recommendationCardInFlight.get(job.id)===job.promise)
+        recommendationCardInFlight.delete(job.id);
+      recommendationCardActive--;
+      scheduleRecommendationCardFlush();
+    }
+  }
+  function queueRecommendationCard(id,generation){
+    const existing=recommendationCardInFlight.get(id);
+    if(existing)return existing;
+    let resolve,reject;
+    const promise=new Promise((ok,fail)=>{resolve=ok;reject=fail;});
+    recommendationCardInFlight.set(id,promise);
+    recommendationCardQueue.push({id,generation,promise,resolve,reject});
+    scheduleRecommendationCardFlush();
+    return promise;
+  }
   async function recommendationCards(ids){
     const requested=[...new Set(ids.filter(validId).map(compactId))].slice(0,25);
     if(!requested.length)return [];
@@ -2180,42 +2237,22 @@
     });
     const diag=globalThis.window?.MisioFlixDiagnosticSession;
     const diagGeneration=recommendationCardGeneration;
-    const diagCache=!missing.length?'warm':missing.length===requested.length&&!recommendationCardInFlight.has(missing.join(','))?'cold':'unknown';
+    const diagCache=!missing.length?'warm':missing.length===requested.length&&!missing.some(id=>recommendationCardInFlight.has(id))?'cold':'unknown';
     const diagEnd=diag?.start('recommendationCards',diagCache);
     if(diag?.isEnabled()){
       for(let i=0;i<requested.length-missing.length;i++)diag.cacheResult(true);
       for(let i=0;i<missing.length;i++)diag.cacheResult(false);
     }
-    if(missing.length){
-      const requestKey=missing.join(',');
-      let pending=recommendationCardInFlight.get(requestKey);
-      if(!pending){
-        const generation=recommendationCardGeneration;
-        pending=request('/home/recommendation-cards?ids='+encodeURIComponent(requestKey))
-          .then(list=>{
-            if(generation!==recommendationCardGeneration)return;
-            const allowed=new Set(missing);
-            for(const item of (Array.isArray(list)?list:[])){
-              const id=compactId(item?.id);
-              if(!allowed.has(id))continue;
-              recommendationCardCache.delete(id);
-              recommendationCardCache.set(id,{at:Date.now(),item});
-            }
-            while(recommendationCardCache.size>RECOMMENDATION_CARD_CACHE_LIMIT)
-              recommendationCardCache.delete(recommendationCardCache.keys().next().value);
-          }).finally(()=>{
-            if(recommendationCardInFlight.get(requestKey)===pending)
-              recommendationCardInFlight.delete(requestKey);
-          });
-        recommendationCardInFlight.set(requestKey,pending);
-      }
-      await pending;
+    try{
+      await Promise.all(missing.map(id=>queueRecommendationCard(id,diagGeneration)));
+      if(diagGeneration!==recommendationCardGeneration)throw new Error('Dane propozycji zostały odświeżone');
+      const current=Date.now();
+      return requested.map(id=>recommendationCardCache.get(id))
+        .filter(entry=>entry&&current-entry.at<RECOMMENDATION_CARD_TTL_MS)
+        .map(entry=>entry.item);
+    }finally{
+      if(diagGeneration===recommendationCardGeneration)diagEnd?.();
     }
-    const current=Date.now();
-    if(diagGeneration===recommendationCardGeneration)diagEnd?.();
-    return requested.map(id=>recommendationCardCache.get(id))
-      .filter(entry=>entry&&current-entry.at<RECOMMENDATION_CARD_TTL_MS)
-      .map(entry=>entry.item);
   }
   // v0.4.110: Clicking a genre rail opens its entire authorized catalog as
   // a paginated modal (all matched titles, same current random/latest order).
@@ -2824,7 +2861,10 @@
     clearRecommendationCardCache();
     if(homeRoot?.isConnected&&isCurrent(epoch)&&recommendationWatchMode!=='all')void refreshRecommendationWatchStatuses();
   });
-  window.addEventListener('misioflix-mal-cards-updated',clearRecommendationCardCache);
+  // mal-cards-updated only signals DOM decoration (including new posters).
+  // It does not change the authenticated Jellyfin tile DTO. Invalidating here
+  // made ordinary rendering evict the cache and discard other rails' requests.
+  // Actual MAL data changes still invalidate above via mal-cache-changed.
   window.addEventListener('misioflix-simkl-cache-changed',()=>{
     if(homeRoot?.isConnected&&isCurrent(epoch)&&recommendationWatchMode!=='all')void refreshRecommendationWatchStatuses();
   });

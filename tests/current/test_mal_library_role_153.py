@@ -35,13 +35,13 @@ class MalLibraryRole153(unittest.TestCase):
         for method,end,item in [('ReadHomeRecommendationCardsAsync','ReadRecommendationWatchStatusesAsync','media'),('ReadRecommendationWatchStatusesAsync','ReadHomeResumeAsync','local'),('ReadHomeResumeAsync','ReadOverlaysAsync','local')]:
             # The next method delimiter may be preceded by XML comments, which is harmless.
             section=S.split(method+'(',1)[1].split(end+'(',1)[0]
-            self.assertIn(f'AnimeSourceForItem(_library, {item})',section)
+            self.assertIn('AnimeSourceForLibraryMembership(libraryIds, media.Path)' if item=='media' else f'AnimeSourceForItem(_library, {item})',section)
         self.assertIn('var anime = AnimeSourceForItem(_library, libItem).Length > 0;',S)
         self.assertIn('v10-confirmed-library-roles',W)
 
     def test_simkl_guard_uses_same_roles_and_excludes_unknown(self):
         guard=S.split('internal static bool IsSimklAnime(',1)[1].split('private SimklMediaTarget MakeSimklTarget',1)[0]
-        self.assertIn('ManagedLibraryRoleForMembership(CollectionLibraryIds(library, local))',guard)
+        self.assertIn('ManagedLibraryRoleForMembership(libraryIds ?? CollectionLibraryIds(library, local))',guard)
         self.assertIn('if (role.Length == 0) role = ManagedLibraryRoleFromPath(local.Path);',guard)
         self.assertIn('return role != "simkl" && role != "other";',guard)
         self.assertIn('IsSimklAnime(_library, mediaRoot,',P)
